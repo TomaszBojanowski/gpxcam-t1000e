@@ -1,5 +1,6 @@
-// gpxcam-t1000e – M0 skeleton: peripherals off, LED heartbeat, version log,
-// serial commands. Copyright (C) 2026 Tomasz Bojanowski. License: GPL-3.0 (see LICENSE).
+// gpxcam-t1000e – firmware for the SenseCAP T1000-E that sends the position from its GPS to
+// a Panasonic LUMIX S5II over Bluetooth LE: start-up, the main loop, the serial commands
+// and the LED. Copyright (C) 2026 Tomasz Bojanowski. License: GPL-3.0 (see LICENSE).
 #include <Arduino.h>
 // The core always uses Serial (TinyUSB CDC, included by Arduino.h). This include lets
 // PlatformIO's library finder link the Adafruit TinyUSB library; it does not follow
@@ -13,7 +14,6 @@
 #include "button.h"
 #include "diag.h"
 #include "gps.h"
-#include "gps_test.h"
 #include "link_control.h"
 #include "log.h"
 #include "pairing.h"
@@ -112,9 +112,6 @@ void logHelp()
     logger::transient("          off = System OFF after a 15 s countdown (refused with USB connected),");
     logger::transient("          log = last %lu log lines, also those from times without USB,",
                       (unsigned long)logger::HISTORY_LINES);
-    logger::transient("          gps on / gps off = GPS power, status every 10 s; gps raw / gps raw off = NMEA lines,");
-    logger::transient("          gps test N = N GPS start-time cycles without USB, results in 'log'; gps test off");
-    logger::transient("          scan on / scan off = look for LUMIX cameras over BLE, status every 10 s;");
     logger::transient("          link on / link off = work with the paired camera (on after start when paired),");
     logger::transient("          pair = pair with a camera in pairing mode (or click + hold 3 s), pair off = cancel,");
     logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera)");
@@ -145,21 +142,6 @@ void runSoundTest(const char *argument)
     else
         logger::line("sound test at %lu %% duty: click, start, shutdown, pairing, paired, connected, disconnected",
                      duty);
-}
-
-constexpr const char *GPS_TEST_COMMAND = "gps test ";
-
-// "gps test N" (N cycles) or "gps test off".
-void runGpsTest(const char *argument)
-{
-    if (strcmp(argument, "off") == 0) {
-        gps_test::stop();
-        return;
-    }
-    char *end = nullptr;
-    const long cycles = strtol(argument, &end, 10);
-    if (end == argument || *end != '\0' || !gps_test::start((int)cycles))
-        logger::line("usage: gps test N (N = 1..%d cycles) or gps test off", gps_test::MAX_CYCLES);
 }
 
 void forgetCamera()
@@ -210,27 +192,6 @@ void runCommand(const char *cmd)
         power::startCountdown();
     } else if (strcmp(cmd, "log") == 0) {
         logger::dumpHistory();
-    } else if (strcmp(cmd, "gps on") == 0) {
-        gps_test::stop();
-        gps::on();
-    } else if (strcmp(cmd, "gps off") == 0) {
-        gps_test::stop();
-        gps::off();
-    } else if (strncmp(cmd, GPS_TEST_COMMAND, strlen(GPS_TEST_COMMAND)) == 0) {
-        runGpsTest(cmd + strlen(GPS_TEST_COMMAND));
-    } else if (strcmp(cmd, "gps raw") == 0) {
-        gps::setRawLog(true);
-    } else if (strcmp(cmd, "gps raw off") == 0) {
-        gps::setRawLog(false);
-    } else if (strncmp(cmd, "scan ", 5) == 0 && link_control::active()) {
-        logger::line("scan: run by the link - 'link off' first");
-    } else if (strcmp(cmd, "scan on") == 0) {
-        bluetooth::scanOn();
-    } else if (strcmp(cmd, "scan off") == 0) {
-        if (bluetooth::scanning())
-            bluetooth::scanOff();
-        else
-            logger::line("scan: already off");
     } else if (strcmp(cmd, "link on") == 0) {
         link_control::start();
     } else if (strcmp(cmd, "link off") == 0) {
@@ -391,7 +352,6 @@ void loop()
 
     readSerial();
     gps::poll();
-    gps_test::poll();
     bluetooth::poll();
     pairing::poll();
     link_control::poll();

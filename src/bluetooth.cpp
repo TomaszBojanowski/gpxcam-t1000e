@@ -20,8 +20,8 @@ namespace {
 constexpr uint8_t PERIPHERAL_LINKS = 0; // the card never accepts connections
 constexpr uint8_t CENTRAL_LINKS = 1;    // the camera
 
-// Scanning (M3 decision; the current is to be measured in M6): active scan, the radio
-// listens 50 ms of every 100 ms, until stopped.
+// Scanning (M3 decision): active scan, the radio listens 50 ms of every 100 ms, until
+// stopped; slower in the M6 search modes (setScanTiming()).
 constexpr uint16_t SCAN_INTERVAL_MS = 100;
 constexpr uint16_t SCAN_WINDOW_MS = 50;
 // The SoftDevice accepts a legacy scan interval up to 10.24 s (ble_gap.h, BLE_GAP_SCAN_INTERVAL_MAX).
@@ -265,7 +265,8 @@ void logState()
         logger::line("ble: off, the SoftDevice did not start");
         return;
     }
-    logger::line("ble: SoftDevice on, %s", scanActive ? "scanning" : "not scanning");
+    logger::line("ble: SoftDevice on, %s, %lu camera events lost", scanActive ? "scanning" : "not scanning",
+                 (unsigned long)camera_link::lostEvents());
     if (scanActive)
         logStatus(millis());
 }

@@ -4,9 +4,6 @@
 
 namespace {
 
-// Debounce time: OneButton's default (_debounce_ms = 50), the library Meshtastic uses.
-constexpr uint32_t DEBOUNCE_MS = 50;
-
 bool rawPressed = false;     // last raw reading
 bool stablePressed = false;  // debounced state
 bool longReported = false;   // LongPress already sent for the current hold

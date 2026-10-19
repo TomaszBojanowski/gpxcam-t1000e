@@ -51,7 +51,7 @@ HardwarePWM &pwm = HwPWM3;
 constexpr uint32_t PWM_TOKEN = 0x7a7a7542; // "Buzz", marks our ownership of the module
 constexpr uint8_t PWM_CLOCK_DIV = PWM_PRESCALER_PRESCALER_DIV_16;
 constexpr uint32_t PWM_CLOCK_HZ = 16000000 / 16;
-// COUNTERTOP = PWM_CLOCK_HZ / f: 3610..5405 for 277..185 Hz, within its 15-bit range.
+// COUNTERTOP = PWM_CLOCK_HZ / f: 2702..5405 for 370..185 Hz, within its 15-bit range.
 
 constexpr size_t QUEUE_MAX = 13; // the longest sequence is the volume test
 

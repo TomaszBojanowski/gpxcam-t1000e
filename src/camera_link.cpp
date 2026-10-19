@@ -27,7 +27,7 @@ constexpr uint16_t FIRST_HANDLE = 0x0001;
 ble_uuid_t serviceUuid = {};
 ble_uuid_t characteristicUuids[camera_link::CHARACTERISTIC_COUNT] = {};
 
-const uint8_t *const CHARACTERISTIC_TEXT_ORDER[camera_link::CHARACTERISTIC_COUNT] = {
+const uint8_t *const CHARACTERISTIC_UUIDS[camera_link::CHARACTERISTIC_COUNT] = {
     lumix::KEY_UUID,  lumix::DEVICE_ID_UUID,  lumix::APP_NAME_UUID,  lumix::DEVICE_NAME_UUID,
     lumix::TIME_UUID, lumix::GPS_MODE_UUID, lumix::GPS_NOTIFY_UUID, lumix::LOCATION_UUID};
 
@@ -99,7 +99,7 @@ bool begin()
     if (!registerUuid(lumix::SERVICE_UUID, &serviceUuid))
         return false;
     for (size_t i = 0; i < CHARACTERISTIC_COUNT; i++) {
-        if (!registerUuid(CHARACTERISTIC_TEXT_ORDER[i], &characteristicUuids[i]))
+        if (!registerUuid(CHARACTERISTIC_UUIDS[i], &characteristicUuids[i]))
             return false;
     }
     return true;

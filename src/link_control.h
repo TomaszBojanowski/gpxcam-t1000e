@@ -1,12 +1,12 @@
-// Normal work with the paired camera (M5), 'link on' / 'link off'. Looks for the camera,
-// connects only to the paired serial number in state 00 (link_policy.h), introduces the
-// card (only once the GPS has UTC time: the introduction ends with it), switches the
-// camera's GPS mode on, enables its notifications and sends the location at once and then
-// every 25 s (earlier after moving or when the camera asks) - only with a GPS fix; without
-// one the connection stays. After a disconnect it pauses (5 s, 15 s,
-// 60 s) and looks again; if the camera refuses the card, it stops until 'link on' or a new
-// pairing. GPS and scanning stay on while the link is on. (Not named "link": that is a
-// C library function.) Loop task only.
+// Normal work with the paired camera (M5, M6), 'link on' / 'link off'. Looks for the camera
+// in one of the search modes of link_policy.h (normal, rare, standby, long standby: scan
+// timing and GPS); connects only to the paired serial number in state 00 and only once the
+// GPS has UTC time (the introduction ends with it). Then it switches the camera's GPS mode
+// on, listens for its notifications and sends the location at once and every 25 s (earlier
+// after moving or when the camera asks) - only with a GPS fix; without one the connection
+// stays. No scanning while connected. After a disconnect it pauses (5 s, 15 s, 60 s) and
+// looks again; if the camera refuses the card, it stops until 'link on' or a new pairing.
+// (Not named "link": that is a C library function.) Loop task only.
 #pragma once
 
 #include <stdint.h>

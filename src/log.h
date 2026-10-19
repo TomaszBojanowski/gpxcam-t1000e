@@ -11,8 +11,8 @@ namespace logger {
 // Adafruit_TinyUSB_Arduino src/arduino/ports/nrf/tusb_config_nrf.h).
 constexpr uint32_t LINE_MAX = 128;
 
-// Lines kept in RAM (about 4 KB, static) and shown by dumpHistory(). 32 holds a
-// 'gps test' run of 2 cycles together with the battery readings.
+// Lines kept in RAM (about 4 KB, static) and shown by dumpHistory(): enough for the events
+// of a walk with the card without USB (link, pairing, power), read later with 'log'.
 constexpr uint32_t HISTORY_LINES = 32;
 
 // Formats one line (printf syntax, no newline needed), keeps it in the history

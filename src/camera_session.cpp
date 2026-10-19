@@ -448,9 +448,4 @@ void cancel()
     step = Step::Idle;
 }
 
-bool active()
-{
-    return step != Step::Idle;
-}
-
 } // namespace camera_session

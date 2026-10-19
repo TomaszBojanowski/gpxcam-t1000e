@@ -9,7 +9,7 @@ wgrywania komendą `dfu`, melodia przy starcie, przycisk: krótkie naciśnięcie
 przytrzymanie 3 s = wyłączenie z melodią (System OFF; z podłączonym USB odrzucane – dwa kliknięcia), napięcie baterii
 i stan ładowania w logu co 60 s. GPS (M2): konfiguracja tylko w RAM, fix, satelity, wysokość i czas UTC w logu,
 między użyciami tryb Backup (gorący start po 2–3 s). Bluetooth (M3): SoftDevice S140 startuje przy włączeniu,
-tylko rola central; `scan on` szuka aparatów LUMIX i loguje ich numer, stan, adres i RSSI.
+tylko rola central; skan szuka aparatów LUMIX i loguje ich numer, stan, adres i RSSI.
 Parowanie (M4): `pair` albo klik + przytrzymanie przycisku 3 s. Praca normalna (M5): po starcie karta sama łączy się
 ze sparowanym aparatem i wysyła mu pozycję.
 
@@ -62,13 +62,10 @@ Komendy: `v` – wersja i przyczyna ostatniego resetu, `p` – stan zasilania uk
 `dfu` – tryb wgrywania UF2, `off` – wyłączenie (System OFF) po 15 s odliczania; z podłączonym USB
 wyłączenie jest odrzucane, krótkie naciśnięcie przycisku przerywa odliczanie.
 `log` – ostatnie 32 linie logu (zdarzenia i pomiary baterii), także z czasu bez podłączonego USB.
-`gps on` / `gps off` – zasilanie GPS i jego konfiguracja; co 10 s stan: fix, satelity, wysokość, czas UTC
-(bez współrzędnych). `gps raw` / `gps raw off` – surowe linie NMEA (po fixie zawierają pozycję).
-`gps test N` – pomiar czasu do fixa bez USB: po 60 s N cykli (GPS do fixa + 60 s, wyłączenie w tryb
-Backup, 5 min przerwy); wyniki w `log`. `gps test off` przerywa.
-`scan on` / `scan off` – skan BLE w poszukiwaniu aparatów LUMIX (po starcie wyłączony). W logu tylko aparaty:
-numer seryjny, stan, adres z typem (public/RPA), RSSI – przy pierwszym zobaczeniu, przy zmianie stanu lub adresu
-i gdy aparat zniknie na 30 s; co 10 s linia stanu. Log zawiera prawdziwy numer i adres aparatu – nie publikować.
+GPS i skan BLE włącza `link` (i `pair`); gdy GPS działa, co 10 s linia stanu: fix, satelity, wysokość, czas UTC
+(bez współrzędnych). W czasie skanu w logu tylko aparaty: numer seryjny, stan, adres z typem (public/RPA), RSSI –
+przy pierwszym zobaczeniu, przy zmianie stanu lub adresu i gdy aparat zniknie na 30 s. Log zawiera prawdziwy numer
+i adres aparatu – nie publikować.
 `pair` – parowanie z aparatem w trybie parowania (stan `03`; aparat: menu Bluetooth, parowanie). Potrzebny czas UTC
 z GPS: GPS jest włączany na czas sesji, karta czeka na fix do 120 s, potem szuka aparatu do 60 s; najwyżej 3 próby
 z przerwami 10 s i 30 s. Z aparatem w stanie `00` lub `06` karta się nie łączy. `pair off` albo krótkie naciśnięcie
@@ -79,7 +76,7 @@ Włącza GPS i skan, łączy się tylko ze sparowanym numerem w stanie `00` i do
 w aparacie i lokalizacja od razu, dalej co 25 s (wcześniej po przesunięciu o ponad 20 m albo na prośbę aparatu, nie
 częściej niż co 5 s). Bez fixa połączenie trwa, ale lokalizacje czekają. Po rozłączeniu przerwa 5 s, 15 s, potem 60 s;
 gdy aparat odrzuci kartę – koniec łączenia do `link on` albo `pair`. `link off` rozłącza i wyłącza GPS. Gdy działa
-`link`, skanem steruje on (`scan on/off` jest odrzucane). Oszczędzanie (M6): łączy się tylko przy sygnale co najmniej
+`link`, steruje GPS-em i skanem. Oszczędzanie (M6): łączy się tylko przy sygnale co najmniej
 −85 dBm; gdy aparatu nie widać od 5 min – skan rzadki i GPS w Backup; gdy aparat jest w czuwaniu (`06`) – karta czeka na
 jego włączenie: przez pierwsze 10 min skan co 5 s i GPS gotowy (pozycja od razu po włączeniu aparatu), potem skan
 co 10 s i GPS w Backup. Powrót aparatu przywraca pełny skan i GPS. Dioda: szukanie – dwa krótkie mignięcia co 2 s, połączony –

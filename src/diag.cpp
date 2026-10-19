@@ -64,21 +64,6 @@ void logResetInfo()
     const uint32_t resetReason = readResetReason(); // RESETREAS saved by the core before clearing
     formatResetReason(resetReason, reasons, sizeof(reasons));
     logger::line("reset: 0x%08lx (%s)", (unsigned long)resetReason, reasons);
-
-    // Direct register read is fine while the SoftDevice is disabled (M1 has no BLE).
-    const bool vbus = battery::usbPowered();
-    const bool highVoltage = (NRF_POWER->MAINREGSTATUS & POWER_MAINREGSTATUS_MAINREGSTATUS_Msk) ==
-                             (POWER_MAINREGSTATUS_MAINREGSTATUS_High << POWER_MAINREGSTATUS_MAINREGSTATUS_Pos);
-    logger::line("power: VBUS %s, supply via %s", vbus ? "present" : "absent",
-                 highVoltage ? "VDDH (high-voltage mode)" : "VDD (normal mode)");
-
-    const uint32_t psel = NRF_UICR->PSELRESET[0];
-    const bool connected = (psel & UICR_PSELRESET_CONNECT_Msk) ==
-                           (UICR_PSELRESET_CONNECT_Connected << UICR_PSELRESET_CONNECT_Pos);
-    logger::line("reset pin: PSELRESET 0x%08lx/0x%08lx -> %s P%lu.%02lu", (unsigned long)psel,
-                 (unsigned long)NRF_UICR->PSELRESET[1], connected ? "connected" : "not connected",
-                 (unsigned long)((psel & UICR_PSELRESET_PORT_Msk) >> UICR_PSELRESET_PORT_Pos),
-                 (unsigned long)((psel & UICR_PSELRESET_PIN_Msk) >> UICR_PSELRESET_PIN_Pos));
 }
 
 void battery()

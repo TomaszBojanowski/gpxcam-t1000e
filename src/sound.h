@@ -12,7 +12,7 @@ bool begin();
 void playStart();    // power-on melody
 void playShutdown(); // power-off melody
 void playClick();    // one short, quiet tick for a short button press
-void playRefuse();   // two clicks: power off or pairing refused
+void playRefuse();   // two clicks: refused or given up (power off, pairing, camera, low battery)
 void playPairing();  // two short high beeps: pairing started
 void playPaired();   // rising melody: the camera accepted the card
 void playConnected();    // two short rising beeps: connected to the camera

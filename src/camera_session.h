@@ -39,6 +39,4 @@ const Discovered &discovered();
 // Ends a running session at once: stops connecting or disconnects without waiting.
 void cancel();
 
-bool active();
-
 } // namespace camera_session

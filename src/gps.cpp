@@ -19,7 +19,7 @@ constexpr uint32_t UART_SETTLE_MS = 50;
 constexpr uint32_t RTC_WAKE_PULSE_MS = 3;
 constexpr uint32_t WAKE_SETTLE_MS = 50;
 constexpr uint32_t RESET_PULSE_MS = 10;
-constexpr uint32_t NO_DATA_RESET_MS = 1500; // first byte came after 220 ms in every test so far
+constexpr uint32_t NO_DATA_RESET_MS = 1500; // the first byte comes after 100-220 ms (docs/SPRZET.md)
 
 // Power-down as in Seeed's gnss_scan_stop() (ag3335.c): $PAIR382,0 (release the sleep lock
 // set at start-up, gps_setup.cpp) up to 4 times, then $PAIR650,0 (Backup/RTC mode) every
@@ -60,7 +60,6 @@ uint32_t longLines = 0;
 uint32_t badChecksums = 0;
 uint32_t nextStatus = 0;
 uint32_t firstFixMs = NOT_YET; // since power on
-bool rawLog = false;           // 'gps raw': every NMEA line in the log (positions included)
 bool resetTried = false;
 long unlockAck = ACK_NONE; // last $PAIR001,382,<result>
 long backupAck = ACK_NONE; // last $PAIR001,650,<result>
@@ -158,9 +157,6 @@ void finishSentence()
         lines++;
         if (sentenceTooLong)
             longLines++;
-        // Raw lines only on request ('gps raw'), never kept in the log history.
-        if (rawLog)
-            logger::transient("nmea: %s%s", sentence, sentenceTooLong ? " (cut)" : "");
         if (!sentenceTooLong && nmea::checksumOk(sentence)) {
             handleNavigation();
             gps_setup::handleSentence(sentence);
@@ -200,10 +196,8 @@ void readUart()
     while (Serial1.available() > 0) {
         const int c = Serial1.read();
         bytes++;
-        if (firstByteMs == NOT_YET) {
+        if (firstByteMs == NOT_YET)
             firstByteMs = millis() - poweredAt;
-            logger::line("gps: first byte %lu ms after power on", (unsigned long)firstByteMs);
-        }
         handleByte(c);
     }
 }
@@ -332,14 +326,6 @@ bool isOn()
     return powered;
 }
 
-bool firstFix(uint32_t *secondsAfterPowerOn)
-{
-    if (!powered || firstFixMs == NOT_YET)
-        return false;
-    *secondsAfterPowerOn = firstFixMs / 1000;
-    return true;
-}
-
 bool utcNow(int64_t *unixSeconds)
 {
     const uint32_t age = millis() - timeReceivedMs;
@@ -358,12 +344,6 @@ bool position(int32_t *latitudeE7, int32_t *longitudeE7, int32_t *altitudeDm)
     *longitudeE7 = lastRmc.longitudeE7;
     *altitudeDm = haveGga && lastGga.hasAltitude ? lastGga.altitudeDm : 0;
     return true;
-}
-
-void setRawLog(bool on)
-{
-    rawLog = on;
-    logger::line("gps: raw NMEA lines %s", on ? "on (they include the position)" : "off");
 }
 
 void sendCommand(const char *body, bool echo)

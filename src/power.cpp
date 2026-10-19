@@ -9,6 +9,7 @@
 #include "battery_rules.h"
 #include "bluetooth.h"
 #include "board.h"
+#include "button.h"
 #include "gps.h"
 #include "link_control.h"
 #include "log.h"
@@ -40,33 +41,21 @@ constexpr uint32_t DFU_MAGIC_SKIP = 0x6D;
 constexpr uint32_t SD_GPREGRET_ID = 0;
 constexpr uint32_t GPREGRET_ALL_BITS = 0xFF;
 
-constexpr uint32_t DEBOUNCE_MS = 50;            // as button.cpp (OneButton default)
 constexpr uint32_t RELEASE_TIMEOUT_MS = 5000;   // give up powering off if the button stays pressed
 constexpr uint32_t MELODY_TIMEOUT_MS = 2000;    // the shutdown melody takes about 0.45 s
 constexpr uint32_t SYSTEM_OFF_GRACE_MS = 1000;  // reached only in emulated System OFF
 constexpr uint32_t COUNTDOWN_LOG_MS = 5000;
 
-// LATCH clearing is retried this long before powering off is refused (diagnostics, M2 step 4).
+// LATCH clearing is retried this long before powering off is refused: once the button bit
+// would not clear (open question in docs/SPRZET.md); the refusal logs the details.
 constexpr uint32_t LATCH_RETRY_MS = 100;
 constexpr uint32_t LATCH_RETRY_STEP_MS = 10;
-
-// GPREGRET2 (8 bits, retained through System OFF and its wake-up: PS 5.3.7.17, 5.3.6.8;
-// not used by the bootloader 488711a nor the core) keeps the program time at which a short
-// wake-up press was released, in units of 10 ms, so it can be logged at the next start.
-// 0 = nothing recorded. Written only in handleWakeUp(), before the SoftDevice starts, so directly.
-constexpr uint32_t RELEASE_UNIT_MS = 10;
-constexpr uint32_t RELEASE_MAX_UNITS = 254;
 
 uint8_t lowBatteryReadings = 0;
 
 bool countdown = false;
 uint32_t countdownStart = 0;
 uint32_t nextCountdownLog = 0;
-
-// After a wake-up held long enough: log when the button is finally released.
-bool trackWakeRelease = false;
-bool wakeReleased = false;
-uint32_t wakeReleasedAt = 0;
 
 bool buttonPressed()
 {
@@ -86,7 +75,7 @@ bool waitForRelease(uint32_t timeoutMs)
         } else if (!released) {
             released = true;
             releasedAt = millis();
-        } else if (millis() - releasedAt >= DEBOUNCE_MS) {
+        } else if (millis() - releasedAt >= button::DEBOUNCE_MS) {
             return true;
         }
         sound::poll();
@@ -201,65 +190,31 @@ void enterSystemOff()
     NVIC_SystemReset();
 }
 
-void logPreviousShortPress()
-{
-    const uint32_t units = NRF_POWER->GPREGRET2 & POWER_GPREGRET2_GPREGRET_Msk;
-    if (units == 0)
-        return;
-    NRF_POWER->GPREGRET2 = 0;
-    logger::line("power: earlier wake-up was a short press, released at %lu ms of program time",
-                 (unsigned long)(units * RELEASE_UNIT_MS));
-}
-
-void logWakeRelease()
-{
-    if (buttonPressed()) {
-        wakeReleased = false;
-        return;
-    }
-    if (!wakeReleased) {
-        wakeReleased = true;
-        wakeReleasedAt = millis();
-    } else if (millis() - wakeReleasedAt >= DEBOUNCE_MS) {
-        trackWakeRelease = false;
-        logger::line("power: wake-up press released at %lu ms of program time", (unsigned long)wakeReleasedAt);
-    }
-}
-
 } // namespace
 
 namespace power {
 
 void handleWakeUp()
 {
-    logPreviousShortPress();
     if ((readResetReason() & POWER_RESETREAS_OFF_Msk) == 0)
         return; // not woken by the button: normal start
     if (battery::usbPowered())
         return; // cable connected: stay on
 
     pinMode(BUTTON_PIN, INPUT_PULLDOWN);
-    // millis() counts from the start of the program. The press began earlier: the time the
-    // bootloader and the core need before setup() is not counted (being measured with the
-    // log lines below). A release before WAKE_HOLD_MS means a short press: back to System
-    // OFF, silently. If that is refused, the start simply continues.
+    // millis() counts from the start of the program; the time before it (about 0.5 s, the
+    // 32 kHz crystal start, docs/SPRZET.md) is not counted. A release before WAKE_HOLD_MS
+    // means a short press: back to System OFF, silently. If that is refused, the start
+    // simply continues.
     const uint32_t now = millis();
     if (now < WAKE_HOLD_MS && waitForRelease(WAKE_HOLD_MS - now)) {
-        const uint32_t releasedAt = millis() - DEBOUNCE_MS;
-        const uint32_t units = min(max(releasedAt / RELEASE_UNIT_MS, 1ul), RELEASE_MAX_UNITS);
         // The radio may have woken while the pins were floating. If it does not confirm
         // sleep, start normally instead (the error shows in the log) rather than leave
         // it awake in System OFF.
-        if (board::sleepRadio()) {
-            NRF_POWER->GPREGRET2 = units; // read back at the next start
+        if (board::sleepRadio())
             enterSystemOff();
-            NRF_POWER->GPREGRET2 = 0; // refused: the card starts, log it now
-        }
-        logger::line("power: short wake-up press released at %lu ms of program time, card starts",
-                     (unsigned long)releasedAt);
-        return;
+        logger::line("power: short wake-up press, but powering off failed - the card starts");
     }
-    trackWakeRelease = true; // held long enough: log the release time from poll()
 }
 
 void checkBattery(uint32_t millivolts, bool usb, bool atStart)
@@ -298,8 +253,6 @@ bool countdownActive()
 
 void poll()
 {
-    if (trackWakeRelease)
-        logWakeRelease();
     if (!countdown)
         return;
     const uint32_t elapsed = millis() - countdownStart;

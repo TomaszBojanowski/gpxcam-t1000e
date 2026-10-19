@@ -1,4 +1,4 @@
-// User button (P0.06): debounced short press and long press.
+// User button (P0.06): debounced short press, long press and click + hold.
 #pragma once
 
 #include <stdint.h>
@@ -11,6 +11,9 @@ struct Event {
     Type type;
     uint32_t heldMs; // how long the button was (or has been) held
 };
+
+// Debounce time: OneButton's default (_debounce_ms = 50), the library Meshtastic uses.
+constexpr uint32_t DEBOUNCE_MS = 50;
 
 // Long press threshold (milestone M1 decision: hold 3 s to power off).
 constexpr uint32_t LONG_PRESS_MS = 3000;

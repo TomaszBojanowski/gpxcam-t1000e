@@ -7,9 +7,9 @@
 #include "camera_list.h"
 #include "camera_session.h"
 #include "gps.h"
-#include "gps_test.h"
 #include "log.h"
 #include "link_control.h"
+#include "link_policy.h"
 #include "lumix.h"
 #include "pairing_store.h"
 #include "sound.h"
@@ -22,8 +22,6 @@ constexpr uint32_t SEARCH_MS = 60000;
 constexpr int MAX_ATTEMPTS = 3;
 constexpr uint32_t PAUSE_MS[MAX_ATTEMPTS - 1] = {10000, 30000}; // after attempts 1 and 2
 
-// Connect only on a pairing-state report this recent, so the state is current.
-constexpr uint32_t REPORT_FRESH_MS = 1000;
 
 enum class Phase { Idle, WaitingForFix, Searching, Introducing, Pausing };
 
@@ -149,7 +147,7 @@ void search(uint32_t now)
         const camera_list::Entry *camera = bluetooth::camera(i);
         if (camera == nullptr)
             continue;
-        if (camera->last.camera.state == lumix::STATE_PAIRING && now - camera->lastSeenMs <= REPORT_FRESH_MS) {
+        if (camera->last.camera.state == lumix::STATE_PAIRING && now - camera->lastSeenMs <= link_policy::REPORT_FRESH_MS) {
             introduce(*camera);
             return;
         }
@@ -204,11 +202,6 @@ void start()
     }
     if (!bluetooth::ready() || !pairing_store::ready()) {
         logger::line("pair: not possible - BLE or the pairing file is not available");
-        sound::playRefuse();
-        return;
-    }
-    if (gps_test::active()) {
-        logger::line("pair: not possible during 'gps test' - stop it first");
         sound::playRefuse();
         return;
     }

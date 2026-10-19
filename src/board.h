@@ -45,7 +45,7 @@ void sensorPower(bool on);
 // Back to the nRF52 reset state: input with the buffer disconnected, no pull.
 void releasePin(uint32_t pin);
 
-// Logs the state set by init(), one line per group of peripherals.
+// Logs the result of sleepRadio() (the other peripherals stay as init() set them).
 void logPowerState();
 
 } // namespace board

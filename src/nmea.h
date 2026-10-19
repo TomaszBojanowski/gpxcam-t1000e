@@ -1,4 +1,4 @@
-// NMEA 0183 helpers with no hardware dependencies (to be tested on the PC).
+// NMEA 0183 helpers with no hardware dependencies (tested on the PC).
 #pragma once
 
 #include <stddef.h>

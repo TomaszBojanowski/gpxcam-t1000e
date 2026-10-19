@@ -1,5 +1,6 @@
-// GPS Airoha AG3335 on UART Serial1 (115200 8N1): power, raw NMEA lines in the log,
-// configuration in the GPS RAM after every power-on (gps_setup.cpp).
+// GPS Airoha AG3335 on UART Serial1 (115200 8N1): power on and off (Backup mode between
+// uses, for a hot start), configuration in the GPS RAM after every power-on (gps_setup.cpp),
+// RMC/GGA parsing, UTC time and position for the camera, a status line every 10 s.
 #pragma once
 
 #include <stdint.h>
@@ -16,9 +17,6 @@ void off();
 
 bool isOn();
 
-// Seconds from power-on to the first fix of this power-on; false while there is none.
-bool firstFix(uint32_t *secondsAfterPowerOn);
-
 // UTC now, in Unix seconds: the time of the last RMC with a fix (at most 2 s old) plus the
 // time since it arrived. False without a recent fix. The RMC reaches the card a fraction
 // of a second after its time, so the result may lag by that much.
@@ -32,10 +30,6 @@ bool position(int32_t *latitudeE7, int32_t *longitudeE7, int32_t *altitudeDm);
 // Sends "$<body>*hh\r\n" to the GPS (body e.g. "PAIR063,-1") and, with echo, shows it in
 // the log (not in the history). Does nothing when off.
 void sendCommand(const char *body, bool echo = true);
-
-// Every NMEA line in the log (live only, never in the history); off by default
-// because after a fix the lines contain the position.
-void setRawLog(bool on);
 
 // Reads the UART, parses RMC/GGA and logs a status line every 10 s. Call from loop().
 void poll();

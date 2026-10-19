@@ -1,7 +1,7 @@
 // BLE through the SoftDevice S140 7.3.0, started by the Bluefruit library (M3).
 // (Not named ble.h: that name belongs to the SoftDevice header the library includes.)
-// Central role only: the card looks for the camera and later connects to it; it never
-// advertises and never accepts connections.
+// Central role only: the card looks for the camera and connects to it (camera_link.h); it
+// never advertises and never accepts connections.
 #pragma once
 
 #include <stddef.h>
@@ -20,8 +20,9 @@ namespace bluetooth {
 bool begin();
 
 // Starts an active scan for LUMIX cameras (radio on 50 ms of every 100 ms unless
-// setScanTiming() said otherwise) until scanOff(). Only cameras are logged: when first seen, when their state or address
-// changes and when not seen for 30 s; a status line follows every 10 s.
+// setScanTiming() said otherwise) until scanOff(). Only cameras are logged: when first
+// seen, when their state or address changes and when not seen for 30 s; a status line
+// follows every 10 s.
 void scanOn();
 
 // Stops scanning and logs a summary. Does nothing if not scanning (also before begin()).
