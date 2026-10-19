@@ -24,9 +24,16 @@
 
 namespace board {
 
-// Puts every peripheral in its off state and prepares the green LED.
-// Must be called first in setup(). Takes about 0.3 s (LR1110 reset).
+// Puts every peripheral except the LR1110 in its off state and prepares the green LED;
+// holds the LR1110 control lines (NSS, NRESET) high. Takes microseconds. Must be
+// called first in setup(): the bootloader leaves all pins in their reset state.
 void init();
+
+// Resets the LR1110 and puts it to sleep (it has no power switch). Takes about 0.27 s.
+// Needed after every start, including a wake-up from System OFF: while the pins
+// are in their reset state the radio may have been woken. Returns true when the
+// radio confirmed sleep (BUSY high).
+bool sleepRadio();
 
 // Green LED (P0.24).
 void led(bool on);

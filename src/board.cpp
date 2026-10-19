@@ -76,7 +76,7 @@ void sendRadioCommand(const uint8_t *cmd, size_t len)
 }
 
 // The LR1110 has no power switch on this board, so it is reset and put to sleep.
-RadioState sleepRadio()
+RadioState resetAndSleepRadio()
 {
     resetRadio();
     if (!waitRadioNotBusy())
@@ -139,8 +139,15 @@ void init()
     // Temperature and light sensors: supply off.
     driveLow(PIN_3V3_EN); // P1.06, SENSE_POWER_EN in the Seeed SDK
 
-    // LR1110 radio.
-    radioState = sleepRadio();
+    // LR1110: NSS and NRESET high until sleepRadio(); a falling edge on NSS would wake it.
+    driveHigh(LORA_CS);    // P0.12
+    driveHigh(LORA_RESET); // P1.10
+}
+
+bool sleepRadio()
+{
+    radioState = resetAndSleepRadio();
+    return radioState == RadioState::Sleeping;
 }
 
 void led(bool on)

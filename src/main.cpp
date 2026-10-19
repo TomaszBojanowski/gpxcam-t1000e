@@ -163,7 +163,8 @@ void readSerial()
 
 void setup()
 {
-    board::init();
+    board::init();       // all peripherals off; takes microseconds
+    board::sleepRadio(); // about 0.27 s
 
     Serial.begin(115200); // USB CDC: the baud rate is ignored
     const uint32_t start = millis();
