@@ -169,7 +169,6 @@ void releasePin(uint32_t pin)
 
 void logPowerState()
 {
-    logger::line("power: GPS off (P1.11 low), backup supply on (P0.08 high)");
     logger::line("power: accelerometer off (P1.07 low), sensors off (P1.06 low)");
     logger::line("power: buzzer off (P1.05, P0.25 low), red LED off (P0.03 low)");
     logger::line("power: LR1110 %s", radioStateText(radioState));

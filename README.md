@@ -49,6 +49,7 @@ Komendy: `v` – wersja i przyczyna ostatniego resetu, `p` – stan zasilania uk
 `dfu` – tryb wgrywania UF2, `off` – wyłączenie (System OFF) po 15 s odliczania; z podłączonym USB
 wyłączenie jest odrzucane, krótkie naciśnięcie przycisku przerywa odliczanie.
 `log` – ostatnie 16 linii logu (zdarzenia i pomiary baterii), także z czasu bez podłączonego USB.
+`gps on` / `gps off` – zasilanie GPS; surowe linie NMEA w logu (M2, krok 1).
 Włączanie: przytrzymanie przycisku ok. 1 s (krótsze naciśnięcie – karta wraca do uśpienia) albo podłączenie USB.
 Diagnostyka (tylko odczyty): `diag bat` – napięcie baterii przy różnych czasach od włączenia dzielnika (ok. 4 s).
 `diag snd N` – wszystkie dźwięki z wypełnieniem PWM N% (1–50), do dobrania głośności na słuch.

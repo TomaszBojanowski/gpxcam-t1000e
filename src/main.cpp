@@ -10,6 +10,7 @@
 #include "board.h"
 #include "button.h"
 #include "diag.h"
+#include "gps.h"
 #include "log.h"
 #include "power.h"
 #include "sound.h"
@@ -64,8 +65,9 @@ void logHelp()
 {
     logger::transient("commands: v = version and reset reason, p = power state, dfu = UF2 bootloader,");
     logger::transient("          off = System OFF after a 15 s countdown (refused with USB connected),");
-    logger::transient("          log = last %lu log lines, also those from times without USB",
+    logger::transient("          log = last %lu log lines, also those from times without USB,",
                       (unsigned long)logger::HISTORY_LINES);
+    logger::transient("          gps on / gps off = GPS power, raw NMEA lines in the log");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
 }
 
@@ -112,6 +114,7 @@ void runCommand(const char *cmd)
         diag::logResetInfo();
     } else if (strcmp(cmd, "p") == 0) {
         board::logPowerState();
+        gps::logState();
         logBattery();
     } else if (strcmp(cmd, "dfu") == 0) {
         rebootToUf2Bootloader();
@@ -119,6 +122,10 @@ void runCommand(const char *cmd)
         power::startCountdown();
     } else if (strcmp(cmd, "log") == 0) {
         logger::dumpHistory();
+    } else if (strcmp(cmd, "gps on") == 0) {
+        gps::on();
+    } else if (strcmp(cmd, "gps off") == 0) {
+        gps::off();
     } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
         runSoundTest(cmd + strlen(SOUND_TEST_COMMAND));
     } else if (strcmp(cmd, "diag bat") == 0) {
@@ -198,6 +205,7 @@ void setup()
         logger::line("sound: PWM3 is in use, buzzer disabled");
     diag::logResetInfo();
     board::logPowerState();
+    gps::logState();
     logBattery();
     logHelp();
 }
@@ -221,6 +229,7 @@ void loop()
     }
 
     readSerial();
+    gps::poll();
     handleButton();
     power::poll();
     sound::poll();

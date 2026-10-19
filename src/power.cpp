@@ -4,6 +4,7 @@
 
 #include "battery.h"
 #include "board.h"
+#include "gps.h"
 #include "log.h"
 #include "sound.h"
 
@@ -108,7 +109,10 @@ bool refuseWithUsb()
 // the cable would have to be plugged in again - the button still works.
 void enterSystemOff()
 {
-    if (refuseWithUsb() || !armWakeUp())
+    if (refuseWithUsb())
+        return;
+    gps::off(); // a running GPS would draw milliamps in System OFF
+    if (!armWakeUp())
         return;
 
     // Nothing else runs at this point: the sound has ended (PWM stopped), SAADC and SPI
