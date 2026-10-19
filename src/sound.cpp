@@ -35,9 +35,9 @@ constexpr Note CLICK_NOTES[] = {{NOTE_AS3, 20}}; // Meshtastic's key-press "chir
 constexpr Note TEST_PAUSE_NOTES[] = {{PAUSE, 700}};
 
 // Volume = PWM duty, the share of each period the buzzer is driven. Meshtastic's
-// tone() always uses 50 %; shorter pulses are quieter.
-constexpr uint8_t MELODY_DUTY_PERCENT = 10;
-constexpr uint8_t CLICK_DUTY_PERCENT = 3;
+// tone() always uses 50 %; shorter pulses are quieter. 10 % for all sounds was
+// chosen by ear on the card in M1 ('diag snd N').
+constexpr uint8_t DUTY_PERCENT = 10;
 constexpr uint8_t MAX_DUTY_PERCENT = 50; // never drive the coil for more than half a period
 
 // PWM3: tone() uses PWM2 (core Tone.cpp) and analogWrite() takes the first free module.
@@ -139,19 +139,19 @@ bool begin()
 void playStart()
 {
     const Melody sequence[] = {melody(START_NOTES)};
-    play(sequence, 1, MELODY_DUTY_PERCENT);
+    play(sequence, 1, DUTY_PERCENT);
 }
 
 void playShutdown()
 {
     const Melody sequence[] = {melody(SHUTDOWN_NOTES)};
-    play(sequence, 1, MELODY_DUTY_PERCENT);
+    play(sequence, 1, DUTY_PERCENT);
 }
 
 void playClick()
 {
     const Melody sequence[] = {melody(CLICK_NOTES)};
-    play(sequence, 1, CLICK_DUTY_PERCENT);
+    play(sequence, 1, DUTY_PERCENT);
 }
 
 bool playTest(uint8_t duty)
