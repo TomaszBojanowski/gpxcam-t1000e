@@ -286,6 +286,12 @@ void test_gatt_uuids()
     TEST_ASSERT_EQUAL_STRING("05a797b6-9c2f-4d18-99a7-fa61a3880bfe", text);
     pairing_record::formatUuid(lumix::TIME_UUID, text, sizeof(text));
     TEST_ASSERT_EQUAL_STRING("39a02c41-c6e3-4b73-a3ea-537f23f0085a", text);
+    pairing_record::formatUuid(lumix::GPS_MODE_UUID, text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("c289b6a4-b9ee-49ab-ab06-7099bb5edaa8", text);
+    pairing_record::formatUuid(lumix::GPS_NOTIFY_UUID, text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("437e6512-321a-4a94-9281-fab1bff49a91", text);
+    pairing_record::formatUuid(lumix::LOCATION_UUID, text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("565b4253-8bac-46ae-8c5d-ec6f94fc8714", text);
 }
 
 int main(int, char **)

@@ -4,13 +4,14 @@ Program na kartę Seeed SenseCAP **T1000-E**, który ma przekazywać pozycję z 
 do aparatu Panasonic LUMIX S5II przez Bluetooth LE – bez telefonu.
 Protokół jak w aplikacji gpxcam na Androida.
 
-Stan: **M3 zakończony, M4 w toku.** Wszystkie układy wyłączone, dioda mruga, wersja w logu po USB, wejście w tryb
+Stan: **M4 zakończony, M5 w toku.** Wszystkie układy wyłączone, dioda mruga, wersja w logu po USB, wejście w tryb
 wgrywania komendą `dfu`, melodia przy starcie, przycisk: krótkie naciśnięcie = cichy sygnał,
 przytrzymanie 3 s = wyłączenie z melodią (System OFF; z podłączonym USB odrzucane – dwa kliknięcia), napięcie baterii
 i stan ładowania w logu co 60 s. GPS (M2): konfiguracja tylko w RAM, fix, satelity, wysokość i czas UTC w logu,
 między użyciami tryb Backup (gorący start po 2–3 s). Bluetooth (M3): SoftDevice S140 startuje przy włączeniu,
 tylko rola central; `scan on` szuka aparatów LUMIX i loguje ich numer, stan, adres i RSSI.
-Parowanie (M4): `pair` albo klik + przytrzymanie przycisku 3 s.
+Parowanie (M4): `pair` albo klik + przytrzymanie przycisku 3 s. Praca normalna (M5): po starcie karta sama łączy się
+ze sparowanym aparatem i wysyła mu pozycję.
 
 ## Wymagania
 
@@ -73,6 +74,12 @@ z GPS: GPS jest włączany na czas sesji, karta czeka na fix do 120 s, potem szu
 z przerwami 10 s i 30 s. Z aparatem w stanie `00` lub `06` karta się nie łączy. `pair off` albo krótkie naciśnięcie
 przycisku przerywa. Przycisk: klik i w ciągu 0,5 s przytrzymanie 3 s = parowanie (dwa krótkie sygnały), udane
 parowanie – rosnąca melodia, rezygnacja – dwa kliknięcia.
+`link on` / `link off` – praca ze sparowanym aparatem; włącza się sama po starcie, gdy aparat jest sparowany.
+Włącza GPS i skan, łączy się tylko ze sparowanym numerem w stanie `00` i dopiero, gdy GPS ma czas UTC; potem tryb GPS
+w aparacie i lokalizacja od razu, dalej co 25 s (wcześniej po przesunięciu o ponad 20 m albo na prośbę aparatu, nie
+częściej niż co 5 s). Bez fixa połączenie trwa, ale lokalizacje czekają. Po rozłączeniu przerwa 5 s, 15 s, potem 60 s;
+gdy aparat odrzuci kartę – koniec łączenia do `link on` albo `pair`. `link off` rozłącza i wyłącza GPS. Gdy działa
+`link`, skanem steruje on (`scan on/off` jest odrzucane).
 `unpair` – zapomina sparowany aparat (identyfikator karty zostaje). `p` pokazuje też identyfikator karty (UUID)
 i sparowany aparat – także tych wartości nie publikować.
 Włączanie: przytrzymanie przycisku ok. 1 s (krótsze naciśnięcie – karta wraca do uśpienia; dioda może mignąć

@@ -288,6 +288,20 @@ ok. 1 s – puszczone po 836 ms, karta startuje.
   „T1000-E”; gest uruchamia sesję, krótkie naciśnięcie ją przerywa; numer aparatu zostaje po wyłączeniu i włączeniu.
 - **Nie sprawdzone na karcie:** ścieżka porażki z przerwami 10 s i 30 s – żadna próba nie zakończyła się porażką.
 
+## Praca normalna (M5)
+
+- **Kolejność:** skan → raport sparowanego aparatu w stanie `00` (nie starszy niż 1 s) i czas UTC z GPS → połączenie
+  i przedstawienie jak przy parowaniu, ale połączenie zostaje → `01` do trybu GPS → CCCD → lokalizacje.
+  Bez czasu z GPS karta nie łączy się wcale: pierwsza wersja łączyła się wcześniej i każda próba kończyła się na kroku
+  godziny (aparat niczego nie odrzucał, ale to zbędne łączenie).
+- **Sprawdzone na karcie (krok 2):** połączenie w ok. 1,5 s od raportu, biała ikona Bluetooth i GPS w aparacie;
+  lokalizacja od razu i co 25 s; zdjęcie: pozycja w EXIF 8,4 m od pozycji karty (w pomieszczeniu), czas GPS w EXIF
+  19 s przed zdjęciem (ostatnia wysyłka), status `A`; `gps off` w trakcie – połączenie trwa, lokalizacje czekają,
+  `gps on` – fix po 8 s i wysyłki wracają; wyłączenie aparatu – aparat zamyka połączenie (`HCI 0x13`), karta widzi
+  go w czuwaniu `06` i nie łączy się przez 5 min; włączenie – połączenie w 1,6 s.
+- **Do wyjaśnienia:** karta nie znajduje deskryptora CCCD przy charakterystyce powiadomień, więc powiadomienia od
+  aparatu nie są włączone (lokalizacje idą co 25 s). Aparat nie zapisuje w EXIF wysokości, choć karta ją wysyła.
+
 ## Otwarte pytania
 
 - **Wybudzenie a LATCH (M2, krok 4):** raz po wybudzeniu przyciskiem bit P0.06 w `LATCH` nie dał się skasować

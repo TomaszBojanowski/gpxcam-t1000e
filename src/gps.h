@@ -24,6 +24,11 @@ bool firstFix(uint32_t *secondsAfterPowerOn);
 // of a second after its time, so the result may lag by that much.
 bool utcNow(int64_t *unixSeconds);
 
+// The position of the last RMC with a fix (at most 2 s old): degrees * 10^7, and the
+// altitude of the last GGA in decimetres (0 if the GPS gave none). False without a recent
+// fix. Stays in RAM: never logged.
+bool position(int32_t *latitudeE7, int32_t *longitudeE7, int32_t *altitudeDm);
+
 // Sends "$<body>*hh\r\n" to the GPS (body e.g. "PAIR063,-1") and, with echo, shows it in
 // the log (not in the history). Does nothing when off.
 void sendCommand(const char *body, bool echo = true);

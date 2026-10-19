@@ -8,6 +8,7 @@
 #include "bluetooth.h"
 #include "board.h"
 #include "gps.h"
+#include "link_control.h"
 #include "log.h"
 #include "pairing.h"
 #include "sound.h"
@@ -178,15 +179,16 @@ void enterSystemOff()
 {
     if (refuseWithUsb())
         return;
-    pairing::stop();      // closes a camera connection
-    bluetooth::scanOff(); // the radio must be idle
+    pairing::stop();             // closes a camera connection
+    link_control::stop(false);   // closes a camera connection, GPS off
+    bluetooth::scanOff();        // the radio must be idle
     gps::off();           // a running GPS would draw milliamps in System OFF
     if (!armWakeUp())
         return;
 
     // Nothing else runs at this point: the sound has ended (PWM stopped), SAADC and SPI
     // are idle, so no EasyDMA transfer is in progress (PS 5.3.3). The radio is idle too:
-    // pairing and scanning were stopped above.
+    // pairing, link and scanning were stopped above.
     powerDown();
 
     // Reached only in emulated System OFF (PS 5.3.3.1). Instead of an endless loop,

@@ -13,6 +13,7 @@
 #include "diag.h"
 #include "gps.h"
 #include "gps_test.h"
+#include "link_control.h"
 #include "log.h"
 #include "pairing.h"
 #include "pairing_store.h"
@@ -83,6 +84,7 @@ void logHelp()
     logger::transient("          gps on / gps off = GPS power, status every 10 s; gps raw / gps raw off = NMEA lines,");
     logger::transient("          gps test N = N GPS start-time cycles without USB, results in 'log'; gps test off");
     logger::transient("          scan on / scan off = look for LUMIX cameras over BLE, status every 10 s;");
+    logger::transient("          link on / link off = work with the paired camera (on after start when paired),");
     logger::transient("          pair = pair with a camera in pairing mode (or click + hold 3 s), pair off = cancel,");
     logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera)");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
@@ -166,6 +168,7 @@ void runCommand(const char *cmd)
         bluetooth::logState();
         pairing_store::logState();
         pairing::logState();
+        link_control::logState();
         logBattery();
     } else if (strcmp(cmd, "dfu") == 0) {
         rebootToUf2Bootloader();
@@ -185,6 +188,8 @@ void runCommand(const char *cmd)
         gps::setRawLog(true);
     } else if (strcmp(cmd, "gps raw off") == 0) {
         gps::setRawLog(false);
+    } else if (strncmp(cmd, "scan ", 5) == 0 && link_control::active()) {
+        logger::line("scan: run by the link - 'link off' first");
     } else if (strcmp(cmd, "scan on") == 0) {
         bluetooth::scanOn();
     } else if (strcmp(cmd, "scan off") == 0) {
@@ -192,6 +197,13 @@ void runCommand(const char *cmd)
             bluetooth::scanOff();
         else
             logger::line("scan: already off");
+    } else if (strcmp(cmd, "link on") == 0) {
+        link_control::start();
+    } else if (strcmp(cmd, "link off") == 0) {
+        if (link_control::active())
+            link_control::stop(false);
+        else
+            logger::line("link: already off");
     } else if (strcmp(cmd, "pair") == 0) {
         pairing::start();
     } else if (strcmp(cmd, "pair off") == 0) {
@@ -313,6 +325,7 @@ void setup()
     // After the start logs: the very first start writes flash here.
     if (bleReady && pairing_store::begin())
         pairing_store::logState();
+    link_control::begin(); // starts when a camera is paired
     logBattery();
     logHelp();
 }
@@ -340,6 +353,7 @@ void loop()
     gps_test::poll();
     bluetooth::poll();
     pairing::poll();
+    link_control::poll();
     handleButton();
     power::poll();
     sound::poll();

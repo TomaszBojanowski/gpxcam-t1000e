@@ -38,14 +38,13 @@ enum class Step { Idle, Connecting, Mtu, Service, Characteristics, Key, DeviceId
 Step step = Step::Idle;
 uint32_t stepStart = 0;
 uint32_t stepLimit = 0;
+bool keepOpen = false;
 bool accepted = false;
+bool rejected = false; // the camera refused the time
 char failureText[80] = "";
 
 uint8_t cardUuid[lumix::UUID_LENGTH];
-uint16_t mtu = BLE_GATT_ATT_MTU_DEFAULT;
-uint16_t serviceEnd = 0;
-uint16_t handles[camera_link::CHARACTERISTIC_COUNT];
-uint8_t properties[camera_link::CHARACTERISTIC_COUNT];
+camera_session::Discovered info = {}; // MTU, service end, handles and properties
 uint8_t key[lumix::KEY_LENGTH];
 
 // The data of the write in progress; the SoftDevice may read it until WriteDone.
@@ -117,7 +116,7 @@ void fail()
 
 void requestCharacteristics(uint16_t fromHandle)
 {
-    if (!camera_link::findCharacteristics(fromHandle, serviceEnd)) {
+    if (!camera_link::findCharacteristics(fromHandle, info.serviceEnd)) {
         setFailure("characteristics: request refused");
         fail();
     }
@@ -126,10 +125,10 @@ void requestCharacteristics(uint16_t fromHandle)
 // Starts a write of txData[0..length) to the characteristic and moves to the next step.
 void startWrite(Characteristic which, size_t length, Step next)
 {
-    if (length + ATT_WRITE_HEADER > mtu) {
-        setFailure("%s: %u bytes do not fit MTU %u", stepName(next), (unsigned)length, mtu);
+    if (length + ATT_WRITE_HEADER > info.mtu) {
+        setFailure("%s: %u bytes do not fit MTU %u", stepName(next), (unsigned)length, info.mtu);
         fail();
-    } else if (!camera_link::write(handles[which], txData, (uint16_t)length)) {
+    } else if (!camera_link::write(info.valueHandle[which], txData, (uint16_t)length)) {
         setFailure("%s: write refused by the SoftDevice", stepName(next));
         fail();
     } else {
@@ -172,22 +171,26 @@ void writeTime()
 
 void readKey()
 {
-    for (uint8_t which = 0; which < camera_link::CHARACTERISTIC_COUNT; which++) {
-        if (handles[which] == 0) {
+    for (uint8_t which = 0; which < camera_link::INTRODUCTION_CHARACTERISTICS; which++) {
+        if (info.valueHandle[which] == 0) {
             setFailure("characteristics: number %u (0 = key .. 4 = time) not found", (unsigned)which);
             fail();
             return;
         }
         const uint8_t needed = which == camera_link::KEY ? camera_link::PROPERTY_READ : camera_link::PROPERTY_WRITE;
-        if ((properties[which] & needed) == 0) {
+        if ((info.properties[which] & needed) == 0) {
             setFailure("characteristics: no %s on characteristic %u", needed == camera_link::PROPERTY_READ ? "read" : "write",
                        (unsigned)which);
             fail();
             return;
         }
     }
-    logger::transient("camera: service and %u characteristics found", (unsigned)camera_link::CHARACTERISTIC_COUNT);
-    if (!camera_link::read(handles[camera_link::KEY])) {
+    unsigned count = 0;
+    for (uint16_t handle : info.valueHandle)
+        count += handle != 0;
+    logger::transient("camera: service and %u of %u characteristics found", count,
+                      (unsigned)camera_link::CHARACTERISTIC_COUNT);
+    if (!camera_link::read(info.valueHandle[camera_link::KEY])) {
         setFailure("key: read refused by the SoftDevice");
         fail();
         return;
@@ -198,13 +201,13 @@ void readKey()
 void onCharacteristics(const camera_link::Event &event)
 {
     for (uint8_t i = 0; i < event.characteristics.count; i++) {
-        const camera_link::FoundCharacteristic &found = event.characteristics.list[i];
-        handles[found.which] = found.valueHandle;
-        properties[found.which] = found.properties;
+        const camera_link::FoundCharacteristic &entry = event.characteristics.list[i];
+        info.valueHandle[entry.which] = entry.valueHandle;
+        info.properties[entry.which] = entry.properties;
     }
     // ATT "attribute not found" ends the discovery; so does reaching the end of the service.
     const uint16_t last = event.characteristics.lastHandle;
-    if (event.status == BLE_GATT_STATUS_SUCCESS && last != 0 && last < serviceEnd)
+    if (event.status == BLE_GATT_STATUS_SUCCESS && last != 0 && last < info.serviceEnd)
         requestCharacteristics(last + 1);
     else
         readKey();
@@ -215,6 +218,7 @@ void onWritten(const camera_link::Event &event, void (*next)())
 {
     if (event.status != BLE_GATT_STATUS_SUCCESS) {
         setFailure("%s: refused (GATT 0x%04x)", stepName(step), event.status);
+        rejected = step == Step::Time; // the camera does not know the card
         fail();
         return;
     }
@@ -225,15 +229,18 @@ void onWritten(const camera_link::Event &event, void (*next)())
 void onTimeAccepted()
 {
     accepted = true;
-    closeLink();
+    if (keepOpen)
+        step = Step::Done; // the link goes on with the open connection
+    else
+        closeLink();
 }
 
 void onMtu(const camera_link::Event &event)
 {
-    mtu = event.status == BLE_GATT_STATUS_SUCCESS ? min(MTU_REQUEST, event.mtu) : BLE_GATT_ATT_MTU_DEFAULT;
-    logger::transient("camera: MTU %u", mtu);
-    if (mtu < MTU_NEEDED) {
-        setFailure("MTU: %u, writes of 32 bytes need %u", mtu, MTU_NEEDED);
+    info.mtu = event.status == BLE_GATT_STATUS_SUCCESS ? min(MTU_REQUEST, event.mtu) : BLE_GATT_ATT_MTU_DEFAULT;
+    logger::transient("camera: MTU %u", info.mtu);
+    if (info.mtu < MTU_NEEDED) {
+        setFailure("MTU: %u, writes of 32 bytes need %u", info.mtu, MTU_NEEDED);
         fail();
     } else if (!camera_link::findService()) {
         setFailure("service: request refused");
@@ -250,7 +257,7 @@ void onService(const camera_link::Event &event)
         fail();
         return;
     }
-    serviceEnd = event.service.endHandle;
+    info.serviceEnd = event.service.endHandle;
     enter(Step::Characteristics, STEP_MS);
     requestCharacteristics(event.service.startHandle);
 }
@@ -372,7 +379,7 @@ void handleTimeout()
 
 namespace camera_session {
 
-bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LENGTH])
+bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LENGTH], bool keepConnection)
 {
     if (step != Step::Idle) {
         setFailure("a session is running");
@@ -388,11 +395,11 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
         return false;
     }
     memcpy(cardUuid, uuid, sizeof(cardUuid));
-    memset(handles, 0, sizeof(handles));
-    memset(properties, 0, sizeof(properties));
-    mtu = BLE_GATT_ATT_MTU_DEFAULT;
-    serviceEnd = 0;
+    info = {};
+    info.mtu = BLE_GATT_ATT_MTU_DEFAULT;
+    keepOpen = keepConnection;
     accepted = false;
+    rejected = false;
     failureText[0] = '\0';
     if (!camera_link::connect(camera)) {
         setFailure("connect: refused by the SoftDevice");
@@ -414,12 +421,19 @@ Result poll()
     if (step != Step::Done)
         return Result::Running;
     step = Step::Idle;
-    return accepted ? Result::Accepted : Result::Failed;
+    if (accepted)
+        return Result::Accepted;
+    return rejected ? Result::Rejected : Result::Failed;
 }
 
 const char *failure()
 {
     return failureText;
+}
+
+const Discovered &discovered()
+{
+    return info;
 }
 
 void cancel()

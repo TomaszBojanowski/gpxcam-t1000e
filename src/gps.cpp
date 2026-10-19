@@ -349,6 +349,17 @@ bool utcNow(int64_t *unixSeconds)
     return true;
 }
 
+bool position(int32_t *latitudeE7, int32_t *longitudeE7, int32_t *altitudeDm)
+{
+    // timeValid is set only by an RMC with a fix, which also has the position.
+    if (!powered || !timeValid || millis() - timeReceivedMs > TIME_MAX_AGE_MS || !fixValid)
+        return false;
+    *latitudeE7 = lastRmc.latitudeE7;
+    *longitudeE7 = lastRmc.longitudeE7;
+    *altitudeDm = haveGga && lastGga.hasAltitude ? lastGga.altitudeDm : 0;
+    return true;
+}
+
 void setRawLog(bool on)
 {
     rawLog = on;

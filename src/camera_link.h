@@ -14,8 +14,20 @@
 
 namespace camera_link {
 
-// The characteristics the card uses (lumix.h, docs/PROTOKOL.md).
-enum Characteristic : uint8_t { KEY, DEVICE_ID, APP_NAME, DEVICE_NAME, TIME, CHARACTERISTIC_COUNT };
+// The characteristics the card uses (lumix.h, docs/PROTOKOL.md). The first five are needed
+// to introduce the card (pairing), the others for the normal work (M5).
+enum Characteristic : uint8_t {
+    KEY,
+    DEVICE_ID,
+    APP_NAME,
+    DEVICE_NAME,
+    TIME,
+    GPS_MODE,
+    GPS_NOTIFY,
+    LOCATION,
+    CHARACTERISTIC_COUNT
+};
+constexpr uint8_t INTRODUCTION_CHARACTERISTICS = TIME + 1;
 
 enum class EventType : uint8_t {
     Connected,
@@ -25,6 +37,8 @@ enum class EventType : uint8_t {
     CharacteristicsFound, // a part of the service; more may follow
     ReadDone,
     WriteDone,
+    DescriptorsFound,     // a part of the descriptors after a characteristic; more may follow
+    Notified,             // a notification or (confirmed) indication from the camera
     GattTimeout,          // no ATT response for 30 s: the link is unusable
     SecurityRequest,      // the camera asked for encryption; not answered (as the gpxcam app)
 };
@@ -43,6 +57,8 @@ struct FoundCharacteristic {
 
 constexpr uint8_t PROPERTY_READ = 0x01;
 constexpr uint8_t PROPERTY_WRITE = 0x02; // write with response
+constexpr uint8_t PROPERTY_NOTIFY = 0x04;
+constexpr uint8_t PROPERTY_INDICATE = 0x08;
 
 struct Event {
     EventType type;
@@ -59,10 +75,15 @@ struct Event {
         uint16_t lastHandle; // the last value handle in this response
     } characteristics;
     struct {
+        uint16_t cccdHandle;  // the Client Characteristic Configuration descriptor, 0 if none
+        uint16_t lastHandle;  // the last handle in this response
+        bool nextCharacteristic; // the next characteristic begins: no more descriptors
+    } descriptors;
+    struct {
         uint16_t handle;
         uint8_t length;
         uint8_t data[MAX_READ_LENGTH];
-    } read;
+    } read; // also the data of Notified
 };
 
 // Registers the service and characteristic UUIDs with the SoftDevice. Call once after
@@ -87,6 +108,7 @@ bool connected();
 bool exchangeMtu(uint16_t mtu);
 bool findService();
 bool findCharacteristics(uint16_t startHandle, uint16_t endHandle);
+bool findDescriptors(uint16_t startHandle, uint16_t endHandle);
 bool read(uint16_t handle);
 // Write with response. The data must stay unchanged until WriteDone.
 bool write(uint16_t handle, const uint8_t *data, uint16_t length);

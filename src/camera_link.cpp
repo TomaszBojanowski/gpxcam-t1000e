@@ -12,7 +12,7 @@
 
 namespace {
 
-constexpr UBaseType_t QUEUE_LENGTH = 4; // one request at a time: one answer, maybe a disconnect
+constexpr UBaseType_t QUEUE_LENGTH = 6; // one request at a time: its answer, notifications, a disconnect
 StaticQueue_t queueControl;
 uint8_t queueStorage[QUEUE_LENGTH * sizeof(camera_link::Event)];
 QueueHandle_t eventQueue = nullptr;
@@ -28,7 +28,8 @@ ble_uuid_t serviceUuid = {};
 ble_uuid_t characteristicUuids[camera_link::CHARACTERISTIC_COUNT] = {};
 
 const uint8_t *const CHARACTERISTIC_TEXT_ORDER[camera_link::CHARACTERISTIC_COUNT] = {
-    lumix::KEY_UUID, lumix::DEVICE_ID_UUID, lumix::APP_NAME_UUID, lumix::DEVICE_NAME_UUID, lumix::TIME_UUID};
+    lumix::KEY_UUID,  lumix::DEVICE_ID_UUID,  lumix::APP_NAME_UUID,  lumix::DEVICE_NAME_UUID,
+    lumix::TIME_UUID, lumix::GPS_MODE_UUID, lumix::GPS_NOTIFY_UUID, lumix::LOCATION_UUID};
 
 bool registerUuid(const uint8_t bigEndian[lumix::UUID_LENGTH], ble_uuid_t *out)
 {
@@ -62,9 +63,29 @@ void addCharacteristics(const ble_gattc_evt_char_disc_rsp_t &response, camera_li
             camera_link::FoundCharacteristic &entry = out->characteristics.list[out->characteristics.count++];
             entry.which = (camera_link::Characteristic)which;
             entry.properties = (found.char_props.read ? camera_link::PROPERTY_READ : 0) |
-                               (found.char_props.write ? camera_link::PROPERTY_WRITE : 0);
+                               (found.char_props.write ? camera_link::PROPERTY_WRITE : 0) |
+                               (found.char_props.notify ? camera_link::PROPERTY_NOTIFY : 0) |
+                               (found.char_props.indicate ? camera_link::PROPERTY_INDICATE : 0);
             entry.valueHandle = found.handle_value;
         }
+    }
+}
+
+// Descriptors follow the value of their characteristic until the next characteristic
+// declaration (Bluetooth Core Vol 3, Part G, 3.3).
+void addDescriptors(const ble_gattc_evt_desc_disc_rsp_t &response, camera_link::Event *out)
+{
+    for (uint16_t i = 0; i < response.count; i++) {
+        const ble_gattc_desc_t &found = response.descs[i];
+        out->descriptors.lastHandle = found.handle;
+        if (found.uuid.type != BLE_UUID_TYPE_BLE)
+            continue;
+        if (found.uuid.uuid == BLE_UUID_CHARACTERISTIC) {
+            out->descriptors.nextCharacteristic = true;
+            return;
+        }
+        if (found.uuid.uuid == BLE_UUID_DESCRIPTOR_CLIENT_CHAR_CONFIG && out->descriptors.cccdHandle == 0)
+            out->descriptors.cccdHandle = found.handle;
     }
 }
 
@@ -135,6 +156,20 @@ void onBleEvent(const ble_evt_t *event)
         if (gattc.gatt_status == BLE_GATT_STATUS_SUCCESS)
             addCharacteristics(gattc.params.char_disc_rsp, &out);
         break;
+    case BLE_GATTC_EVT_DESC_DISC_RSP:
+        out.type = EventType::DescriptorsFound;
+        if (gattc.gatt_status == BLE_GATT_STATUS_SUCCESS)
+            addDescriptors(gattc.params.desc_disc_rsp, &out);
+        break;
+    case BLE_GATTC_EVT_HVX:
+        // An indication must be confirmed before the camera can send the next one.
+        if (gattc.params.hvx.type == BLE_GATT_HVX_INDICATION)
+            sd_ble_gattc_hv_confirm(connHandle, gattc.params.hvx.handle);
+        out.type = EventType::Notified;
+        out.read.handle = gattc.params.hvx.handle;
+        out.read.length = (uint8_t)min((uint16_t)MAX_READ_LENGTH, gattc.params.hvx.len);
+        memcpy(out.read.data, gattc.params.hvx.data, out.read.length);
+        break;
     case BLE_GATTC_EVT_READ_RSP:
         out.type = EventType::ReadDone;
         out.read.handle = gattc.params.read_rsp.handle;
@@ -193,6 +228,12 @@ bool findCharacteristics(uint16_t startHandle, uint16_t endHandle)
 {
     const ble_gattc_handle_range_t range = {startHandle, endHandle};
     return sd_ble_gattc_characteristics_discover(connHandle, &range) == NRF_SUCCESS;
+}
+
+bool findDescriptors(uint16_t startHandle, uint16_t endHandle)
+{
+    const ble_gattc_handle_range_t range = {startHandle, endHandle};
+    return sd_ble_gattc_descriptors_discover(connHandle, &range) == NRF_SUCCESS;
 }
 
 bool read(uint16_t handle)

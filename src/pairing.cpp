@@ -9,6 +9,7 @@
 #include "gps.h"
 #include "gps_test.h"
 #include "log.h"
+#include "link_control.h"
 #include "lumix.h"
 #include "pairing_store.h"
 #include "sound.h"
@@ -32,6 +33,8 @@ int attempt = 0;
 bool gpsWasOn = false;
 bool scanWasOn = false;
 bool otherStateLogged = false; // "not in pairing mode" said once per session
+bool linkWasOn = false;        // the link is paused during a session
+bool paired = false;           // this session paired a camera
 uint8_t cameraSerial[lumix::SERIAL_LENGTH];
 
 void enter(Phase next)
@@ -45,7 +48,8 @@ void formatSerial(const uint8_t serial[lumix::SERIAL_LENGTH], char (&out)[2 * lu
     lumix::formatSerial(serial, out, sizeof(out));
 }
 
-// Puts GPS and scanning back as they were before the session.
+// Puts GPS and scanning back as they were before the session, then resumes the link
+// (also after a first pairing).
 void finish()
 {
     camera_session::cancel(); // does nothing when no session runs
@@ -56,6 +60,8 @@ void finish()
     if (!gpsWasOn)
         gps::off(); // about 2 s: Backup mode for the next hot start
     phase = Phase::Idle;
+    if (linkWasOn || paired)
+        link_control::start();
 }
 
 void giveUp(const char *reason)
@@ -72,6 +78,7 @@ void succeed()
     if (pairing_store::saveCamera(cameraSerial)) {
         logger::line("pair: paired with camera %s", serial);
         sound::playPaired();
+        paired = true;
     } else {
         logger::line("pair: camera %s accepted the card, but the pairing file could not be written", serial);
         sound::playRefuse();
@@ -99,7 +106,7 @@ void introduce(const camera_list::Entry &camera)
     formatSerial(cameraSerial, serial);
     logger::line("pair: attempt %d/%d - camera %s in pairing mode, %d dBm, connecting", attempt, MAX_ATTEMPTS, serial,
                  camera.last.rssi);
-    if (!camera_session::start(camera.last, pairing_store::record().uuid)) {
+    if (!camera_session::start(camera.last, pairing_store::record().uuid, false)) {
         attemptFailed(camera_session::failure());
         return;
     }
@@ -161,6 +168,7 @@ void introducing()
     case camera_session::Result::Accepted:
         succeed();
         break;
+    case camera_session::Result::Rejected: // not expected in pairing mode
     case camera_session::Result::Failed:
         attemptFailed(camera_session::failure());
         break;
@@ -204,10 +212,14 @@ void start()
         sound::playRefuse();
         return;
     }
+    linkWasOn = link_control::active();
+    if (linkWasOn)
+        link_control::stop(true); // keeps the GPS on
     gpsWasOn = gps::isOn();
     scanWasOn = bluetooth::scanning();
     attempt = 0;
     otherStateLogged = false;
+    paired = false;
     sound::playPairing();
     if (!gpsWasOn)
         gps::on();
