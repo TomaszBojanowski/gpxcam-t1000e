@@ -14,4 +14,20 @@ namespace bluetooth {
 // Returns false if the SoftDevice did not start; the card then works without BLE.
 bool begin();
 
+// Starts an active scan for LUMIX cameras (radio on 50 ms of every 100 ms) until
+// scanOff(). Only cameras are logged: when first seen, when their state or address
+// changes and when not seen for 30 s; a status line follows every 10 s.
+void scanOn();
+
+// Stops scanning and logs a summary. Does nothing if not scanning (also before begin()).
+void scanOff();
+
+bool scanning();
+
+// Logs the BLE state, for the 'p' command.
+void logState();
+
+// Call from loop(): turns the camera reports into log lines.
+void poll();
+
 } // namespace bluetooth

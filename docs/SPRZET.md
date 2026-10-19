@@ -230,8 +230,9 @@ ok. 1 s – puszczone po 836 ms, karta startuje.
 - **Przerwania:** SoftDevice zastrzega priorytety 0, 1 i 4 oraz przerwania POWER_CLOCK, RADIO, RTC0, TIMER0, RNG,
   ECB, CCM_AAR, TEMP, NVMC i SWI5 (`nrf_nvic.h` S140 7.3.0). UART GPS to UARTE0 z priorytetem 3 (`Uart.cpp`),
   USB – 2, PWM3 brzęczyka działa bez przerwań – bez kolizji. Rdzeń odbiera z UART po 1 bajcie (`RXD.MAXCNT = 1`),
-  a sprzęt buforuje 4 bajty: przy 115200 to ok. 0,35 ms tolerancji na opóźnione przerwanie. Do sprawdzenia
-  licznikiem `bad sum` w czasie skanowania.
+  a sprzęt buforuje 4 bajty: przy 115200 to ok. 0,35 ms tolerancji na opóźnione przerwanie. Sprawdzone (krok 3):
+  GPS i skan razem przez 6 min – 754 linie NMEA, 0 złych sum; 3 ucięte linie i 11 bajtów spoza ASCII to start GPS
+  (tyle samo w 40 s bez skanu).
 - **System plików:** `Bluefruit.begin()` zawsze wywołuje `bond_init()` – montuje InternalFS (0xED000–0xF4000),
   a gdy się nie da, formatuje go; zakłada katalogi `/adafruit/bond_prph` i `/adafruit/bond_cntr`.
   Przy zapisie flasha biblioteka zapala `LED_BUILTIN` – u nas `-DLED_BUILTIN=-1`, jak w Meshtastic.
@@ -240,6 +241,13 @@ ok. 1 s – puszczone po 836 ms, karta startuje.
   `dfu` (przez `tools/flash.sh`) – dysk bootloadera, program wraca; GPS – fix po 58 s (zimny start po wgraniu),
   wyłączenie w tryb Backup potwierdzone; bez kabla: wyłączenie przyciskiem → System OFF (start z `OFF-GPIO`),
   stuknięcie (puszczone po 180 ms) → z powrotem do uśpienia, przytrzymanie (1061 ms) → start z SoftDevice.
+- **Skan (krok 3):** raporty z SoftDevice odbiera własna funkcja w zadaniu BLE (`Bluefruit.setEventCallback`),
+  sprawdza je `lumix::parseAdvert()`, aparaty trafiają do statycznej kolejki (8 miejsc), a skan jest wznawiany
+  ręcznie – `BLEScanner` robi to sam tylko z własnymi filtrami albo callbackiem, który dla każdego raportu
+  przydziela pamięć (`ada_callback`). Zatrzymanie działa także przy skanie wstrzymanym po raporcie (`ble_gap.h`).
+- **Sprawdzone na karcie (krok 3):** przy biurku ok. 37 raportów/s od wszystkich urządzeń, w logu tylko aparat;
+  kolejka bez strat (0 z ok. 15 600 raportów); dźwięki w trakcie skanu; wyłączenie przyciskiem w trakcie skanu →
+  System OFF i start z `OFF-GPIO`.
 
 ## Otwarte pytania
 

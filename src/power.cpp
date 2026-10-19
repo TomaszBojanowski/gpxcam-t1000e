@@ -5,6 +5,7 @@
 #include <nrf_soc.h>
 
 #include "battery.h"
+#include "bluetooth.h"
 #include "board.h"
 #include "gps.h"
 #include "log.h"
@@ -176,13 +177,14 @@ void enterSystemOff()
 {
     if (refuseWithUsb())
         return;
-    gps::off(); // a running GPS would draw milliamps in System OFF
+    bluetooth::scanOff(); // the radio must be idle
+    gps::off();           // a running GPS would draw milliamps in System OFF
     if (!armWakeUp())
         return;
 
     // Nothing else runs at this point: the sound has ended (PWM stopped), SAADC and SPI
     // are idle, so no EasyDMA transfer is in progress (PS 5.3.3). The radio is idle too:
-    // the card does not scan or connect yet.
+    // scanning was stopped above and the card does not connect yet.
     powerDown();
 
     // Reached only in emulated System OFF (PS 5.3.3.1). Instead of an endless loop,

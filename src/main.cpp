@@ -80,6 +80,7 @@ void logHelp()
                       (unsigned long)logger::HISTORY_LINES);
     logger::transient("          gps on / gps off = GPS power, status every 10 s; gps raw / gps raw off = NMEA lines,");
     logger::transient("          gps test N = N GPS start-time cycles without USB, results in 'log'; gps test off");
+    logger::transient("          scan on / scan off = look for LUMIX cameras over BLE, status every 10 s");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
 }
 
@@ -142,6 +143,7 @@ void runCommand(const char *cmd)
     } else if (strcmp(cmd, "p") == 0) {
         board::logPowerState();
         gps::logState();
+        bluetooth::logState();
         logBattery();
     } else if (strcmp(cmd, "dfu") == 0) {
         rebootToUf2Bootloader();
@@ -161,6 +163,13 @@ void runCommand(const char *cmd)
         gps::setRawLog(true);
     } else if (strcmp(cmd, "gps raw off") == 0) {
         gps::setRawLog(false);
+    } else if (strcmp(cmd, "scan on") == 0) {
+        bluetooth::scanOn();
+    } else if (strcmp(cmd, "scan off") == 0) {
+        if (bluetooth::scanning())
+            bluetooth::scanOff();
+        else
+            logger::line("scan: already off");
     } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
         runSoundTest(cmd + strlen(SOUND_TEST_COMMAND));
     } else if (strcmp(cmd, "diag bat") == 0) {
@@ -295,6 +304,7 @@ void loop()
     readSerial();
     gps::poll();
     gps_test::poll();
+    bluetooth::poll();
     handleButton();
     power::poll();
     sound::poll();

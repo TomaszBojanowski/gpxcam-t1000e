@@ -11,6 +11,9 @@ Sprawdzony na S5II w aplikacji gpxcam na Androida (repo `TomaszBojanowski/gpxcam
 - Ogłaszana usługa: `054AC620-3214-11E6-AC0D-0002A5D5C51B`.
 - Włączony: adres RPA. Czuwanie: adres publiczny. Legacy ADV_IND, connectable.
 - Łączymy się tylko, gdy stan i numer seryjny są znane, a numer zgadza się z zapamiętanym.
+- Obserwacja z S5II (M3, skan aktywny 50 ms co 100 ms): dane producenta są tylko w ogłoszeniu, nigdy w odpowiedzi
+  na skan; ok. 3 raporty/s. Każda zmiana stanu zmienia adres: `00` → `03` i `03` → `00` – nowy RPA, `00` → `06` –
+  adres publiczny, `06` → `00` – znów nowy RPA. W czuwaniu (`06`) aparat ogłasza się dalej.
 - Karta przyjmuje tylko dokładnie ten układ: dane producenta (typ AD `0xFF`) mają 8 bajtów razem z `3a 00`.
   Dane Panasonic w innym układzie (inne urządzenia tej firmy) nie są aparatem. Dane mogą przyjść w ogłoszeniu
   albo w odpowiedzi na skan – czytamy oba (`src/lumix.cpp`).
