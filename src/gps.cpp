@@ -24,10 +24,14 @@ constexpr uint32_t NO_DATA_RESET_MS = 1500; // first byte came after 220 ms in e
 // then the main supply is cut; the backup supply P0.08 stays on (hot start next time).
 // Quectel spec V1.4, 2.4.51: in Backup mode the module answers nothing, a refusal comes as
 // $PAIR001,650,<error>. Success is therefore silence longer than the 1 s NMEA period.
+// On the card a single $PAIR650,0 sent seconds after start-up was ignored (no reply, NMEA
+// went on): by default the GPS CPU sleeps between fixes (spec 2.4.34, $PAIR382) and misses
+// commands. Seeed sends it 25 times, 40 ms apart (ag3335.c: gnss_scan_enter_rtc_mode()).
 // ($PAIR382,0 that Seeed sends first releases a sleep lock this firmware never sets.)
 constexpr uint32_t BACKUP_SILENCE_MS = 1500;
-constexpr uint32_t BACKUP_WAIT_MS = 3000; // per attempt
-constexpr int BACKUP_ATTEMPTS = 2;
+constexpr uint32_t BACKUP_REPEAT_MS = 40;
+constexpr int BACKUP_REPEATS = 25;
+constexpr uint32_t BACKUP_WAIT_MS = BACKUP_REPEATS * BACKUP_REPEAT_MS + 2 * BACKUP_SILENCE_MS;
 
 // Meshtastic variant.h GPS_BAUDRATE; Seeed smtc_hal_uart.c NRF_UART_BAUDRATE_115200.
 constexpr uint32_t BAUD_RATE = 115200;
@@ -177,25 +181,36 @@ void readUart()
     }
 }
 
-// Sends $PAIR650,0 and waits for silence. Blocks for up to BACKUP_ATTEMPTS * BACKUP_WAIT_MS.
+// Sends $PAIR650,0 up to BACKUP_REPEATS times and waits for silence.
+// Blocks for up to BACKUP_WAIT_MS (4 s).
 bool enterBackupMode()
 {
-    for (int attempt = 0; attempt < BACKUP_ATTEMPTS; attempt++) {
-        backupRefusal = -1;
-        gps::sendCommand("PAIR650,0");
-        const uint32_t start = millis();
-        uint32_t lastData = start;
-        while (millis() - start < BACKUP_WAIT_MS && backupRefusal < 0) {
-            if (Serial1.available() > 0) {
-                lastData = millis();
-                readUart();
-            } else if (millis() - lastData >= BACKUP_SILENCE_MS) {
-                return true;
-            }
-            delay(1);
+    backupRefusal = -1;
+    int sent = 0;
+    const uint32_t start = millis();
+    uint32_t lastData = start;
+    uint32_t nextSend = start;
+    bool silent = false;
+    while (millis() - start < BACKUP_WAIT_MS && backupRefusal < 0) {
+        const uint32_t now = millis();
+        if (sent < BACKUP_REPEATS && (int32_t)(now - nextSend) >= 0) {
+            gps::sendCommand("PAIR650,0", false);
+            sent++;
+            nextSend += BACKUP_REPEAT_MS;
         }
+        if (Serial1.available() > 0) {
+            lastData = now;
+            readUart();
+        } else if (now - lastData >= BACKUP_SILENCE_MS) {
+            silent = true;
+            break;
+        }
+        delay(1);
     }
-    return false;
+    if (backupRefusal >= 0)
+        logger::line("gps: $PAIR650,0 refused (result %ld)", backupRefusal);
+    logger::line("gps: $PAIR650,0 sent %d times, %s", sent, silent ? "GPS silent" : "GPS still sending");
+    return silent;
 }
 
 void formatFix(char *out, size_t size)
@@ -276,7 +291,7 @@ void setRawLog(bool on)
     logger::line("gps: raw NMEA lines %s", on ? "on (they include the position)" : "off");
 }
 
-void sendCommand(const char *body)
+void sendCommand(const char *body, bool echo)
 {
     if (!powered)
         return;
@@ -287,7 +302,8 @@ void sendCommand(const char *body)
         return;
     }
     Serial1.write((const uint8_t *)command, len);
-    logger::transient(">> %.*s", (int)(len - 2), command); // without CR LF
+    if (echo)
+        logger::transient(">> %.*s", (int)(len - 2), command); // without CR LF
 }
 
 void poll()

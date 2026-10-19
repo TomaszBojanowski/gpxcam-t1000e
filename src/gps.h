@@ -11,7 +11,7 @@ void on();
 
 // Puts the GPS in Backup (RTC) mode with $PAIR650,0, closes the UART, releases its pins
 // and switches the main supply off; the backup supply (P0.08) stays on, so the next
-// start is a hot start. Blocks for about 1.5 s (up to 6 s). Safe when already off.
+// start is a hot start. Blocks for about 2 s (up to 4 s). Safe when already off.
 void off();
 
 bool isOn();
@@ -19,8 +19,9 @@ bool isOn();
 // Seconds from power-on to the first fix of this power-on; false while there is none.
 bool firstFix(uint32_t *secondsAfterPowerOn);
 
-// Sends "$<body>*hh\r\n" to the GPS (body e.g. "PAIR063,-1"). Does nothing when off.
-void sendCommand(const char *body);
+// Sends "$<body>*hh\r\n" to the GPS (body e.g. "PAIR063,-1") and, with echo, shows it in
+// the log (not in the history). Does nothing when off.
+void sendCommand(const char *body, bool echo = true);
 
 // Every NMEA line in the log (live only, never in the history); off by default
 // because after a fix the lines contain the position.
