@@ -84,7 +84,8 @@ program nie wchodzi w System OFF z podłączonym USB.
 
 Sprawdzone na karcie (M1, krok 4): wyłączenie na baterii działa (po odłączeniu kabla nRF przestaje widzieć VBUS);
 podłączenie kabla budzi procesor (`RESETREAS` = 0x00100000, `VBUS`); przycisk budzi procesor
-(`RESETREAS` = 0x00010000, `OFF`). Konfiguracja pinów i GPREGRET przetrwają System OFF (PS 6.9, 5.3.6.8, 5.3.7.16),
+(`RESETREAS` = 0x00010000, `OFF`); krótkie naciśnięcie odsyła kartę z powrotem do uśpienia bez dźwięku;
+przytrzymanie 3 s wyłącza kartę, a z podłączonym USB wyłączenie jest odrzucane. Konfiguracja pinów i GPREGRET przetrwają System OFF (PS 6.9, 5.3.6.8, 5.3.7.16),
 ale bootloader przed uruchomieniem programu przywraca wszystkie piny do stanu po resecie (`board_teardown()`
 w `src/boards/boards.c`) – po każdym starcie trzeba ponownie ustawić piny i uśpić LR1110.
 
@@ -160,6 +161,13 @@ W uśpieniu LR1110 trzyma BUSY w stanie wysokim; program sprawdza to i zapisuje 
 - **Ładowarka** (oba sygnały aktywne stanem niskim, wg Meshtastic): w trakcie ładowania P1.03 = 0, P1.04 = 1;
   po naładowaniu (4,18 V) P1.04 = 0 – program pokazuje wtedy `USB, charged`. Bez kabla ładowarka nie działa,
   więc program czyta te linie tylko przy obecnym VBUS. Pomiar baterii bez kabla – jeszcze nie sprawdzony.
+
+## Bootloader a dioda
+
+Plik płytki bootloadera (`src/boards/t1000_e/board.h` @ 488711a) ma `LED_STATE_ON 0`, a dioda na karcie świeci
+stanem wysokim. Bootloader przy starcie ustawia diodę na „wyłączoną” (`led_pwm_init()`: `1 - LED_STATE_ON`), czyli
+w praktyce ją zapala – przy każdym starcie, także po wybudzeniu z System OFF, dioda krótko mignie, zanim program
+przejmie piny. Nieszkodliwe; bootloadera nie zmieniamy.
 
 ## Otwarte pytania
 
