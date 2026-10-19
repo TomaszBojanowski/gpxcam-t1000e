@@ -21,14 +21,15 @@ constexpr uint32_t RESET_PULSE_MS = 10;
 constexpr uint32_t NO_DATA_RESET_MS = 1500; // first byte came after 220 ms in every test so far
 
 // Power-down as in Seeed's gnss_scan_stop() (ag3335.c): $PAIR382,0 (release the sleep lock
-// set at start-up, gps_setup.cpp) up to 4 times, then $PAIR650,0 (Backup/RTC mode) up to 25
-// times, 40 ms apart, then the main supply is cut; the backup supply P0.08 stays on.
+// set at start-up, gps_setup.cpp) up to 4 times, then $PAIR650,0 (Backup/RTC mode) every
+// 40 ms, then the main supply is cut; the backup supply P0.08 stays on. Seeed sends 25
+// copies (1 s); on the card the GPS took the 4th to 24th, so up to 50 copies (2 s) are sent.
 // Copies stop at the first acknowledgement $PAIR001,<cmd>,<result> (Quectel spec V1.4,
 // 2.4.1: 0 done, 1 in progress, 2..5 failed). In Backup mode the GPS sends nothing, so
 // silence longer than the 1 s NMEA period confirms it.
 constexpr uint32_t COMMAND_REPEAT_MS = 40;
 constexpr int UNLOCK_REPEATS = 4;
-constexpr int BACKUP_REPEATS = 25;
+constexpr int BACKUP_REPEATS = 50;
 constexpr uint32_t ACK_FINAL_WAIT_MS = 1000; // after "in progress"
 constexpr uint32_t BACKUP_SILENCE_MS = 1500;
 constexpr uint32_t BACKUP_SILENCE_WAIT_MS = 3000;
@@ -233,7 +234,7 @@ bool waitForSilence()
     return false;
 }
 
-// Seeed's power-down sequence; see the constants above. Blocks for about 2 s (at most 6 s).
+// Seeed's power-down sequence; see the constants above. Blocks for about 2 s (at most 7.5 s).
 bool enterBackupMode()
 {
     int unlockSent = 0;
