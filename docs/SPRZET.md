@@ -193,7 +193,10 @@ Sprawdzone na karcie (krok 1, `gps on` przy oknie, zimny start, bez wysyłania c
   `$PAIR513` zapisuje do flasha – program wysyła je odpowiednio tylko przy różnicy / nigdy.
 - Do sprawdzenia w kroku 4: bootloader przy każdym starcie (także po wybudzeniu z System OFF) przywraca piny
   do stanu po resecie, więc P0.08 (podtrzymanie GPS) przez kilka ms nie jest sterowany – czy podtrzymanie
-  przetrwa wybudzenie, pokaże porównanie czasu do fixa.
+  przetrwa wybudzenie, pokaże porównanie czasu do fixa. Po dwóch wgraniach programu (w trybie DFU piny są
+  w stanie po resecie przez sekundy) zegar GPS wrócił do domyślnego 1980-01-06 – podtrzymanie zgasło; wgrywanie
+  nie nadaje się więc do oceny gorącego startu.
+- Krok 3: parser RMC/GGA działa na karcie; co 10 s linia stanu bez współrzędnych, 0 błędnych sum kontrolnych.
 
 ## Otwarte pytania
 
