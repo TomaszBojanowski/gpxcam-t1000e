@@ -50,7 +50,7 @@ constexpr uint32_t PWM_CLOCK_HZ = 16000000 / 16;
 constexpr size_t QUEUE_MAX = 5; // the longest sequence is the volume test
 
 bool available = false;
-bool playing = false;
+bool isPlaying = false;
 bool inGap = false;
 Melody queue[QUEUE_MAX];
 size_t queueLength = 0;
@@ -89,15 +89,15 @@ void finish()
     silence();
     pwm.removePin(PIN_BUZZER);
     digitalWrite(PIN_BUZZER, LOW);
-    digitalWrite(BUZZER_EN_PIN, LOW); // buzzer supply only while playing
-    playing = false;
+    digitalWrite(BUZZER_EN_PIN, LOW); // buzzer supply only while a sound plays
+    isPlaying = false;
 }
 
 void play(const Melody *melodies, size_t count, uint8_t duty)
 {
     if (!available)
         return;
-    if (playing)
+    if (isPlaying)
         finish(); // a new sound replaces the current one
 
     queueLength = min(count, QUEUE_MAX);
@@ -109,7 +109,7 @@ void play(const Melody *melodies, size_t count, uint8_t duty)
 
     digitalWrite(BUZZER_EN_PIN, HIGH);
     pwm.addPin(PIN_BUZZER);
-    playing = true;
+    isPlaying = true;
     startNote(currentNote());
 }
 
@@ -166,7 +166,7 @@ bool playTest(uint8_t duty)
 
 void poll()
 {
-    if (!playing || (int32_t)(millis() - phaseEnd) < 0)
+    if (!isPlaying || (int32_t)(millis() - phaseEnd) < 0)
         return;
     if (!inGap) {
         silence();
@@ -177,6 +177,17 @@ void poll()
     if (advance())
         startNote(currentNote());
     else
+        finish();
+}
+
+bool playing()
+{
+    return isPlaying;
+}
+
+void stop()
+{
+    if (isPlaying)
         finish();
 }
 

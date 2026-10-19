@@ -11,6 +11,7 @@
 #include "button.h"
 #include "diag.h"
 #include "log.h"
+#include "power.h"
 #include "sound.h"
 #include "version.h"
 
@@ -18,6 +19,7 @@ namespace {
 
 constexpr uint32_t LED_PERIOD_MS = 1000;      // heartbeat: one short flash per second
 constexpr uint32_t LED_ON_MS = 100;
+constexpr uint32_t COUNTDOWN_LED_PERIOD_MS = 200; // fast blinking while 'off' counts down
 constexpr uint32_t STATUS_PERIOD_MS = 10000;  // version/uptime line in the log
 constexpr uint32_t BATTERY_PERIOD_MS = 60000; // battery line in the log
 constexpr uint32_t SERIAL_WAIT_MS = 2000;     // at start: wait this long for a terminal
@@ -53,7 +55,8 @@ void logBattery()
 
 void logHelp()
 {
-    logger::line("commands: v = version and reset reason, p = power state, dfu = UF2 bootloader");
+    logger::line("commands: v = version and reset reason, p = power state, dfu = UF2 bootloader,");
+    logger::line("          off = System OFF after a 15 s countdown (refused with USB connected)");
     logger::line("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
 }
 
@@ -85,6 +88,7 @@ void handleButton()
     const button::Event event = button::poll();
     if (event.type == button::Type::ShortPress) {
         logger::line("button: short press (%lu ms)", (unsigned long)event.heldMs);
+        power::cancelCountdown(); // does nothing without a countdown
         sound::playClick();
     } else if (event.type == button::Type::LongPress) {
         // M1 step 4 will power off here; for now only the log line and the melody.
@@ -104,6 +108,8 @@ void runCommand(const char *cmd)
         logBattery();
     } else if (strcmp(cmd, "dfu") == 0) {
         rebootToUf2Bootloader();
+    } else if (strcmp(cmd, "off") == 0) {
+        power::startCountdown();
     } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
         runSoundTest(cmd + strlen(SOUND_TEST_COMMAND));
     } else if (strcmp(cmd, "diag bat") == 0) {
@@ -163,24 +169,28 @@ void readSerial()
 
 void setup()
 {
-    board::init();       // all peripherals off; takes microseconds
-    board::sleepRadio(); // about 0.27 s
+    board::init();         // all peripherals off; takes microseconds
+    power::handleWakeUp(); // may go straight back to System OFF after a short button press
+    board::sleepRadio();   // about 0.27 s
+    button::begin();
+    const bool soundReady = sound::begin();
+    sound::playStart(); // right away: after a wake-up it tells the user to let go
 
     Serial.begin(115200); // USB CDC: the baud rate is ignored
+    // Without USB no terminal can connect, so there is nothing to wait for.
     const uint32_t start = millis();
-    while (!Serial && millis() - start < SERIAL_WAIT_MS)
+    while (battery::usbPowered() && !Serial && millis() - start < SERIAL_WAIT_MS) {
+        sound::poll();
         delay(LOOP_DELAY_MS);
+    }
 
     logVersion();
+    if (!soundReady)
+        logger::line("sound: PWM3 is in use, buzzer disabled");
     diag::logResetInfo();
     board::logPowerState();
     logBattery();
     logHelp();
-
-    button::begin();
-    if (!sound::begin())
-        logger::line("sound: PWM3 is in use, buzzer disabled");
-    sound::playStart();
 }
 
 void loop()
@@ -189,7 +199,8 @@ void loop()
     static uint32_t lastBattery = millis(); // measured once in setup()
     const uint32_t now = millis();
 
-    board::led(now % LED_PERIOD_MS < LED_ON_MS);
+    const uint32_t ledPeriod = power::countdownActive() ? COUNTDOWN_LED_PERIOD_MS : LED_PERIOD_MS;
+    board::led(now % ledPeriod < LED_ON_MS);
 
     if (now - lastStatus >= STATUS_PERIOD_MS) {
         lastStatus = now;
@@ -202,6 +213,7 @@ void loop()
 
     readSerial();
     handleButton();
+    power::poll();
     sound::poll();
     delay(LOOP_DELAY_MS);
 }

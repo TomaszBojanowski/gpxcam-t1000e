@@ -46,7 +46,9 @@ pio device monitor
 ```
 
 Komendy: `v` – wersja i przyczyna ostatniego resetu, `p` – stan zasilania układów i bateria,
-`dfu` – tryb wgrywania UF2.
+`dfu` – tryb wgrywania UF2, `off` – wyłączenie (System OFF) po 15 s odliczania; z podłączonym USB
+wyłączenie jest odrzucane, krótkie naciśnięcie przycisku przerywa odliczanie.
+Włączanie: przytrzymanie przycisku ok. 1 s (krótsze naciśnięcie – karta wraca do uśpienia) albo podłączenie USB.
 Diagnostyka (tylko odczyty): `diag bat` – napięcie baterii przy różnych czasach od włączenia dzielnika (ok. 4 s).
 `diag snd N` – wszystkie dźwięki z wypełnieniem PWM N% (1–50), do dobrania głośności na słuch.
 Portu nie otwierać z prędkością 1200 bps – to uruchamia bootloader bez dysku.

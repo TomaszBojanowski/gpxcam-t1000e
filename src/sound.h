@@ -20,4 +20,10 @@ bool playTest(uint8_t dutyPercent);
 // Advances the current sound. Call from loop().
 void poll();
 
+// True while a sound is playing.
+bool playing();
+
+// Ends the current sound at once: PWM stopped, buzzer pin low, buzzer supply off.
+void stop();
+
 } // namespace sound
