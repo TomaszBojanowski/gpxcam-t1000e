@@ -207,12 +207,21 @@ Sprawdzone na karcie (krok 1, `gps on` przy oknie, zimny start, bez wysyłania c
   (bootloader na kilka ms nie steruje P0.08), potem `gps test 1` – fix po 3 s (12 satelitów). Zgaśnięcie
   podtrzymania powoduje dopiero wgrywanie (tryb DFU trwa sekundy).
 
+## Czas startu a przytrzymanie przy włączaniu
+
+Część czasu od naciśnięcia przycisku nie jest liczona przez `millis()`. Bootloader wychodzi od razu
+(`DFU_MAGIC_SKIP` w GPREGRET pomija opóźnienie 500 ms, `src/main.c` bootloadera), ale rdzeń Arduino tylko
+uruchamia kwarc 32 kHz (`cores/nRF5/wiring.c`, bez czekania), a licznik systemowy rusza dopiero, gdy kwarc
+wystartuje (zwykle kilkaset ms). Pomiar (czas puszczenia zapisany w GPREGRET2, M2; trzymanie liczone na wyczucie):
+„ok. 1 s” skończyło się po 500 ms czasu programu, „ok. 3 s” po 1553 ms. Próg włączenia: 400 ms czasu programu.
+Sprawdzone z progiem 400 ms: szybkie stuknięcie – puszczone po 170 ms, karta wraca do uśpienia; przytrzymanie
+ok. 1 s – puszczone po 836 ms, karta startuje.
+
 ## Otwarte pytania
 
-- **Wybudzenie a LATCH (M2, krok 4):** po wybudzeniu przyciskiem krótkie przytrzymanie miało odesłać kartę
-  z powrotem do System OFF, ale bit P0.06 w `LATCH` nie dał się skasować (`LATCH P0 0x00000040`) i program,
-  zgodnie z zasadą, wystartował normalnie. Do tego „ok. 1 s” przytrzymania dało tylko ok. 0,2 s czasu programu –
-  start przed `setup()` (bootloader, start zegara 32 kHz) trwa wyraźnie dłużej, niż zakładano.
+- **Wybudzenie a LATCH (M2, krok 4):** raz po wybudzeniu przyciskiem bit P0.06 w `LATCH` nie dał się skasować
+  (`LATCH P0 0x00000040`) i program, zgodnie z zasadą, wystartował zamiast wrócić do uśpienia. W kolejnej próbie
+  problem nie wystąpił; program ponawia kasowanie przez 100 ms i loguje szczegóły, gdyby wrócił.
 
 - **P0.05:** odczyt analogowy 2,73 V, ale cyfrowo 0, także z podciąganiem w górę – sprzeczne, niewyjaśnione.
   Do wykrywania zasilania z USB używamy rejestru VBUS w nRF, P0.05 nie jest potrzebny.

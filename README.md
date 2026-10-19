@@ -61,7 +61,8 @@ wyłączenie jest odrzucane, krótkie naciśnięcie przycisku przerywa odliczani
 (bez współrzędnych). `gps raw` / `gps raw off` – surowe linie NMEA (po fixie zawierają pozycję).
 `gps test N` – pomiar czasu do fixa bez USB: po 60 s N cykli (GPS do fixa + 60 s, wyłączenie w tryb
 Backup, 5 min przerwy); wyniki w `log`. `gps test off` przerywa.
-Włączanie: przytrzymanie przycisku ok. 1 s (krótsze naciśnięcie – karta wraca do uśpienia) albo podłączenie USB.
+Włączanie: przytrzymanie przycisku ok. 1 s (krótsze naciśnięcie – karta wraca do uśpienia; dioda może mignąć
+od bootloadera) albo podłączenie USB.
 Diagnostyka (tylko odczyty): `diag bat` – napięcie baterii przy różnych czasach od włączenia dzielnika (ok. 4 s).
 `diag snd N` – wszystkie dźwięki z wypełnieniem PWM N% (1–50), do dobrania głośności na słuch.
 Portu nie otwierać z prędkością 1200 bps – to uruchamia bootloader bez dysku.

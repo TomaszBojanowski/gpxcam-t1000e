@@ -4,7 +4,7 @@
 //  - System OFF is entered in one place only, enterSystemOff(), and never with USB
 //    connected: with a cable the card always stays on and reachable over USB.
 //  - Wake-up sources in System OFF: the button (GPIO SENSE) and VBUS (plugging the
-//    cable in), which the nRF52840 always provides.
+//    cable in), which the nRF52840 always provides. The button must be held about 1 s.
 //  - Before System OFF the bootloader is told to skip its DFU checks on the next start.
 #pragma once
 
@@ -12,16 +12,19 @@
 
 namespace power {
 
-// Hold time needed to switch the card on with the button (M1 decision).
-constexpr uint32_t WAKE_HOLD_MS = 1000;
+// Hold needed to switch the card on with the button, in program time (millis()). The
+// M1 decision is a hold of about 1 s. millis() starts only when the 32 kHz crystal runs,
+// about 0.5 s after the press (measured in M2: a hold of "1 s" ended at 500 ms of
+// program time; docs/SPRZET.md), so 400 ms of program time is a hold of about 0.9 s.
+constexpr uint32_t WAKE_HOLD_MS = 400;
 
 // Countdown of the 'off' command, long enough to unplug the cable (M1 step 4 tests).
 constexpr uint32_t OFF_COUNTDOWN_MS = 15000;
 
 // Call in setup() right after board::init() and before board::sleepRadio(). After a
-// wake-up by the button without USB, the button must still be held until WAKE_HOLD_MS
-// after the start; a shorter press sends the card straight back to System OFF (the
-// radio is put to sleep first). Returns when the start continues.
+// wake-up by the button without USB, the button must still be held at WAKE_HOLD_MS of
+// program time; a shorter press sends the card straight back to System OFF (the radio
+// is put to sleep first). Returns when the start continues.
 void handleWakeUp();
 
 // Starts the 'off' countdown; powerOff() runs when it ends.
