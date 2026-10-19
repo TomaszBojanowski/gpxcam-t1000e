@@ -1,0 +1,41 @@
+{
+  "_source": "Based on meshtastic/firmware boards/tracker-t1000-e.json @ 6d41e279f1f51bd59f687b9d441c1bf47b1594fc (GPL-3.0). Changes: variant name, app USB PID 0x8057 (Seeed boards.txt tracker_t1000_e_lorawan.build.pid), no 1200 bps touch, no SWD/debug or bootloader settings, app limit 0xEA000 (bootloader USER_FLASH_END), upload only via UF2 (tools/flash.sh).",
+  "build": {
+    "arduino": {
+      "ldscript": "nrf52840_s140_v7.ld"
+    },
+    "core": "nRF5",
+    "cpu": "cortex-m4",
+    "extra_flags": "-DARDUINO_WIO_WM1110 -DNRF52840_XXAA",
+    "f_cpu": "64000000L",
+    "hwids": [
+      ["0x2886", "0x8057"],
+      ["0x2886", "0x0057"]
+    ],
+    "usb_product": "T1000-E gpxcam",
+    "mcu": "nrf52840",
+    "variant": "t1000-e",
+    "bsp": {
+      "name": "adafruit"
+    },
+    "softdevice": {
+      "sd_flags": "-DS140",
+      "sd_name": "s140",
+      "sd_version": "7.3.0",
+      "sd_fwid": "0x0123"
+    }
+  },
+  "connectivity": ["bluetooth"],
+  "frameworks": ["arduino"],
+  "name": "Seeed SenseCAP T1000-E (gpxcam)",
+  "upload": {
+    "maximum_ram_size": 237568,
+    "maximum_size": 798720,
+    "protocol": "custom",
+    "protocols": ["custom"],
+    "use_1200bps_touch": false,
+    "wait_for_upload_port": false
+  },
+  "url": "https://www.seeedstudio.com/SenseCAP-Card-Tracker-T1000-E-for-Meshtastic-p-5913.html",
+  "vendor": "Seeed Studio"
+}
