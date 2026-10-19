@@ -1,6 +1,8 @@
 #include "power.h"
 
 #include <Arduino.h>
+#include <nrf_sdm.h>
+#include <nrf_soc.h>
 
 #include "battery.h"
 #include "board.h"
@@ -17,6 +19,9 @@
 //   6.9       PIN_CNF registers are retained; 6.9.1 LATCH: a bit cannot be cleared while
 //             its pin's SENSE condition is met.
 //   6.10.2    Entering System OFF while DETECT is high wakes the system at once.
+// S140 SoftDevice Specification, "Peripheral runtime protection": while the SoftDevice runs,
+// POWER registers can be read, but a direct write causes a HardFault; writes then go
+// through its API (nrf_soc.h).
 
 namespace {
 
@@ -24,6 +29,11 @@ namespace {
 // bootloader skips all DFU checks on the next start and clears GPREGRET. Meshtastic sets it
 // before System OFF for the same reason (src/platform/nrf52/main-nrf52.cpp, cpuDeepSleep()).
 constexpr uint32_t DFU_MAGIC_SKIP = 0x6D;
+
+// sd_power_gpregret_set()/clr() (nrf_soc.h): register 0 is GPREGRET (8 bits); set only
+// sets bits, so the register is cleared first.
+constexpr uint32_t SD_GPREGRET_ID = 0;
+constexpr uint32_t GPREGRET_ALL_BITS = 0xFF;
 
 constexpr uint32_t DEBOUNCE_MS = 50;            // as button.cpp (OneButton default)
 constexpr uint32_t RELEASE_TIMEOUT_MS = 5000;   // give up powering off if the button stays pressed
@@ -38,7 +48,7 @@ constexpr uint32_t LATCH_RETRY_STEP_MS = 10;
 // GPREGRET2 (8 bits, retained through System OFF and its wake-up: PS 5.3.7.17, 5.3.6.8;
 // not used by the bootloader 488711a nor the core) keeps the program time at which a short
 // wake-up press was released, in units of 10 ms, so it can be logged at the next start.
-// 0 = nothing recorded.
+// 0 = nothing recorded. Written only in handleWakeUp(), before the SoftDevice starts, so directly.
 constexpr uint32_t RELEASE_UNIT_MS = 10;
 constexpr uint32_t RELEASE_MAX_UNITS = 254;
 
@@ -128,6 +138,28 @@ bool armWakeUp()
     return true;
 }
 
+bool softDeviceEnabled()
+{
+    uint8_t enabled = 0;
+    sd_softdevice_is_enabled(&enabled); // also valid while it is disabled (as in the core's flash_nrf5x.c)
+    return enabled != 0;
+}
+
+// Tells the bootloader to skip its DFU checks on the next start and enters System OFF.
+// Returns only in emulated System OFF (PS 5.3.3.1).
+void powerDown()
+{
+    if (softDeviceEnabled()) {
+        sd_power_gpregret_clr(SD_GPREGRET_ID, GPREGRET_ALL_BITS);
+        sd_power_gpregret_set(SD_GPREGRET_ID, DFU_MAGIC_SKIP);
+        sd_power_system_off();
+    } else {
+        NRF_POWER->GPREGRET = DFU_MAGIC_SKIP;
+        NRF_POWER->SYSTEMOFF = POWER_SYSTEMOFF_SYSTEMOFF_Enter;
+    }
+    __DSB();
+}
+
 bool refuseWithUsb()
 {
     if (!battery::usbPowered())
@@ -149,10 +181,9 @@ void enterSystemOff()
         return;
 
     // Nothing else runs at this point: the sound has ended (PWM stopped), SAADC and SPI
-    // are idle, so no EasyDMA transfer is in progress (PS 5.3.3).
-    NRF_POWER->GPREGRET = DFU_MAGIC_SKIP; // direct write: the SoftDevice is not enabled
-    NRF_POWER->SYSTEMOFF = POWER_SYSTEMOFF_SYSTEMOFF_Enter;
-    __DSB();
+    // are idle, so no EasyDMA transfer is in progress (PS 5.3.3). The radio is idle too:
+    // the card does not scan or connect yet.
+    powerDown();
 
     // Reached only in emulated System OFF (PS 5.3.3.1). Instead of an endless loop,
     // restart after a moment; GPREGRET makes the bootloader start the program directly.

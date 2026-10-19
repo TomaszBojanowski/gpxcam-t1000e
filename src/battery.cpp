@@ -56,8 +56,8 @@ uint32_t measureMillivolts(uint32_t settleMs)
 
 bool usbPowered()
 {
-    // Direct register read while the SoftDevice is disabled; with BLE running this
-    // must become sd_power_usbregstatus_get().
+    // A plain read also works while the SoftDevice runs: it protects POWER against writes
+    // only (S140 SoftDevice Specification, "Peripheral runtime protection").
     return NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk;
 }
 

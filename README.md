@@ -4,10 +4,12 @@ Program na kartę Seeed SenseCAP **T1000-E**, który ma przekazywać pozycję z 
 do aparatu Panasonic LUMIX S5II przez Bluetooth LE – bez telefonu.
 Protokół jak w aplikacji gpxcam na Androida.
 
-Stan: **M1 zakończony** – wszystkie układy wyłączone, dioda mruga, wersja w logu po USB, wejście w tryb
+Stan: **M2 zakończony, M3 w toku.** Wszystkie układy wyłączone, dioda mruga, wersja w logu po USB, wejście w tryb
 wgrywania komendą `dfu`, melodia przy starcie, przycisk: krótkie naciśnięcie = cichy sygnał,
 przytrzymanie 3 s = wyłączenie z melodią (System OFF; z podłączonym USB odrzucane – dwa kliknięcia), napięcie baterii
-i stan ładowania w logu co 60 s.
+i stan ładowania w logu co 60 s. GPS (M2): konfiguracja tylko w RAM, fix, satelity, wysokość i czas UTC w logu,
+między użyciami tryb Backup (gorący start po 2–3 s). Bluetooth (M3): SoftDevice S140 startuje przy włączeniu,
+tylko rola central; skanowania jeszcze nie ma.
 
 ## Wymagania
 

@@ -30,7 +30,7 @@ Zachowanie bootloadera opisane niżej pochodzi z kodu tej wersji (`src/main.c`, 
 | 0x00000–0x01000 | MBR | nietykalne |
 | 0x01000–0x27000 | SoftDevice S140 7.3.0 | nietykalne |
 | 0x27000–0xEA000 | program | `variants/t1000-e/nrf52840_s140_v7.ld` |
-| 0xEA000–0xF4000 | dane programu (40 KB) | bootloader ich nie nadpisuje; w tym InternalFS 0xED000–0xF4000 |
+| 0xEA000–0xF4000 | dane programu (40 KB) | bootloader ich nie nadpisuje; w tym InternalFS 0xED000–0xF4000 (od M3 – Bluefruit) |
 | 0xF4000–0x100000 | bootloader, jego konfiguracja i ustawienia (0xFF000) | nietykalne |
 
 Źródła:
@@ -142,6 +142,7 @@ W uśpieniu LR1110 trzyma BUSY w stanie wysokim; program sprawdza to i zapisuje 
 - **USB:** program przedstawia się jako 2886:8057 (Seeed), nie 239a:8029 (Adafruit Feather) jak Meshtastic.
 - **Wgrywanie:** bez „1200 bps touch” i nrfutil – tylko UF2 (`tools/flash.sh`).
 - **Limit programu:** do 0xEA000 zamiast 0xED000 (zob. mapa flasha).
+- **BLE:** tylko rola central (`Bluefruit.begin(0, 1)`), karta się nie ogłasza; Meshtastic jest peryferium.
 
 ## Sprawdzone na karcie (M1, krok 1 – komendy `diag`)
 
@@ -216,6 +217,29 @@ wystartuje (zwykle kilkaset ms). Pomiar (czas puszczenia zapisany w GPREGRET2, M
 „ok. 1 s” skończyło się po 500 ms czasu programu, „ok. 3 s” po 1553 ms. Próg włączenia: 400 ms czasu programu.
 Sprawdzone z progiem 400 ms: szybkie stuknięcie – puszczone po 170 ms, karta wraca do uśpienia; przytrzymanie
 ok. 1 s – puszczone po 836 ms, karta startuje.
+
+## SoftDevice i Bluefruit (M3)
+
+- **Start:** `Bluefruit.begin(0, 1)` w `setup()` po obsłudze wybudzenia – krótkie stuknięcie przy wybudzeniu
+  wraca do System OFF, zanim SoftDevice ruszy. Skan domyślnie wyłączony.
+- **Rejestry POWER:** przy działającym SoftDevice odczyt jest dozwolony, zapis kończy się HardFaultem
+  (specyfikacja S140, „Peripheral runtime protection”). System OFF idzie więc przez `sd_power_gpregret_clr/set`
+  i `sd_power_system_off()`; GPREGRET2 zapisujemy tylko przed startem SoftDevice. Odczyt VBUS (`USBREGSTATUS`)
+  zostaje bezpośredni.
+- **DFU:** `enterUf2Dfu()` w rdzeniu (`wiring.c`, `reset_mcu()`) wyłącza SoftDevice przed zapisem GPREGRET.
+- **Przerwania:** SoftDevice zastrzega priorytety 0, 1 i 4 oraz przerwania POWER_CLOCK, RADIO, RTC0, TIMER0, RNG,
+  ECB, CCM_AAR, TEMP, NVMC i SWI5 (`nrf_nvic.h` S140 7.3.0). UART GPS to UARTE0 z priorytetem 3 (`Uart.cpp`),
+  USB – 2, PWM3 brzęczyka działa bez przerwań – bez kolizji. Rdzeń odbiera z UART po 1 bajcie (`RXD.MAXCNT = 1`),
+  a sprzęt buforuje 4 bajty: przy 115200 to ok. 0,35 ms tolerancji na opóźnione przerwanie. Do sprawdzenia
+  licznikiem `bad sum` w czasie skanowania.
+- **System plików:** `Bluefruit.begin()` zawsze wywołuje `bond_init()` – montuje InternalFS (0xED000–0xF4000),
+  a gdy się nie da, formatuje go; zakłada katalogi `/adafruit/bond_prph` i `/adafruit/bond_cntr`.
+  Przy zapisie flasha biblioteka zapala `LED_BUILTIN` – u nas `-DLED_BUILTIN=-1`, jak w Meshtastic.
+- **Diody:** `Bluefruit.autoConnLed(false)` – w wariancie `LED_BLUE` to -1.
+- **Sprawdzone na karcie (krok 1):** log `ble: SoftDevice on`; `off` z kablem – odmowa po 15 s, karta działa dalej;
+  `dfu` (przez `tools/flash.sh`) – dysk bootloadera, program wraca; GPS – fix po 58 s (zimny start po wgraniu),
+  wyłączenie w tryb Backup potwierdzone; bez kabla: wyłączenie przyciskiem → System OFF (start z `OFF-GPIO`),
+  stuknięcie (puszczone po 180 ms) → z powrotem do uśpienia, przytrzymanie (1061 ms) → start z SoftDevice.
 
 ## Otwarte pytania
 

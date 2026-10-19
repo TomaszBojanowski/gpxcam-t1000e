@@ -7,6 +7,7 @@
 #include <Adafruit_TinyUSB.h>
 
 #include "battery.h"
+#include "bluetooth.h"
 #include "board.h"
 #include "button.h"
 #include "diag.h"
@@ -246,6 +247,7 @@ void setup()
     board::init();         // all peripherals off; takes microseconds
     power::handleWakeUp(); // may go straight back to System OFF after a short button press
     board::sleepRadio();   // about 0.27 s
+    const bool bleReady = bluetooth::begin(); // a few ms; up to about 1 s on the very first start
     button::begin();
     const bool soundReady = sound::begin();
     sound::playStart(); // right away: after a wake-up it tells the user to let go
@@ -261,6 +263,10 @@ void setup()
     logVersion(true);
     if (!soundReady)
         logger::line("sound: PWM3 is in use, buzzer disabled");
+    if (bleReady)
+        logger::line("ble: SoftDevice on (central role, not scanning)");
+    else
+        logger::line("ble: SoftDevice did not start, BLE off");
     diag::logResetInfo();
     board::logPowerState();
     gps::logState();
