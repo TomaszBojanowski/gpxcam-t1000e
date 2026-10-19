@@ -9,6 +9,7 @@
 #include "board.h"
 #include "diag.h"
 #include "log.h"
+#include "sound.h"
 #include "version.h"
 
 namespace {
@@ -44,7 +45,7 @@ void logVersion()
 void logHelp()
 {
     logger::line("commands: v = version and reset reason, p = power state, dfu = UF2 bootloader");
-    logger::line("diagnostics: diag btn (15 s), diag bat, diag p004 - read-only");
+    logger::line("diagnostics: diag btn (15 s), diag bat, diag p004 (read-only), diag snd 1..50 (%% duty)");
 }
 
 void rebootToUf2Bootloader()
@@ -55,6 +56,19 @@ void rebootToUf2Bootloader()
     // DFU_MAGIC_UF2_RESET (0x57) and resets. The bootloader then starts with
     // the USB drive. Flash is not changed. Does not return.
     enterUf2Dfu();
+}
+
+constexpr const char *SOUND_TEST_COMMAND = "diag snd ";
+
+// "diag snd N": plays all sounds at N % PWM duty to choose the volume by ear.
+void runSoundTest(const char *argument)
+{
+    char *end = nullptr;
+    const unsigned long duty = strtoul(argument, &end, 10);
+    if (end == argument || *end != '\0' || duty > UINT8_MAX || !sound::playTest((uint8_t)duty))
+        logger::line("usage: diag snd N, N = 1..50 (%% PWM duty)");
+    else
+        logger::line("sound test at %lu %% duty: click, start, shutdown", duty);
 }
 
 void runCommand(const char *cmd)
@@ -68,6 +82,8 @@ void runCommand(const char *cmd)
         rebootToUf2Bootloader();
     } else if (strcmp(cmd, "diag btn") == 0) {
         diag::startButton();
+    } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
+        runSoundTest(cmd + strlen(SOUND_TEST_COMMAND));
     } else if (strcmp(cmd, "diag bat") == 0) {
         diag::battery();
     } else if (strcmp(cmd, "diag p004") == 0) {
@@ -138,6 +154,10 @@ void setup()
     diag::logResetInfo();
     board::logPowerState();
     logHelp();
+
+    if (!sound::begin())
+        logger::line("sound: PWM3 is in use, buzzer disabled");
+    sound::playStart();
 }
 
 void loop()
@@ -154,5 +174,6 @@ void loop()
 
     readSerial();
     diag::poll();
+    sound::poll();
     delay(LOOP_DELAY_MS);
 }
