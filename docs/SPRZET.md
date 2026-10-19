@@ -203,8 +203,16 @@ Sprawdzone na karcie (krok 1, `gps on` przy oknie, zimny start, bez wysyłania c
   `$PAIR382,1` (blokada usypiania) po każdym starcie, przy wyłączaniu `$PAIR382,0`, a potem `$PAIR650,0`
   powtarzane co 40 ms do potwierdzenia `$PAIR001,650,0` (przy oknie dopiero 23.–24. kopia, przy biurku 11.–14.)
   i 1,5 s ciszy. Po wybudzeniu z trybu Backup pierwszy bajt przychodzi po 100–120 ms zamiast 190 ms.
+- Podtrzymanie przeżywa wyłączenie karty: GPS w trybie Backup, karta 5 min w System OFF, wybudzenie przyciskiem
+  (bootloader na kilka ms nie steruje P0.08), potem `gps test 1` – fix po 3 s (12 satelitów). Zgaśnięcie
+  podtrzymania powoduje dopiero wgrywanie (tryb DFU trwa sekundy).
 
 ## Otwarte pytania
+
+- **Wybudzenie a LATCH (M2, krok 4):** po wybudzeniu przyciskiem krótkie przytrzymanie miało odesłać kartę
+  z powrotem do System OFF, ale bit P0.06 w `LATCH` nie dał się skasować (`LATCH P0 0x00000040`) i program,
+  zgodnie z zasadą, wystartował normalnie. Do tego „ok. 1 s” przytrzymania dało tylko ok. 0,2 s czasu programu –
+  start przed `setup()` (bootloader, start zegara 32 kHz) trwa wyraźnie dłużej, niż zakładano.
 
 - **P0.05:** odczyt analogowy 2,73 V, ale cyfrowo 0, także z podciąganiem w górę – sprzeczne, niewyjaśnione.
   Do wykrywania zasilania z USB używamy rejestru VBUS w nRF, P0.05 nie jest potrzebny.
