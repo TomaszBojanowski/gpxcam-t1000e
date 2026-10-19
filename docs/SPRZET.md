@@ -175,6 +175,16 @@ stanem wysokim. Bootloader przy starcie ustawia diodę na „wyłączoną” (`l
 w praktyce ją zapala – przy każdym starcie, także po wybudzeniu z System OFF, dioda krótko mignie, zanim program
 przejmie piny. Nieszkodliwe; bootloadera nie zmieniamy.
 
+## GPS (M2)
+
+Sprawdzone na karcie (krok 1, `gps on` przy oknie, zimny start, bez wysyłania czegokolwiek do GPS):
+- Pierwszy bajt 220 ms po włączeniu zasilania; UART 115200 8N1 poprawny (poza kilkoma bajtami przy starcie).
+- Przy starcie układ sam wypisuje: tekst ROM (`F1: …`, `Leaving the BROM`), `$PAIR001,002,1`, `$PAIR001,021,0`,
+  wersję `$PAIR021,AG3335M_V2.6.0.AG3335_20221230,…` (dłuższą niż 100 znaków), `$PAIR011`, `$PAIR010`.
+- Potem tylko `$GNGGA` i `$GNRMC` co 1 s – konfiguracja zapisana w module wcześniej przez Meshtastic (`$PAIR513`).
+- Bez fixa GPS podaje już czas UTC, a datę jeszcze domyślną (`070180`) – czasu nie wolno używać bez statusu `A` w RMC.
+- Po `gps off` żadnych linii; RESETB w stanie wysokim (reset zakończony).
+
 ## Otwarte pytania
 
 - **P0.05:** odczyt analogowy 2,73 V, ale cyfrowo 0, także z podciąganiem w górę – sprzeczne, niewyjaśnione.
