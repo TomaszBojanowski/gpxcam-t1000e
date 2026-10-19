@@ -1,5 +1,5 @@
-// GPS Airoha AG3335 on UART Serial1 (115200 8N1).
-// M2 step 1: power on/off and raw NMEA lines in the log. Nothing is sent to the GPS.
+// GPS Airoha AG3335 on UART Serial1 (115200 8N1): power, raw NMEA lines in the log,
+// configuration in the GPS RAM after every power-on (gps_setup.cpp).
 #pragma once
 
 namespace gps {
@@ -12,6 +12,9 @@ void on();
 void off();
 
 bool isOn();
+
+// Sends "$<body>*hh\r\n" to the GPS (body e.g. "PAIR063,-1"). Does nothing when off.
+void sendCommand(const char *body);
 
 // Reads the UART and logs complete NMEA lines. Call from loop().
 void poll();

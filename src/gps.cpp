@@ -1,11 +1,11 @@
 #include "gps.h"
 
 #include <Arduino.h>
-#include <ctype.h>
-#include <string.h>
 
 #include "board.h"
+#include "gps_setup.h"
 #include "log.h"
+#include "nmea.h"
 
 namespace {
 
@@ -26,6 +26,7 @@ constexpr uint32_t BAUD_RATE = 115200;
 // for proprietary $PAIR replies.
 constexpr size_t NMEA_MAX = 100;
 constexpr uint32_t SUMMARY_PERIOD_MS = 10000;
+constexpr size_t COMMAND_MAX = 48; // "$PAIR066,1,1,1,1,0,0*hh\r\n" is 25 characters
 constexpr uint32_t NOT_YET = UINT32_MAX;
 constexpr int NO_SATELLITES = -1;
 
@@ -33,7 +34,7 @@ constexpr int NO_SATELLITES = -1;
 // (A = valid position, V = not valid); GGA field 7 is the number of satellites in use.
 constexpr unsigned RMC_STATUS_FIELD = 2;
 constexpr unsigned GGA_SATELLITES_FIELD = 7;
-constexpr unsigned long MAX_SATELLITES = 99; // two digits in GGA
+constexpr long MAX_SATELLITES = 99; // two digits in GGA
 
 bool powered = false;
 uint32_t poweredAt = 0;
@@ -60,53 +61,14 @@ void resetCounters()
     sentenceTooLong = false;
 }
 
-// NMEA 0183 checksum: XOR of all characters between '$' and '*', written as two hex
-// digits after '*' at the end of the sentence.
-bool checksumOk(const char *s)
-{
-    if (s[0] != '$')
-        return false;
-    uint8_t sum = 0;
-    const char *p = s + 1;
-    for (; *p != '\0' && *p != '*'; p++)
-        sum ^= (uint8_t)*p;
-    if (*p != '*' || !isxdigit((unsigned char)p[1]) || !isxdigit((unsigned char)p[2]) || p[3] != '\0')
-        return false;
-    return strtoul(p + 1, nullptr, 16) == sum;
-}
-
-// True for "$xxTTT," where TTT is the sentence type and xx any talker (GP, GN, ...).
-bool isType(const char *s, const char *type)
-{
-    return strlen(s) > 6 && strncmp(s + 3, type, 3) == 0 && s[6] == ',';
-}
-
-// Start of comma-separated field `index` (0 is "$xxTTT"), or nullptr.
-const char *field(const char *s, unsigned index)
-{
-    for (; index > 0; index--) {
-        s = strchr(s, ',');
-        if (s == nullptr)
-            return nullptr;
-        s++;
-    }
-    return s;
-}
-
 void checkFix()
 {
-    if (!checksumOk(sentence)) {
-        if (sentence[0] == '$')
-            badChecksums++;
-        return;
-    }
-    if (isType(sentence, "GGA")) {
-        const char *f = field(sentence, GGA_SATELLITES_FIELD);
-        char *end = nullptr;
-        const unsigned long count = f ? strtoul(f, &end, 10) : 0;
-        lastSatellites = (f && end != f && *end == ',' && count <= MAX_SATELLITES) ? (int)count : NO_SATELLITES;
-    } else if (isType(sentence, "RMC") && firstFixMs == NOT_YET) {
-        const char *status = field(sentence, RMC_STATUS_FIELD);
+    if (nmea::isType(sentence, "GGA")) {
+        long count = 0;
+        lastSatellites = nmea::fieldInt(sentence, GGA_SATELLITES_FIELD, 0, MAX_SATELLITES, &count) ? (int)count
+                                                                                                 : NO_SATELLITES;
+    } else if (nmea::isType(sentence, "RMC") && firstFixMs == NOT_YET) {
+        const char *status = nmea::field(sentence, RMC_STATUS_FIELD);
         if (status != nullptr && *status == 'A') {
             firstFixMs = millis() - poweredAt;
             // Kept in the history, without coordinates.
@@ -125,8 +87,12 @@ void finishSentence()
             longLines++;
         // Raw lines are sent only, not kept in the log history (they would push the events out).
         logger::transient("nmea: %s%s", sentence, sentenceTooLong ? " (cut)" : "");
-        if (!sentenceTooLong)
+        if (!sentenceTooLong && nmea::checksumOk(sentence)) {
             checkFix();
+            gps_setup::handleSentence(sentence);
+        } else if (!sentenceTooLong && sentence[0] == '$') {
+            badChecksums++;
+        }
     }
     sentenceLength = 0;
     sentenceTooLong = false;
@@ -191,6 +157,7 @@ void on()
     powered = true;
     nextSummary = millis() + SUMMARY_PERIOD_MS;
     logger::line("gps: on (RESETB %s)", digitalRead(GPS_RESETB_OUT) == HIGH ? "high" : "low");
+    gps_setup::begin();
 }
 
 void off()
@@ -199,6 +166,7 @@ void off()
         return; // Serial1.end() would wait forever for events of a UART that never ran
     // The core's Uart::end() waits for the TXSTOPPED and RXTO events without a timeout;
     // they follow the STOP tasks within microseconds.
+    gps_setup::stop();
     Serial1.end();
     board::releasePin(GPS_TX_PIN);
     board::releasePin(GPS_RX_PIN);
@@ -215,6 +183,20 @@ bool isOn()
     return powered;
 }
 
+void sendCommand(const char *body)
+{
+    if (!powered)
+        return;
+    char command[COMMAND_MAX];
+    const size_t len = nmea::buildSentence(body, command, sizeof(command));
+    if (len == 0) {
+        logger::line("gps: command too long: %s", body);
+        return;
+    }
+    Serial1.write((const uint8_t *)command, len);
+    logger::transient(">> %.*s", (int)(len - 2), command); // without CR LF
+}
+
 void poll()
 {
     if (!powered)
@@ -228,6 +210,7 @@ void poll()
         }
         handleByte(c);
     }
+    gps_setup::poll();
     if ((int32_t)(millis() - nextSummary) >= 0) {
         nextSummary += SUMMARY_PERIOD_MS;
         logger::transient("gps: %lu lines, %lu bytes, %lu non-ASCII bytes since power on", (unsigned long)lines,
@@ -247,6 +230,7 @@ void logState()
                  (unsigned long)((millis() - poweredAt) / 1000), fix, lastSatellites, (unsigned long)lines,
                  (unsigned long)longLines, (unsigned long)badChecksums, (unsigned long)bytes,
                  digitalRead(GPS_RESETB_OUT) == HIGH ? "high" : "low");
+    logger::line("gps: %s", gps_setup::stateText());
 }
 
 } // namespace gps
