@@ -9,9 +9,10 @@ namespace pairing {
 // Starts a session; logs and refuses if one is running or pairing is not possible.
 void start();
 
-// Cancels a running session: disconnects, puts GPS and scanning back as they were.
-// Does nothing when idle.
-void stop();
+// Cancels a running session: disconnects and puts GPS and scanning back as they were, or,
+// with resumeLink, starts the link again if it was on (System OFF passes false). Does
+// nothing when idle.
+void stop(bool resumeLink = true);
 
 bool active();
 

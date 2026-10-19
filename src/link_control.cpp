@@ -60,6 +60,8 @@ link_policy::Send pendingReason = link_policy::Send::No;
 bool noFixLogged = false;
 bool waitingForTimeLogged = false; // "waiting for GPS time" said once per search
 bool weakSignalLogged = false;     // "too weak" said once per search
+uint32_t lastScanStartMs = 0;      // retries of a scan that failed to (re)start
+constexpr uint32_t SCAN_RETRY_MS = 10000;
 
 // The paired camera as the scan last saw it (kept when the camera list forgets it) and the
 // search mode that follows from it (M6).
@@ -225,13 +227,13 @@ void pause(const char *why)
         camera_link::disconnect(); // the Disconnected event is dropped by the next connect
     failuresInARow++;
     pauseLength = link_policy::pauseMs(failuresInARow);
-    logger::line("link: %s - looking again in %lu s", why, (unsigned long)(pauseLength / 1000));
+    logger::line("link: looking again in %lu s - %s", (unsigned long)(pauseLength / 1000), why);
     enter(Phase::Pausing);
 }
 
 void connectionFailed(const char *reason)
 {
-    char why[96];
+    char why[logger::LINE_MAX];
     snprintf(why, sizeof(why), "connection to camera %s failed (%s)", serialText, reason);
     pause(why);
 }
@@ -319,7 +321,7 @@ void onAccepted()
 void onDisconnected(uint16_t reason)
 {
     const uint32_t lasted = millis() - connectedAt;
-    char why[96];
+    char why[logger::LINE_MAX];
     snprintf(why, sizeof(why), "disconnected from camera %s after %lu s (HCI 0x%02x)", serialText,
              (unsigned long)(lasted / 1000), reason);
     pause(why);
@@ -481,6 +483,11 @@ void introducing()
 
 void search(uint32_t now)
 {
+    // A scan restart with new timing can fail (bluetooth::setScanTiming()); try again.
+    if (!bluetooth::scanning() && now - lastScanStartMs >= SCAN_RETRY_MS) {
+        lastScanStartMs = now;
+        bluetooth::scanOn();
+    }
     noteSighting();
     applyMode(now);
     if (mode != link_policy::SearchMode::Normal)
@@ -558,7 +565,11 @@ void start()
         logger::line("link: not now - pairing runs");
         return;
     }
-    if (!bluetooth::ready() || !pairing_store::ready() || !pairing_store::record().paired) {
+    if (!bluetooth::ready() || !pairing_store::ready()) {
+        logger::line("link: not possible - BLE or the pairing file is not available");
+        return;
+    }
+    if (!pairing_store::record().paired) {
         logger::line("link: no paired camera - use 'pair' first");
         return;
     }

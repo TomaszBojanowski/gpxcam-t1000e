@@ -46,20 +46,22 @@ void formatSerial(const uint8_t serial[lumix::SERIAL_LENGTH], char (&out)[2 * lu
     lumix::formatSerial(serial, out, sizeof(out));
 }
 
-// Puts GPS and scanning back as they were before the session, then resumes the link
-// (also after a first pairing).
-void finish()
+// Ends the session. The link starts again if it was on or a camera was just paired: it takes
+// GPS and scanning over as they are. Otherwise they go back to how they were.
+void finish(bool resumeLink = true)
 {
     camera_session::cancel(); // does nothing when no session runs
+    phase = Phase::Idle;
+    if (resumeLink && (linkWasOn || paired)) {
+        link_control::start();
+        return;
+    }
     if (scanWasOn && !bluetooth::scanning())
         bluetooth::scanOn();
     else if (!scanWasOn && bluetooth::scanning())
         bluetooth::scanOff();
     if (!gpsWasOn)
         gps::off(); // about 2 s: Backup mode for the next hot start
-    phase = Phase::Idle;
-    if (linkWasOn || paired)
-        link_control::start();
 }
 
 void giveUp(const char *reason)
@@ -220,12 +222,12 @@ void start()
     enter(Phase::WaitingForFix);
 }
 
-void stop()
+void stop(bool resumeLink)
 {
     if (phase == Phase::Idle)
         return;
     logger::line("pair: cancelled");
-    finish();
+    finish(resumeLink);
 }
 
 bool active()

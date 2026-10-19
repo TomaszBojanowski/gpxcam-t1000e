@@ -146,11 +146,16 @@ void runSoundTest(const char *argument)
 
 void forgetCamera()
 {
-    if (!pairing_store::ready())
+    if (!pairing_store::ready()) {
         logger::line("pairing: not available");
-    else if (!pairing_store::record().paired)
+        return;
+    }
+    if (!pairing_store::record().paired) {
         logger::line("pairing: no camera paired");
-    else if (pairing_store::forgetCamera())
+        return;
+    }
+    link_control::stop(false); // it would go on with the forgotten camera
+    if (pairing_store::forgetCamera())
         logger::line("pairing: camera forgotten (the card id stays)");
     else
         logger::line("pairing: could not write the pairing file");

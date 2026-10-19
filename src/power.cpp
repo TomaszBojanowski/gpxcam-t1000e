@@ -172,7 +172,7 @@ void enterSystemOff()
 {
     if (refuseWithUsb())
         return;
-    pairing::stop();             // closes a camera connection
+    pairing::stop(false);        // closes a camera connection, does not resume the link
     link_control::stop(false);   // closes a camera connection, GPS off
     bluetooth::scanOff();        // the radio must be idle
     gps::off();           // a running GPS would draw milliamps in System OFF
