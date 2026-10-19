@@ -100,10 +100,10 @@ Numeracja nRF: P0.x = x, P1.x = 32 + x. Podstawa: `variant.h` Meshtastic. Uzupe�
 | Dioda czerwona (tylko Seeed) | P0.03 | 0 |
 | Przycisk (aktywny stanem wysokim, bez rezystora na płytce) | P0.06 | odłączony (M1: podciąganie w dół) |
 | Brzęczyk: zasilanie / PWM | P1.05 / P0.25 | 0 / 0 |
-| GPS: zasilanie | P1.11 | 0 |
-| GPS: podtrzymanie RTC (VRTC) | P0.08 | 0 (zob. odstępstwa i M2) |
-| GPS: reset / RESETB / SLEEP_INT / RTC_INT | P1.15 / P1.14 / P1.12 / P0.15 | 0 / odłączone / odłączone / odłączone |
-| GPS: UART (nRF TX / nRF RX) | P0.13 / P0.14 | odłączone |
+| GPS: zasilanie | P1.11 | 0 (`gps on`: 1) |
+| GPS: podtrzymanie RTC (VRTC) | P0.08 | 1 na stałe (od M2) |
+| GPS: reset (aktywny 1) / RESETB / SLEEP_INT / RTC_INT | P1.15 / P1.14 / P1.12 / P0.15 | 0 / wejście z podciąganiem w górę / 1 / 0 (jak Seeed) |
+| GPS: UART 115200 (nRF TX / nRF RX) | P0.13 / P0.14 | odłączone; przy włączonym GPS UARTE |
 | Akcelerometr: zasilanie / INT | P1.07 / P1.02 | 0 / odłączone |
 | I2C SDA / SCL | P0.26 / P0.27 | odłączone |
 | Zasilanie czujników temperatury i światła oraz dzielników baterii i P0.04 | P1.06 | 0 |
@@ -125,9 +125,13 @@ W uśpieniu LR1110 trzyma BUSY w stanie wysokim; program sprawdza to i zapisuje 
 
 - **Brak włączania układów na starcie.** Meshtastic w `initVariant()` włącza czujniki, akcelerometr,
   brzęczyk i podtrzymanie GPS. U nas `initVariant()` jest pusty, a `board::init()` wszystko wyłącza.
-- **P0.08 (podtrzymanie RTC GPS):** Meshtastic trzyma 1 cały czas. W M0 jest 0, tak jak w procedurze
-  wyłączania karty w SDK Seeed (`app_user_power_off()`).
-- **Linie sterujące GPS** przy wyłączonym GPS są odłączone (Meshtastic trzyma SLEEP_INT w stanie 1).
+- **P0.08 (podtrzymanie RTC GPS):** od M2 zawsze 1, także w System OFF – GPS zachowuje dane między użyciami
+  (gorący start). W M0–M1 było 0. Prąd podtrzymania – do zmierzenia w M6.
+- **Linie sterujące GPS** przy wyłączonym GPS i włączonym podtrzymaniu jak w SDK Seeed (`ag3335.c`: `gnss_init()`,
+  `gnss_scan_stop()`): RESET 0, SLEEP_INT 1, RTC_INT 0, RESETB wejście z podciąganiem w górę. Piny UART są
+  odłączone, dopóki GPS jest wyłączony (TX w stanie 1 zasilałby wyłączony układ), wbrew tabeli 135 specyfikacji
+  nRF52840, która zakłada zasilone urządzenie po drugiej stronie.
+- **Bez `$PAIR513`:** Meshtastic zapisuje konfigurację w pamięci flash GPS; my konfigurujemy GPS tylko w RAM.
 - **P0.04:** Meshtastic – `T1000X_SENSOR_EN_PIN` (wyjście, ustawia 1). Wariant Arduino Seeed – `A1`
   „VCC voltage detect”, SDK Seeed – definicja `SENSE_ADC_VCC` (AIN2), ale nieużywana: „VCC” SDK mierzy
   wewnętrznym kanałem VDD przetwornika (`smtc_hal_adc.c`: `VCC_ADC_CHANNEL = NRF_SAADC_INPUT_VDD`).
@@ -181,6 +185,4 @@ przejmie piny. Nieszkodliwe; bootloadera nie zmieniamy.
 
 ## Ustalenia na kolejne etapy
 
-- **M2:** P0.08 (podtrzymanie RTC GPS) trzeba włączyć i trzymać, także gdy główne zasilanie GPS
-  jest wyłączone. Bez tego GPS po każdym uśpieniu długo łapie pozycję (zimny start).
 - **M6:** zmierzyć pobór prądu w spoczynku. LR1110 w uśpieniu ma pobierać poniżej 1 µA.

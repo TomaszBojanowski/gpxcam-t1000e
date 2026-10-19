@@ -118,17 +118,18 @@ void init()
     driveLow(BUZZER_EN_PIN); // P1.05
     driveLow(PIN_BUZZER);    // P0.25
 
-    // GPS AG3335: main and backup (RTC) supply off, other lines released.
-    // Same states as the power-off routine of Seeed's SDK
-    // (t1000_e/tracker/src/app_button.c: app_user_power_off()).
-    driveLow(PIN_GPS_EN);    // P1.11 main supply
-    driveLow(GPS_VRTC_EN);   // P0.08 backup supply
-    driveLow(PIN_GPS_RESET); // P1.15
-    releasePin(GPS_SLEEP_INT);  // P1.12
-    releasePin(GPS_RTC_INT);    // P0.15
-    releasePin(GPS_RESETB_OUT); // P1.14
-    releasePin(GPS_RX_PIN);     // P0.14 UART
-    releasePin(GPS_TX_PIN);     // P0.13 UART
+    // GPS AG3335: main supply off, backup (RTC) supply on permanently, so the GPS keeps
+    // its data between uses (M2 decision, hot start). Other lines as in Seeed's SDK with
+    // the GPS off and the backup on (t1000_e/peripherals/src/ag3335.c: gnss_init(),
+    // gnss_scan_stop()). UART pins released until the GPS is switched on (gps.cpp).
+    driveLow(PIN_GPS_EN);                  // P1.11 main supply off
+    driveHigh(GPS_VRTC_EN);                // P0.08 backup supply on
+    driveLow(PIN_GPS_RESET);               // P1.15 reset is active high
+    driveHigh(GPS_SLEEP_INT);              // P1.12 low would request sleep
+    driveLow(GPS_RTC_INT);                 // P0.15 a high pulse wakes the GPS from RTC mode
+    pinMode(GPS_RESETB_OUT, INPUT_PULLUP); // P1.14 GPS output "reset done"
+    releasePin(GPS_RX_PIN);                // P0.14 UART
+    releasePin(GPS_TX_PIN);                // P0.13 UART
 
     // Accelerometer QMA6100P: supply off, interrupt and I2C released.
     driveLow(PIN_3V3_ACC_EN); // P1.07
@@ -168,7 +169,7 @@ void releasePin(uint32_t pin)
 
 void logPowerState()
 {
-    logger::line("power: GPS off (P1.11 main, P0.08 backup low)");
+    logger::line("power: GPS off (P1.11 low), backup supply on (P0.08 high)");
     logger::line("power: accelerometer off (P1.07 low), sensors off (P1.06 low)");
     logger::line("power: buzzer off (P1.05, P0.25 low), red LED off (P0.03 low)");
     logger::line("power: LR1110 %s", radioStateText(radioState));
