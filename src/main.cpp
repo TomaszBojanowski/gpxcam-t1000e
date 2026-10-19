@@ -14,6 +14,7 @@
 #include "gps.h"
 #include "gps_test.h"
 #include "log.h"
+#include "pairing_store.h"
 #include "power.h"
 #include "sound.h"
 #include "version.h"
@@ -80,7 +81,8 @@ void logHelp()
                       (unsigned long)logger::HISTORY_LINES);
     logger::transient("          gps on / gps off = GPS power, status every 10 s; gps raw / gps raw off = NMEA lines,");
     logger::transient("          gps test N = N GPS start-time cycles without USB, results in 'log'; gps test off");
-    logger::transient("          scan on / scan off = look for LUMIX cameras over BLE, status every 10 s");
+    logger::transient("          scan on / scan off = look for LUMIX cameras over BLE, status every 10 s;");
+    logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera)");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
 }
 
@@ -122,6 +124,18 @@ void runGpsTest(const char *argument)
         logger::line("usage: gps test N (N = 1..%d cycles) or gps test off", gps_test::MAX_CYCLES);
 }
 
+void forgetCamera()
+{
+    if (!pairing_store::ready())
+        logger::line("pairing: not available");
+    else if (!pairing_store::record().paired)
+        logger::line("pairing: no camera paired");
+    else if (pairing_store::forgetCamera())
+        logger::line("pairing: camera forgotten (the card id stays)");
+    else
+        logger::line("pairing: could not write the pairing file");
+}
+
 void handleButton()
 {
     const button::Event event = button::poll();
@@ -144,6 +158,7 @@ void runCommand(const char *cmd)
         board::logPowerState();
         gps::logState();
         bluetooth::logState();
+        pairing_store::logState();
         logBattery();
     } else if (strcmp(cmd, "dfu") == 0) {
         rebootToUf2Bootloader();
@@ -170,6 +185,8 @@ void runCommand(const char *cmd)
             bluetooth::scanOff();
         else
             logger::line("scan: already off");
+    } else if (strcmp(cmd, "unpair") == 0) {
+        forgetCamera();
     } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
         runSoundTest(cmd + strlen(SOUND_TEST_COMMAND));
     } else if (strcmp(cmd, "diag bat") == 0) {
@@ -279,6 +296,9 @@ void setup()
     diag::logResetInfo();
     board::logPowerState();
     gps::logState();
+    // After the start logs: the very first start writes flash here.
+    if (bleReady && pairing_store::begin())
+        pairing_store::logState();
     logBattery();
     logHelp();
 }

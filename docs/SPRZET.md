@@ -249,6 +249,28 @@ ok. 1 s – puszczone po 836 ms, karta startuje.
   kolejka bez strat (0 z ok. 15 600 raportów); dźwięki w trakcie skanu; wyłączenie przyciskiem w trakcie skanu →
   System OFF i start z `OFF-GPIO`.
 
+## Plik parowania (M4)
+
+`/gpxcam/pairing.bin` w systemie plików InternalFS (0xED000–0xF4000), 32 bajty (`src/pairing_record.h`):
+
+| Bajty | Zawartość |
+|---|---|
+| 0–3 | znacznik `GXPR` |
+| 4 | wersja formatu = 1 |
+| 5 | 1 = aparat sparowany, 0 = brak |
+| 6–21 | UUID karty (16 B, kolejność jak w zapisie tekstowym), wersja 4 (losowy) |
+| 22–26 | numer seryjny aparatu (zera, gdy bajt 5 = 0) |
+| 27 | 0 (zapas) |
+| 28–31 | CRC-32 (IEEE 802.3, jak zlib) bajtów 0–27, little-endian |
+
+- UUID powstaje raz, przy pierwszym starcie bez pliku, ze sprzętowego generatora przez SoftDevice
+  (`sd_rand_application_vector_get`). Uszkodzony plik oznacza nowy UUID i wpis w logu – aparat trzeba sparować ponownie.
+- Zapis: plik tymczasowy `/gpxcam/pairing.tmp`, potem `rename` (atomowy w littlefs 1.7, także przy zaniku zasilania)
+  i odczyt kontrolny, bo `File::close()` nie zgłasza błędów. Otwarcie pliku przydziela pamięć na stercie (biblioteka) –
+  tylko przy starcie i zmianie parowania.
+- Sprawdzone na karcie: pierwszy start tworzy plik (ok. 0,9 s), UUID ma znaczniki wersji 4; ten sam UUID po ponownym
+  wgraniu przez `dfu` i po wyłączeniu i włączeniu przyciskiem.
+
 ## Otwarte pytania
 
 - **Wybudzenie a LATCH (M2, krok 4):** raz po wybudzeniu przyciskiem bit P0.06 w `LATCH` nie dał się skasować

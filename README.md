@@ -67,6 +67,8 @@ Backup, 5 min przerwy); wyniki w `log`. `gps test off` przerywa.
 `scan on` / `scan off` – skan BLE w poszukiwaniu aparatów LUMIX (po starcie wyłączony). W logu tylko aparaty:
 numer seryjny, stan, adres z typem (public/RPA), RSSI – przy pierwszym zobaczeniu, przy zmianie stanu lub adresu
 i gdy aparat zniknie na 30 s; co 10 s linia stanu. Log zawiera prawdziwy numer i adres aparatu – nie publikować.
+`unpair` – zapomina sparowany aparat (identyfikator karty zostaje). `p` pokazuje też identyfikator karty (UUID)
+i sparowany aparat – także tych wartości nie publikować.
 Włączanie: przytrzymanie przycisku ok. 1 s (krótsze naciśnięcie – karta wraca do uśpienia; dioda może mignąć
 od bootloadera) albo podłączenie USB.
 Diagnostyka (tylko odczyty): `diag bat` – napięcie baterii przy różnych czasach od włączenia dzielnika (ok. 4 s).
