@@ -37,6 +37,15 @@ constexpr int KEY_DELETE = 0x7F;
 constexpr int FIRST_PRINTABLE = 0x20; // space
 constexpr int LAST_PRINTABLE = 0x7E;  // '~'
 
+// Terminal escape sequences (arrow keys, replies such as ESC [ c), ECMA-48: ESC followed
+// by one character, or ESC '[' then parameter bytes and one final byte 0x40..0x7E.
+constexpr int KEY_ESCAPE = 0x1B;
+constexpr int CSI_INTRODUCER = '[';
+constexpr int CSI_FINAL_FIRST = 0x40;
+constexpr int CSI_FINAL_LAST = 0x7E;
+enum class Escape { None, Started, Sequence };
+Escape escape = Escape::None;
+
 char command[COMMAND_MAX + 1];
 size_t commandLen = 0;
 bool commandTooLong = false;
@@ -158,12 +167,36 @@ void finishCommand()
     commandTooLong = false;
 }
 
-// CR, LF and CRLF all end a command. Backspace/Delete remove the last character,
-// other control characters and non-ASCII bytes are ignored.
+// True while the character belongs to a terminal escape sequence (and is skipped).
+bool inEscapeSequence(int c)
+{
+    switch (escape) {
+    case Escape::Started:
+        escape = (c == CSI_INTRODUCER) ? Escape::Sequence : Escape::None;
+        return true;
+    case Escape::Sequence:
+        if (c >= CSI_FINAL_FIRST && c <= CSI_FINAL_LAST)
+            escape = Escape::None;
+        return true;
+    case Escape::None:
+        break;
+    }
+    if (c != KEY_ESCAPE)
+        return false;
+    escape = Escape::Started;
+    return true;
+}
+
+// CR, LF and CRLF all end a command (also inside a broken escape sequence).
+// Backspace/Delete remove the last character; escape sequences, other control
+// characters and non-ASCII bytes are ignored.
 void handleChar(int c)
 {
     if (c == '\r' || c == '\n') {
+        escape = Escape::None;
         finishCommand();
+    } else if (inEscapeSequence(c)) {
+        return;
     } else if (c == KEY_BACKSPACE || c == KEY_DELETE) {
         if (commandLen > 0)
             commandLen--;
