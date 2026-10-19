@@ -56,9 +56,11 @@ pio device monitor
 Komendy: `v` – wersja i przyczyna ostatniego resetu, `p` – stan zasilania układów i bateria,
 `dfu` – tryb wgrywania UF2, `off` – wyłączenie (System OFF) po 15 s odliczania; z podłączonym USB
 wyłączenie jest odrzucane, krótkie naciśnięcie przycisku przerywa odliczanie.
-`log` – ostatnie 16 linii logu (zdarzenia i pomiary baterii), także z czasu bez podłączonego USB.
+`log` – ostatnie 32 linie logu (zdarzenia i pomiary baterii), także z czasu bez podłączonego USB.
 `gps on` / `gps off` – zasilanie GPS i jego konfiguracja; co 10 s stan: fix, satelity, wysokość, czas UTC
 (bez współrzędnych). `gps raw` / `gps raw off` – surowe linie NMEA (po fixie zawierają pozycję).
+`gps test N` – pomiar czasu do fixa bez USB: po 60 s N cykli (GPS do fixa + 60 s, wyłączenie w tryb
+Backup, 5 min przerwy); wyniki w `log`. `gps test off` przerywa.
 Włączanie: przytrzymanie przycisku ok. 1 s (krótsze naciśnięcie – karta wraca do uśpienia) albo podłączenie USB.
 Diagnostyka (tylko odczyty): `diag bat` – napięcie baterii przy różnych czasach od włączenia dzielnika (ok. 4 s).
 `diag snd N` – wszystkie dźwięki z wypełnieniem PWM N% (1–50), do dobrania głośności na słuch.

@@ -11,6 +11,7 @@
 #include "button.h"
 #include "diag.h"
 #include "gps.h"
+#include "gps_test.h"
 #include "log.h"
 #include "power.h"
 #include "sound.h"
@@ -76,7 +77,8 @@ void logHelp()
     logger::transient("          off = System OFF after a 15 s countdown (refused with USB connected),");
     logger::transient("          log = last %lu log lines, also those from times without USB,",
                       (unsigned long)logger::HISTORY_LINES);
-    logger::transient("          gps on / gps off = GPS power, status every 10 s; gps raw / gps raw off = NMEA lines");
+    logger::transient("          gps on / gps off = GPS power, status every 10 s; gps raw / gps raw off = NMEA lines,");
+    logger::transient("          gps test N = N GPS start-time cycles without USB, results in 'log'; gps test off");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
 }
 
@@ -101,6 +103,21 @@ void runSoundTest(const char *argument)
         logger::line("usage: diag snd N, N = 1..50 (%% PWM duty)");
     else
         logger::line("sound test at %lu %% duty: click, start, shutdown", duty);
+}
+
+constexpr const char *GPS_TEST_COMMAND = "gps test ";
+
+// "gps test N" (N cycles) or "gps test off".
+void runGpsTest(const char *argument)
+{
+    if (strcmp(argument, "off") == 0) {
+        gps_test::stop();
+        return;
+    }
+    char *end = nullptr;
+    const long cycles = strtol(argument, &end, 10);
+    if (end == argument || *end != '\0' || !gps_test::start((int)cycles))
+        logger::line("usage: gps test N (N = 1..%d cycles) or gps test off", gps_test::MAX_CYCLES);
 }
 
 void handleButton()
@@ -132,9 +149,13 @@ void runCommand(const char *cmd)
     } else if (strcmp(cmd, "log") == 0) {
         logger::dumpHistory();
     } else if (strcmp(cmd, "gps on") == 0) {
+        gps_test::stop();
         gps::on();
     } else if (strcmp(cmd, "gps off") == 0) {
+        gps_test::stop();
         gps::off();
+    } else if (strncmp(cmd, GPS_TEST_COMMAND, strlen(GPS_TEST_COMMAND)) == 0) {
+        runGpsTest(cmd + strlen(GPS_TEST_COMMAND));
     } else if (strcmp(cmd, "gps raw") == 0) {
         gps::setRawLog(true);
     } else if (strcmp(cmd, "gps raw off") == 0) {
@@ -267,6 +288,7 @@ void loop()
 
     readSerial();
     gps::poll();
+    gps_test::poll();
     handleButton();
     power::poll();
     sound::poll();
