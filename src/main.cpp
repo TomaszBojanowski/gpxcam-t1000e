@@ -23,6 +23,13 @@ constexpr uint32_t LOOP_DELAY_MS = 10;        // loop period; the CPU sleeps in 
 
 constexpr size_t COMMAND_MAX = 16; // longest accepted command, longer input is rejected
 
+// Terminal editing keys. PlatformIO's send_on_enter filter sends the typed line as is,
+// including these, so a corrected typo arrives as text + 0x7F + text.
+constexpr int KEY_BACKSPACE = 0x08;
+constexpr int KEY_DELETE = 0x7F;
+constexpr int FIRST_PRINTABLE = 0x20; // space
+constexpr int LAST_PRINTABLE = 0x7E;  // '~'
+
 char command[COMMAND_MAX + 1];
 size_t commandLen = 0;
 bool commandTooLong = false;
@@ -71,25 +78,49 @@ void runCommand(const char *cmd)
     }
 }
 
-// Collects characters into a command; runs it on CR or LF.
+// Removes leading and trailing spaces in place; returns the start of the text.
+char *trimSpaces(char *text)
+{
+    while (*text == ' ')
+        text++;
+    size_t len = strlen(text);
+    while (len > 0 && text[len - 1] == ' ')
+        text[--len] = '\0';
+    return text;
+}
+
+void finishCommand()
+{
+    command[commandLen] = '\0';
+    if (commandTooLong)
+        logger::line("command too long (max %u characters)", (unsigned)COMMAND_MAX);
+    else
+        runCommand(trimSpaces(command)); // an empty line (e.g. the LF of CRLF) does nothing
+    commandLen = 0;
+    commandTooLong = false;
+}
+
+// CR, LF and CRLF all end a command. Backspace/Delete remove the last character,
+// other control characters and non-ASCII bytes are ignored.
+void handleChar(int c)
+{
+    if (c == '\r' || c == '\n') {
+        finishCommand();
+    } else if (c == KEY_BACKSPACE || c == KEY_DELETE) {
+        if (commandLen > 0)
+            commandLen--;
+    } else if (c >= FIRST_PRINTABLE && c <= LAST_PRINTABLE) {
+        if (commandLen < COMMAND_MAX)
+            command[commandLen++] = (char)tolower(c);
+        else
+            commandTooLong = true;
+    }
+}
+
 void readSerial()
 {
-    while (Serial.available() > 0) {
-        const int c = Serial.read();
-        if (c == '\r' || c == '\n') {
-            command[commandLen] = '\0';
-            if (commandTooLong)
-                logger::line("command too long (max %u characters)", (unsigned)COMMAND_MAX);
-            else
-                runCommand(command);
-            commandLen = 0;
-            commandTooLong = false;
-        } else if (commandLen < COMMAND_MAX) {
-            command[commandLen++] = (char)tolower(c);
-        } else {
-            commandTooLong = true;
-        }
-    }
+    while (Serial.available() > 0)
+        handleChar(Serial.read());
 }
 
 } // namespace
