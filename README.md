@@ -53,6 +53,7 @@ https://flasher.meshtastic.org (urządzenie: Seeed SenseCAP T1000-E).
 ## Dokumentacja
 
 - [docs/SPRZET.md](docs/SPRZET.md) – karta: bootloader, SoftDevice, mapa flasha, DFU, piny, odstępstwa od Meshtastic.
+- [docs/PROTOKOL.md](docs/PROTOKOL.md) – protokół Bluetooth LE aparatów LUMIX i wektory testowe.
 
 ## Źródła
 
