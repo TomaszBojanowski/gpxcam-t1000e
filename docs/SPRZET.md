@@ -184,6 +184,11 @@ Sprawdzone na karcie (krok 1, `gps on` przy oknie, zimny start, bez wysyłania c
 - Potem tylko `$GNGGA` i `$GNRMC` co 1 s – konfiguracja zapisana w module wcześniej przez Meshtastic (`$PAIR513`).
 - Bez fixa GPS podaje już czas UTC, a datę jeszcze domyślną (`070180`) – czasu nie wolno używać bez statusu `A` w RMC.
 - Po `gps off` żadnych linii; RESETB w stanie wysokim (reset zakończony).
+- Pierwszy fix przy oknie: 70 s po `gps on`, 8 satelitów (praktycznie zimny start); po 6 min 19 satelitów,
+  0 błędnych sum kontrolnych w 769 liniach.
+- Do sprawdzenia w kroku 4: bootloader przy każdym starcie (także po wybudzeniu z System OFF) przywraca piny
+  do stanu po resecie, więc P0.08 (podtrzymanie GPS) przez kilka ms nie jest sterowany – czy podtrzymanie
+  przetrwa wybudzenie, pokaże porównanie czasu do fixa.
 
 ## Otwarte pytania
 
