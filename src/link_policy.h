@@ -9,6 +9,8 @@
 
 namespace link_policy {
 
+constexpr uint32_t MS_PER_MINUTE = 60000;
+
 // Connect only on a report this recent, so its state is current.
 constexpr uint32_t REPORT_FRESH_MS = 1000;
 
@@ -28,8 +30,8 @@ bool shouldConnect(const pairing_record::Record &pairing, const camera_list::Ent
 //                 scan 100 ms every 5 s, the GPS stays on, so the location is there at once;
 //   LongStandby - after that: scan 100 ms every 10 s, GPS in Backup.
 enum class SearchMode { Normal, Rare, Standby, LongStandby };
-constexpr uint32_t RARE_AFTER_MS = 5 * 60000;
-constexpr uint32_t LONG_STANDBY_AFTER_MS = 10 * 60000; // M6 decision: a break between photos
+constexpr uint32_t RARE_AFTER_MS = 5 * MS_PER_MINUTE;
+constexpr uint32_t LONG_STANDBY_AFTER_MS = 10 * MS_PER_MINUTE; // M6 decision: a break between photos
 
 // cameraSeen: a report of the paired camera since the link started; msSinceSeen and
 // lastState: of its last report; msSearching: since the search started; msInStandby:

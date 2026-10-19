@@ -71,7 +71,7 @@ void send(Step next, const char *body)
 void finish(const char *summary)
 {
     step = Step::Done;
-    logger::line("gps: setup done - %s", summary);
+    logger::transient("gps: setup done - %s", summary);
 }
 
 void lockSleep()
@@ -121,7 +121,7 @@ void logRates()
     size_t used = snprintf(text, sizeof(text), "gps: NMEA rates");
     for (int t = 0; t < NMEA_TYPES && used < sizeof(text); t++)
         used += snprintf(text + used, sizeof(text) - used, " %s%ld", TYPE_NAMES[t], rates[t]);
-    logger::line("%s", text);
+    logger::transient("%s", text);
 }
 
 void queryRates()
@@ -173,7 +173,7 @@ void handleMode(const char *s)
             return;
         }
     }
-    logger::line("gps: constellations GPS+GLONASS+Galileo+BeiDou");
+    logger::transient("gps: constellations GPS+GLONASS+Galileo+BeiDou");
     lockSleep();
 }
 

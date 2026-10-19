@@ -79,18 +79,18 @@ bool createRecord()
 {
     pairing_record::Record fresh = {};
     if (!randomBytes(fresh.uuid, lumix::UUID_LENGTH)) {
-        logger::line("pairing: no random numbers from the SoftDevice");
+        logger::line("pair: no random numbers from the SoftDevice");
         return false;
     }
     pairing_record::makeRandomUuid(fresh.uuid);
     if (!writeFile(fresh)) {
-        logger::line("pairing: could not write %s", PATH);
+        logger::line("pair: could not write %s", PATH);
         return false;
     }
     current = fresh;
     char uuid[pairing_record::UUID_TEXT_LENGTH + 1];
     pairing_record::formatUuid(current.uuid, uuid, sizeof(uuid));
-    logger::line("pairing: new card id %s saved in %s", uuid, PATH);
+    logger::line("pair: new card id %s saved in %s", uuid, PATH);
     return true;
 }
 
@@ -101,7 +101,7 @@ namespace pairing_store {
 bool begin()
 {
     if (!InternalFS.begin()) { // already mounted by Bluefruit: returns true at once
-        logger::line("pairing: file system not available");
+        logger::line("pair: file system not available");
         return false;
     }
     pairing_record::Status status = pairing_record::Status::Ok;
@@ -110,7 +110,7 @@ bool begin()
         return true;
     }
     if (status != pairing_record::Status::Ok)
-        logger::line("pairing: %s is damaged (%s) - new card id, pair the camera again", PATH,
+        logger::line("pair: %s is damaged (%s) - new card id, pair the camera again", PATH,
                      pairing_record::statusText(status));
     loaded = createRecord();
     return loaded;
@@ -155,18 +155,18 @@ bool forgetCamera()
 void logState()
 {
     if (!loaded) {
-        logger::line("pairing: not available");
+        logger::transient("pair: not available");
         return;
     }
     char uuid[pairing_record::UUID_TEXT_LENGTH + 1];
     pairing_record::formatUuid(current.uuid, uuid, sizeof(uuid));
     if (!current.paired) {
-        logger::line("pairing: card id %s, no camera paired", uuid);
+        logger::transient("pair: card id %s, no camera paired", uuid);
         return;
     }
     char serial[2 * lumix::SERIAL_LENGTH + 1];
     lumix::formatSerial(current.serial, serial, sizeof(serial));
-    logger::line("pairing: card id %s, camera %s", uuid, serial);
+    logger::transient("pair: card id %s, camera %s", uuid, serial);
 }
 
 } // namespace pairing_store

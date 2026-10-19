@@ -93,7 +93,7 @@ const char *reasonText(link_policy::Send reason)
     case link_policy::Send::First:
         return "first";
     case link_policy::Send::Periodic:
-        return "25 s";
+        return "period";
     case link_policy::Send::Moved:
         return "moved";
     case link_policy::Send::Asked:
@@ -184,8 +184,9 @@ void applyMode(uint32_t now)
             logger::line("link: camera %s is back - normal scan, GPS on", serialText);
             break;
         case link_policy::SearchMode::Rare:
-            logger::line("link: camera %s not seen for 5 min - scan %u ms every %u s, GPS in Backup", serialText,
-                         RARE_SCAN_WINDOW_MS, RARE_SCAN_INTERVAL_MS / 1000);
+            logger::line("link: camera %s not seen for %lu min - scan %u ms every %u s, GPS in Backup", serialText,
+                         (unsigned long)(link_policy::RARE_AFTER_MS / link_policy::MS_PER_MINUTE), RARE_SCAN_WINDOW_MS,
+                         RARE_SCAN_INTERVAL_MS / 1000);
             break;
         case link_policy::SearchMode::Standby:
             logger::line("link: camera %s in standby - scan %u ms every %u s, waiting for it to switch on", serialText,
@@ -193,7 +194,7 @@ void applyMode(uint32_t now)
             break;
         case link_policy::SearchMode::LongStandby:
             logger::line("link: camera %s in standby for %lu min - scan %u ms every %u s, GPS in Backup", serialText,
-                         (unsigned long)(link_policy::LONG_STANDBY_AFTER_MS / 60000), LONG_STANDBY_SCAN_WINDOW_MS,
+                         (unsigned long)(link_policy::LONG_STANDBY_AFTER_MS / link_policy::MS_PER_MINUTE), LONG_STANDBY_SCAN_WINDOW_MS,
                          LONG_STANDBY_SCAN_INTERVAL_MS / 1000);
             break;
         }
@@ -285,7 +286,8 @@ void findCccd(uint16_t fromHandle)
 void afterGpsMode()
 {
     if (notifyHandle == 0 || notifyHandle >= serviceEnd) { // no room for a descriptor
-        logger::line("link: the camera offers no notifications - sending every 25 s only");
+        logger::line("link: the camera offers no notifications - sending every %lu s only",
+                     (unsigned long)(link_policy::PERIOD_MS / 1000));
         enterConnected();
         return;
     }
@@ -338,7 +340,7 @@ bool handleConnectionEvent(const camera_link::Event &event)
         connectionFailed("no ATT answer for 30 s");
         return true;
     case camera_link::EventType::SecurityRequest:
-        logger::line("link: the camera asked for encryption - not answered");
+        logger::line("camera: asked for encryption - not answered (as the gpxcam app)");
         return true;
     case camera_link::EventType::Notified:
         if (event.read.handle == notifyHandle) {
@@ -421,7 +423,7 @@ void connected(uint32_t now)
         return;
     if (writePending) {
         if (now - writeStartMs >= STEP_MS)
-            connectionFailed("location: no answer in 5 s");
+            connectionFailed("location: no answer in time");
         return;
     }
     sendLocationIfDue(now);
@@ -456,12 +458,13 @@ void settingUp(uint32_t now)
             }
         } else if (phase == Phase::EnablingNotifications && event.type == camera_link::EventType::WriteDone) {
             if (event.status != BLE_GATT_STATUS_SUCCESS)
-                logger::line("link: notifications refused (GATT 0x%04x) - sending every 25 s only", event.status);
+                logger::line("link: notifications refused (GATT 0x%04x) - sending every %lu s only", event.status,
+                             (unsigned long)(link_policy::PERIOD_MS / 1000));
             enterConnected();
         }
     }
     if (phase == current && now - phaseStart >= STEP_MS)
-        connectionFailed(phase == Phase::GpsMode ? "GPS mode: no answer in 5 s" : "notifications: no answer in 5 s");
+        connectionFailed(phase == Phase::GpsMode ? "GPS mode: no answer in time" : "notifications: no answer in time");
 }
 
 void introducing()
@@ -648,18 +651,18 @@ void logState()
     if (everSent)
         snprintf(last, sizeof(last), "%lu s ago", (unsigned long)((now - everSentMs) / 1000));
     if (phase == Phase::Connected)
-        logger::line("link: connected to camera %s for %lu s, last location %s, %lu sent, %lu refused", serialText,
+        logger::transient("link: connected to camera %s for %lu s, last location %s, %lu sent, %lu refused", serialText,
                      (unsigned long)((now - connectedAt) / 1000), last, (unsigned long)sentCount,
                      (unsigned long)failedCount);
     else if (phase == Phase::Pausing)
-        logger::line("link: pause, looking again in %lu s; last location %s, %lu sent",
+        logger::transient("link: pause, looking again in %lu s; last location %s, %lu sent",
                      (unsigned long)((pauseLength - min(pauseLength, now - phaseStart)) / 1000), last,
                      (unsigned long)sentCount);
     else if (phase == Phase::Searching)
-        logger::line("link: looking for the camera, %s mode; last location %s, %lu sent", modeText(), last,
+        logger::transient("link: looking for the camera, %s mode; last location %s, %lu sent", modeText(), last,
                      (unsigned long)sentCount);
     else
-        logger::line("link: %s; last location %s, %lu sent", phaseText(), last, (unsigned long)sentCount);
+        logger::transient("link: %s; last location %s, %lu sent", phaseText(), last, (unsigned long)sentCount);
 }
 
 void poll()

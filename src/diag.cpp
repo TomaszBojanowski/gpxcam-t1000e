@@ -70,11 +70,11 @@ void battery()
 {
     for (uint32_t settleMs : SETTLE_STEPS_MS) {
         delay(SETTLE_OFF_MS);
-        logger::line("bat: settle %2lu ms: %lu mV", (unsigned long)settleMs,
+        logger::line("battery: settle %2lu ms: %lu mV", (unsigned long)settleMs,
                      (unsigned long)battery::measureMillivolts(settleMs));
     }
     const battery::Status status = battery::read();
-    logger::line("bat: %lu mV, %s", (unsigned long)status.batteryMv, battery::chargerText(status.charger));
+    logger::line("battery: %lu mV, %s", (unsigned long)status.batteryMv, battery::chargerText(status.charger));
 }
 
 } // namespace diag

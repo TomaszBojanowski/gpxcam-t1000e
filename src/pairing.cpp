@@ -128,7 +128,9 @@ void waitForFix(uint32_t now)
                      (unsigned long)(SEARCH_MS / 1000));
         startSearch();
     } else if (now - phaseStart >= FIX_WAIT_MS) {
-        giveUp("no GPS fix in 120 s; pairing needs UTC time from the GPS - try near a window");
+        logger::line("pair: no GPS fix in %lu s - pairing needs UTC time from the GPS; try near a window",
+                     (unsigned long)(FIX_WAIT_MS / 1000));
+        giveUp("no GPS fix");
     }
 }
 
@@ -157,7 +159,7 @@ void search(uint32_t now)
             logNotInPairingMode(*camera);
     }
     if (now - phaseStart >= SEARCH_MS)
-        giveUp("no camera in pairing mode within 60 s");
+        giveUp("no camera in pairing mode in time");
 }
 
 void introducing()
@@ -238,10 +240,10 @@ bool active()
 void logState()
 {
     if (phase == Phase::Idle) {
-        logger::line("pair: idle");
+        logger::transient("pair: idle");
         return;
     }
-    logger::line("pair: %s for %lu s, attempt %d/%d", phaseText(), (unsigned long)((millis() - phaseStart) / 1000),
+    logger::transient("pair: %s for %lu s, attempt %d/%d", phaseText(), (unsigned long)((millis() - phaseStart) / 1000),
                  attempt, MAX_ATTEMPTS);
 }
 

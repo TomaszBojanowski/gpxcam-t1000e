@@ -262,10 +262,10 @@ const camera_list::Entry *camera(size_t i)
 void logState()
 {
     if (!started) {
-        logger::line("ble: off, the SoftDevice did not start");
+        logger::transient("ble: off, the SoftDevice did not start");
         return;
     }
-    logger::line("ble: SoftDevice on, %s, %lu camera events lost", scanActive ? "scanning" : "not scanning",
+    logger::transient("ble: SoftDevice on, %s, %lu camera events lost", scanActive ? "scanning" : "not scanning",
                  (unsigned long)camera_link::lostEvents());
     if (scanActive)
         logStatus(millis());

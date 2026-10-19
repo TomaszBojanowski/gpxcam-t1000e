@@ -257,8 +257,13 @@ bool enterBackupMode()
     const long backup = sendUntilAcknowledged("PAIR650,0", &backupAck, BACKUP_REPEATS, &backupSent);
     const bool refused = backup != ACK_NONE && backup != ACK_DONE && backup != ACK_IN_PROGRESS;
     const bool silent = !refused && waitForSilence();
-    logger::line("gps: $PAIR382,0 x%d -> %ld, $PAIR650,0 x%d -> %ld, GPS %s", unlockSent, unlock, backupSent, backup,
-                 silent ? "silent" : "still sending");
+    // In the history only when Backup mode is not confirmed.
+    if (silent)
+        logger::transient("gps: $PAIR382,0 x%d -> %ld, $PAIR650,0 x%d -> %ld, GPS silent", unlockSent, unlock, backupSent,
+                          backup);
+    else
+        logger::line("gps: $PAIR382,0 x%d -> %ld, $PAIR650,0 x%d -> %ld, GPS still sending", unlockSent, unlock,
+                     backupSent, backup);
     return silent;
 }
 
@@ -298,7 +303,7 @@ void on()
 
     powered = true;
     nextStatus = millis() + STATUS_PERIOD_MS;
-    logger::line("gps: on (RESETB %s)", digitalRead(GPS_RESETB_OUT) == HIGH ? "high" : "low");
+    logger::transient("gps: on (RESETB %s)", digitalRead(GPS_RESETB_OUT) == HIGH ? "high" : "low");
     gps_setup::begin();
 }
 
@@ -317,7 +322,7 @@ void off()
     powered = false;
     char fix[32];
     formatFix(fix, sizeof(fix));
-    logger::line("gps: off after %lu s, %s, %s", (unsigned long)((millis() - poweredAt) / 1000), fix,
+    logger::transient("gps: off after %lu s, %s, %s", (unsigned long)((millis() - poweredAt) / 1000), fix,
                  backup ? "Backup mode" : "Backup mode NOT confirmed");
 }
 
@@ -385,17 +390,17 @@ void poll()
 void logState()
 {
     if (!powered) {
-        logger::line("gps: off, backup supply on (P0.08 high)");
+        logger::transient("gps: off, backup supply on (P0.08 high)");
         return;
     }
     char fix[32];
     formatFix(fix, sizeof(fix));
     char status[STATUS_TEXT_MAX];
     formatStatus(status, sizeof(status));
-    logger::line("gps: on %lu s, %s, %s", (unsigned long)((millis() - poweredAt) / 1000), fix,
+    logger::transient("gps: on %lu s, %s, %s", (unsigned long)((millis() - poweredAt) / 1000), fix,
                  gps_setup::stateText());
-    logger::line("gps: %s", status);
-    logger::line("gps: %lu lines (%lu cut, %lu bad sum, %lu non-ASCII B), %lu B, RESETB %s", (unsigned long)lines,
+    logger::transient("gps: %s", status);
+    logger::transient("gps: %lu lines (%lu cut, %lu bad sum, %lu non-ASCII B), %lu B, RESETB %s", (unsigned long)lines,
                  (unsigned long)longLines, (unsigned long)badChecksums, (unsigned long)nonAsciiBytes,
                  (unsigned long)bytes, digitalRead(GPS_RESETB_OUT) == HIGH ? "high" : "low");
 }

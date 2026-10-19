@@ -123,7 +123,7 @@ bool armWakeUp()
         const uint32_t pinConfig = NRF_P0->PIN_CNF[g_ADigitalPinMap[BUTTON_PIN]];
         const int level = digitalRead(BUTTON_PIN);
         pinMode(BUTTON_PIN, INPUT_PULLDOWN); // sensing off again
-        logger::line("power off cancelled: LATCH P0 0x%08lx->0x%08lx P1 0x%08lx, button %d, PIN_CNF 0x%08lx",
+        logger::line("power: off cancelled: LATCH P0 0x%08lx->0x%08lx P1 0x%08lx, button %d, PIN_CNF 0x%08lx",
                      (unsigned long)latchBefore, (unsigned long)latchP0, (unsigned long)latchP1, level,
                      (unsigned long)pinConfig);
         return false;
@@ -160,7 +160,7 @@ bool refuseWithUsb()
 {
     if (!battery::usbPowered())
         return false;
-    logger::line("power off refused: USB connected - unplug the cable first");
+    logger::line("power: off refused: USB connected - unplug the cable first");
     return true;
 }
 
@@ -234,7 +234,7 @@ void startCountdown()
     countdown = true;
     countdownStart = millis();
     nextCountdownLog = countdownStart + COUNTDOWN_LOG_MS;
-    logger::line("power off in %lu s - unplug the USB cable now (with USB it will be refused);"
+    logger::line("power: off in %lu s - unplug the USB cable now (with USB it will be refused);"
                  " a short press cancels", (unsigned long)(OFF_COUNTDOWN_MS / 1000));
 }
 
@@ -243,7 +243,7 @@ void cancelCountdown()
     if (!countdown)
         return;
     countdown = false;
-    logger::line("power off cancelled");
+    logger::line("power: off cancelled");
 }
 
 bool countdownActive()
@@ -259,14 +259,14 @@ void poll()
     if (elapsed >= OFF_COUNTDOWN_MS) {
         countdown = false;
         if (buttonPressed()) // a press meant to cancel, still held
-            logger::line("power off cancelled: button pressed");
+            logger::line("power: off cancelled: button pressed");
         else
             powerOff();
         return;
     }
     if ((int32_t)(millis() - nextCountdownLog) >= 0) {
         nextCountdownLog += COUNTDOWN_LOG_MS;
-        logger::line("power off in %lu s", (unsigned long)((OFF_COUNTDOWN_MS - elapsed + 999) / 1000));
+        logger::line("power: off in %lu s", (unsigned long)((OFF_COUNTDOWN_MS - elapsed + 999) / 1000));
     }
 }
 
@@ -280,7 +280,7 @@ void powerOff()
     sound::playShutdown();
     if (!waitForRelease(RELEASE_TIMEOUT_MS)) {
         sound::stop();
-        logger::line("power off cancelled: button still pressed after %lu s",
+        logger::line("power: off cancelled: button still pressed after %lu s",
                      (unsigned long)(RELEASE_TIMEOUT_MS / 1000));
         sound::playRefuse();
         return;

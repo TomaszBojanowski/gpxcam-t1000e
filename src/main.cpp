@@ -100,7 +100,11 @@ enum class BatteryCheck { None, AtStart, Periodic };
 void logBattery(BatteryCheck check)
 {
     const battery::Status status = battery::read();
-    logger::line("battery: %lu mV, %s", (unsigned long)status.batteryMv, battery::chargerText(status.charger));
+    // In the history at start only; every 60 s the battery log ('bat log') keeps the record.
+    if (check == BatteryCheck::AtStart)
+        logger::line("battery: %lu mV, %s", (unsigned long)status.batteryMv, battery::chargerText(status.charger));
+    else
+        logger::transient("battery: %lu mV, %s", (unsigned long)status.batteryMv, battery::chargerText(status.charger));
     if (check != BatteryCheck::None)
         power::checkBattery(status.batteryMv, status.charger != battery::Charger::NoUsb,
                             check == BatteryCheck::AtStart);
@@ -108,7 +112,8 @@ void logBattery(BatteryCheck check)
 
 void logHelp()
 {
-    logger::transient("commands: v = version and reset reason, p = power state, dfu = UF2 bootloader,");
+    logger::transient("commands: v = version and reset reason, p = state of GPS, BLE, pairing, link and battery,");
+    logger::transient("          dfu = UF2 bootloader (for flashing),");
     logger::transient("          off = System OFF after a 15 s countdown (refused with USB connected),");
     logger::transient("          log = last %lu log lines, also those from times without USB,",
                       (unsigned long)logger::HISTORY_LINES);
@@ -122,7 +127,7 @@ void logHelp()
 
 void rebootToUf2Bootloader()
 {
-    logger::line("rebooting to UF2 bootloader (drive T1000-E)...");
+    logger::line("dfu: rebooting to the UF2 bootloader (drive T1000-E)");
     delay(DFU_MESSAGE_DELAY_MS);
     // Core (cores/nRF5/wiring.c): disables the SoftDevice, sets GPREGRET to
     // DFU_MAGIC_UF2_RESET (0x57) and resets. The bootloader then starts with
@@ -138,27 +143,27 @@ void runSoundTest(const char *argument)
     char *end = nullptr;
     const unsigned long duty = strtoul(argument, &end, 10);
     if (end == argument || *end != '\0' || duty > UINT8_MAX || !sound::playTest((uint8_t)duty))
-        logger::line("usage: diag snd N, N = 1..50 (%% PWM duty)");
+        logger::line("sound: usage: diag snd N, N = 1..50 (%% PWM duty)");
     else
-        logger::line("sound test at %lu %% duty: click, start, shutdown, pairing, paired, connected, disconnected",
+        logger::line("sound: test at %lu %% duty: click, start, shutdown, pairing, paired, connected, disconnected",
                      duty);
 }
 
 void forgetCamera()
 {
     if (!pairing_store::ready()) {
-        logger::line("pairing: not available");
+        logger::line("pair: not available");
         return;
     }
     if (!pairing_store::record().paired) {
-        logger::line("pairing: no camera paired");
+        logger::line("pair: no camera paired");
         return;
     }
     link_control::stop(false); // it would go on with the forgotten camera
     if (pairing_store::forgetCamera())
-        logger::line("pairing: camera forgotten (the card id stays)");
+        logger::line("pair: camera forgotten (the card id stays)");
     else
-        logger::line("pairing: could not write the pairing file");
+        logger::line("pair: could not write the pairing file");
 }
 
 void handleButton()
@@ -226,7 +231,7 @@ void runCommand(const char *cmd)
     } else if (strcmp(cmd, "diag bat") == 0) {
         diag::battery();
     } else if (cmd[0] != '\0') {
-        logger::line("unknown command '%s'", cmd);
+        logger::line("command: unknown '%s'", cmd);
         logHelp();
     }
 }
@@ -246,7 +251,7 @@ void finishCommand()
 {
     command[commandLen] = '\0';
     if (commandTooLong)
-        logger::line("command too long (max %u characters)", (unsigned)COMMAND_MAX);
+        logger::line("command: too long (max %u characters)", (unsigned)COMMAND_MAX);
     else
         runCommand(trimSpaces(command)); // an empty line (e.g. the LF of CRLF) does nothing
     commandLen = 0;

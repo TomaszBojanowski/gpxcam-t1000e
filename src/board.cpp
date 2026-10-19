@@ -169,7 +169,7 @@ void releasePin(uint32_t pin)
 
 void logPowerState()
 {
-    logger::line("power: LR1110 %s", radioStateText(radioState));
+    logger::transient("power: LR1110 %s", radioStateText(radioState));
 }
 
 } // namespace board
