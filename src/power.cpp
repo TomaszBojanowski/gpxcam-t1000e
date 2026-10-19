@@ -31,9 +31,25 @@ constexpr uint32_t MELODY_TIMEOUT_MS = 2000;    // the shutdown melody takes abo
 constexpr uint32_t SYSTEM_OFF_GRACE_MS = 1000;  // reached only in emulated System OFF
 constexpr uint32_t COUNTDOWN_LOG_MS = 5000;
 
+// LATCH clearing is retried this long before powering off is refused (diagnostics, M2 step 4).
+constexpr uint32_t LATCH_RETRY_MS = 100;
+constexpr uint32_t LATCH_RETRY_STEP_MS = 10;
+
+// GPREGRET2 (8 bits, retained through System OFF and its wake-up: PS 5.3.7.17, 5.3.6.8;
+// not used by the bootloader 488711a nor the core) keeps the program time at which a short
+// wake-up press was released, in units of 10 ms, so it can be logged at the next start.
+// 0 = nothing recorded.
+constexpr uint32_t RELEASE_UNIT_MS = 10;
+constexpr uint32_t RELEASE_MAX_UNITS = 254;
+
 bool countdown = false;
 uint32_t countdownStart = 0;
 uint32_t nextCountdownLog = 0;
+
+// After a wake-up held long enough: log when the button is finally released.
+bool trackWakeRelease = false;
+bool wakeReleased = false;
+uint32_t wakeReleasedAt = 0;
 
 bool buttonPressed()
 {
@@ -82,16 +98,33 @@ bool armWakeUp()
     pinMode(BUTTON_PIN, INPUT_PULLDOWN_SENSE);
 
     // Writing 1 clears a LATCH bit, unless that pin still meets its SENSE condition (PS 6.9.1).
-    NRF_P0->LATCH = 0xFFFFFFFF;
-    NRF_P1->LATCH = 0xFFFFFFFF;
-    const uint32_t latchP0 = NRF_P0->LATCH;
-    const uint32_t latchP1 = NRF_P1->LATCH;
+    // Retried for LATCH_RETRY_MS: on one wake-up the button bit would not clear (open question
+    // in docs/SPRZET.md); the values below go to the log to find out why.
+    const uint32_t latchBefore = NRF_P0->LATCH;
+    const uint32_t start = millis();
+    uint32_t latchP0 = 0;
+    uint32_t latchP1 = 0;
+    for (;;) {
+        NRF_P0->LATCH = 0xFFFFFFFF;
+        NRF_P1->LATCH = 0xFFFFFFFF;
+        latchP0 = NRF_P0->LATCH;
+        latchP1 = NRF_P1->LATCH;
+        if ((latchP0 == 0 && latchP1 == 0) || millis() - start >= LATCH_RETRY_MS)
+            break;
+        delay(LATCH_RETRY_STEP_MS);
+    }
     if (latchP0 != 0 || latchP1 != 0) {
+        const uint32_t pinConfig = NRF_P0->PIN_CNF[g_ADigitalPinMap[BUTTON_PIN]];
+        const int level = digitalRead(BUTTON_PIN);
         pinMode(BUTTON_PIN, INPUT_PULLDOWN); // sensing off again
-        logger::line("power off cancelled: wake-up condition active (LATCH P0 0x%08lx, P1 0x%08lx)",
-                     (unsigned long)latchP0, (unsigned long)latchP1);
+        logger::line("power off cancelled: LATCH P0 0x%08lx->0x%08lx P1 0x%08lx, button %d, PIN_CNF 0x%08lx",
+                     (unsigned long)latchBefore, (unsigned long)latchP0, (unsigned long)latchP1, level,
+                     (unsigned long)pinConfig);
         return false;
     }
+    if (latchBefore != 0)
+        logger::line("power: LATCH P0 0x%08lx cleared after %lu ms", (unsigned long)latchBefore,
+                     (unsigned long)(millis() - start));
     return true;
 }
 
@@ -127,30 +160,65 @@ void enterSystemOff()
     NVIC_SystemReset();
 }
 
+void logPreviousShortPress()
+{
+    const uint32_t units = NRF_POWER->GPREGRET2 & POWER_GPREGRET2_GPREGRET_Msk;
+    if (units == 0)
+        return;
+    NRF_POWER->GPREGRET2 = 0;
+    logger::line("power: earlier wake-up was a short press, released at %lu ms of program time",
+                 (unsigned long)(units * RELEASE_UNIT_MS));
+}
+
+void logWakeRelease()
+{
+    if (buttonPressed()) {
+        wakeReleased = false;
+        return;
+    }
+    if (!wakeReleased) {
+        wakeReleased = true;
+        wakeReleasedAt = millis();
+    } else if (millis() - wakeReleasedAt >= DEBOUNCE_MS) {
+        trackWakeRelease = false;
+        logger::line("power: wake-up press released at %lu ms of program time", (unsigned long)wakeReleasedAt);
+    }
+}
+
 } // namespace
 
 namespace power {
 
 void handleWakeUp()
 {
+    logPreviousShortPress();
     if ((readResetReason() & POWER_RESETREAS_OFF_Msk) == 0)
         return; // not woken by the button: normal start
     if (battery::usbPowered())
         return; // cable connected: stay on
 
     pinMode(BUTTON_PIN, INPUT_PULLDOWN);
-    // millis() counts from the start of the program, i.e. roughly from the press that
-    // woke the chip (board::init() before this takes microseconds). A release before
-    // WAKE_HOLD_MS means a short press: back to System OFF, silently. If that is
-    // refused, the start simply continues.
+    // millis() counts from the start of the program. The press began earlier: the time the
+    // bootloader and the core need before setup() is not counted (being measured with the
+    // log lines below). A release before WAKE_HOLD_MS means a short press: back to System
+    // OFF, silently. If that is refused, the start simply continues.
     const uint32_t now = millis();
     if (now < WAKE_HOLD_MS && waitForRelease(WAKE_HOLD_MS - now)) {
+        const uint32_t releasedAt = millis() - DEBOUNCE_MS;
+        const uint32_t units = min(max(releasedAt / RELEASE_UNIT_MS, 1ul), RELEASE_MAX_UNITS);
         // The radio may have woken while the pins were floating. If it does not confirm
         // sleep, start normally instead (the error shows in the log) rather than leave
         // it awake in System OFF.
-        if (board::sleepRadio())
+        if (board::sleepRadio()) {
+            NRF_POWER->GPREGRET2 = units; // read back at the next start
             enterSystemOff();
+            NRF_POWER->GPREGRET2 = 0; // refused: the card starts, log it now
+        }
+        logger::line("power: short wake-up press released at %lu ms of program time, card starts",
+                     (unsigned long)releasedAt);
+        return;
     }
+    trackWakeRelease = true; // held long enough: log the release time from poll()
 }
 
 void startCountdown()
@@ -177,6 +245,8 @@ bool countdownActive()
 
 void poll()
 {
+    if (trackWakeRelease)
+        logWakeRelease();
     if (!countdown)
         return;
     const uint32_t elapsed = millis() - countdownStart;
