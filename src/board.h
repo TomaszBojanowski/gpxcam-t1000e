@@ -7,8 +7,9 @@
 //   smtc_hal/inc/smtc_hal_config.h @ 03147a91c5fa
 //
 // Pins deliberately left in their reset state (input, buffer disconnected):
-//   P0.04  Meshtastic: T1000X_SENSOR_EN_PIN (output); Seeed SDK and Seeed's
-//          Arduino variant: SENSE_ADC_VCC (analog input AIN2). Sources disagree.
+//   P0.04  Meshtastic: T1000X_SENSOR_EN_PIN (output); Seeed: SENSE_ADC_VCC (analog
+//          input AIN2). Measured on the card (M1): about VDD/2 with P1.06 on, so it
+//          is an analog input as Seeed says. Never driven.
 //   P1.13  FLASH_POWER_EN of the external QSPI flash (Seeed SDK only). Neither
 //          Seeed's firmware nor Meshtastic drives it.
 #pragma once

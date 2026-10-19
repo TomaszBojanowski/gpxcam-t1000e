@@ -142,14 +142,17 @@ W uśpieniu LR1110 trzyma BUSY w stanie wysokim; program sprawdza to i zapisuje 
 - **Bateria:** dzielnik ×2 na AIN0 jest zasilany z P1.06. P1.06 = 0: 0 mV; P1.06 = 1: 2088 mV na pinie,
   czyli 4176 mV baterii (z podłączonym kablem, w trakcie ładowania); znowu 0: 1 mV. P1.06 włączamy tylko
   na czas pomiaru, jak SDK Seeed (`sensor_bat_sample()`: AIN0, wzmocnienie 1/5, odniesienie wewnętrzne,
-  12 bit, 40 µs, wynik ×2). Meshtastic trzyma P1.06 włączone cały czas.
+  12 bit, 40 µs, wynik ×2). Meshtastic trzyma P1.06 włączone cały czas. Dzielnik ustala się praktycznie
+  od razu (krok 3, `diag bat` z kablem: 4179 mV bez czekania, 4181 mV po 10 ms, 4185 mV po 50 ms);
+  program czeka 10 ms z zapasem.
 - **P0.04:** 0 mV przy P1.06 = 0, ok. 1502 mV (≈ VDD/2) przy P1.06 = 1 – wejście pomiarowe, zob. odstępstwa.
 - **Zasilanie nRF:** VDD = 3,0 V, regulator w trybie normalnym (zasilanie przez VDD, nie VDDH).
 - **Pin RESET:** P0.18 włączony jako reset (`UICR.PSELRESET` = 0x00000012).
 - **Kabel USB:** podłączenie **nie resetuje** procesora (działał dalej na baterii, przyczyna resetu bez zmian);
   nRF od razu widzi VBUS (`USBREGSTATUS.VBUSDETECT`).
-- **Ładowarka:** z kablem i baterią 4,18 V: P1.03 = 0 (ładowanie, aktywny stanem niskim wg Meshtastic),
-  P1.04 = 1.
+- **Ładowarka** (oba sygnały aktywne stanem niskim, wg Meshtastic): w trakcie ładowania P1.03 = 0, P1.04 = 1;
+  po naładowaniu (4,18 V) P1.04 = 0 – program pokazuje wtedy `USB, charged`. Bez kabla ładowarka nie działa,
+  więc program czyta te linie tylko przy obecnym VBUS. Pomiar baterii bez kabla – jeszcze nie sprawdzony.
 
 ## Otwarte pytania
 

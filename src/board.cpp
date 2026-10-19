@@ -165,7 +165,7 @@ void logPowerState()
     logger::line("power: accelerometer off (P1.07 low), sensors off (P1.06 low)");
     logger::line("power: buzzer off (P1.05, P0.25 low), red LED off (P0.03 low)");
     logger::line("power: LR1110 %s", radioStateText(radioState));
-    logger::line("power: not touched: P0.04 (role unclear), P1.13 (QSPI flash power)");
+    logger::line("power: not touched: P0.04 (analog input), P1.13 (QSPI flash power)");
 }
 
 } // namespace board
