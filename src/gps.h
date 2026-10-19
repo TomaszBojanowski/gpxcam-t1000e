@@ -11,7 +11,7 @@ void on();
 
 // Puts the GPS in Backup (RTC) mode with $PAIR650,0, closes the UART, releases its pins
 // and switches the main supply off; the backup supply (P0.08) stays on, so the next
-// start is a hot start. Blocks for about 2 s (up to 4 s). Safe when already off.
+// start is a hot start. Blocks for about 2 s (at most 6 s). Safe when already off.
 void off();
 
 bool isOn();

@@ -15,6 +15,9 @@
 //   2.4.15  $PAIR063,-1                    get all output rates; replies $PAIR063,<Type>,<Rate>
 //   2.4.16  $PAIR066,GPS,GLO,GAL,BDS,QZSS,0 set constellations - the module reboots
 //   2.4.17  $PAIR067                       get constellations; replies $PAIR067,GPS,GLO,GAL,BDS,QZSS,0
+//   2.4.34  $PAIR382,1                     keep the GPS CPU awake (not saved; send after every start).
+//           By default it sleeps between fixes and misses commands - on the card a $PAIR650 sent
+//           later was ignored. Seeed's SDK locks it at every start (ag3335.c: gnss_scan_start()).
 // Settings live in the GPS RTC RAM, kept by the backup supply (2.4.49: $PAIR513 copies
 // them from RTC RAM to flash - never sent here).
 
@@ -30,6 +33,7 @@ constexpr long ACK_RESULT_MAX = 5;
 constexpr long STARTUP_NOTIFICATION = 1;
 constexpr long COMMAND_SET_RATE = 62; // $PAIR062, as reported in $PAIR001
 constexpr long COMMAND_SET_MODE = 66; // $PAIR066
+constexpr long COMMAND_LOCK_SLEEP = 382;
 
 constexpr int NMEA_TYPES = 10; // $PAIR062/063 types 0..9
 const char *const TYPE_NAMES[NMEA_TYPES] = {"GGA", "GLL", "GSA", "GSV", "RMC", "VTG", "ZDA", "GRS", "GST", "GNS"};
@@ -40,7 +44,7 @@ constexpr long MAX_RATE = 20;
 constexpr int COMPARED_SYSTEMS = 4;
 constexpr const char *SET_MODE = "PAIR066,1,1,1,1,0,0"; // spec example, also used by Meshtastic
 
-enum class Step { Idle, WaitBoot, QueryRates, SetRate, QueryMode, SetMode, Done };
+enum class Step { Idle, WaitBoot, QueryRates, SetRate, QueryMode, SetMode, LockSleep, Done };
 
 Step step = Step::Idle;
 uint32_t deadline = 0;
@@ -68,6 +72,12 @@ void finish(const char *summary)
 {
     step = Step::Done;
     logger::line("gps: setup done - %s", summary);
+}
+
+void lockSleep()
+{
+    attempts = 0;
+    send(Step::LockSleep, "PAIR382,1");
 }
 
 void queryMode()
@@ -163,7 +173,8 @@ void handleMode(const char *s)
             return;
         }
     }
-    finish("constellations GPS+GLONASS+Galileo+BeiDou");
+    logger::line("gps: constellations GPS+GLONASS+Galileo+BeiDou");
+    lockSleep();
 }
 
 void handleAck(const char *s)
@@ -180,6 +191,11 @@ void handleAck(const char *s)
         else
             logger::line("gps: $PAIR062 for %s failed (result %ld)", TYPE_NAMES[rateType], result);
         setRate(nextRateToSet(rateType + 1));
+    } else if (step == Step::LockSleep && command == COMMAND_LOCK_SLEEP) {
+        if (result == ACK_DONE)
+            finish("GPS CPU kept awake ($PAIR382,1)");
+        else
+            finish("$PAIR382,1 failed, the GPS may miss later commands");
     } else if (step == Step::SetMode && command == COMMAND_SET_MODE) {
         if (result == ACK_DONE)
             wait(Step::WaitBoot, BOOT_TIMEOUT_MS); // the module reboots now
@@ -216,6 +232,12 @@ void retryOrGiveUp()
             send(Step::QueryMode, "PAIR067");
         else
             finish("no reply to $PAIR067, constellations left as they are");
+        break;
+    case Step::LockSleep:
+        if (attempts < MAX_ATTEMPTS)
+            send(Step::LockSleep, "PAIR382,1");
+        else
+            finish("no reply to $PAIR382,1, the GPS may miss later commands");
         break;
     case Step::SetMode:
         // The acknowledgement may be lost in the reboot; wait for the startup message.
@@ -286,6 +308,8 @@ const char *stateText()
         return "setup: reading constellations";
     case Step::SetMode:
         return "setup: setting constellations";
+    case Step::LockSleep:
+        return "setup: locking GPS sleep";
     case Step::Done:
         break;
     }

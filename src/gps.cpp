@@ -20,18 +20,21 @@ constexpr uint32_t WAKE_SETTLE_MS = 50;
 constexpr uint32_t RESET_PULSE_MS = 10;
 constexpr uint32_t NO_DATA_RESET_MS = 1500; // first byte came after 220 ms in every test so far
 
-// Power-down as in Seeed's gnss_scan_stop(): $PAIR650,0 puts the GPS in Backup (RTC) mode,
-// then the main supply is cut; the backup supply P0.08 stays on (hot start next time).
-// Quectel spec V1.4, 2.4.51: in Backup mode the module answers nothing, a refusal comes as
-// $PAIR001,650,<error>. Success is therefore silence longer than the 1 s NMEA period.
-// On the card a single $PAIR650,0 sent seconds after start-up was ignored (no reply, NMEA
-// went on): by default the GPS CPU sleeps between fixes (spec 2.4.34, $PAIR382) and misses
-// commands. Seeed sends it 25 times, 40 ms apart (ag3335.c: gnss_scan_enter_rtc_mode()).
-// ($PAIR382,0 that Seeed sends first releases a sleep lock this firmware never sets.)
-constexpr uint32_t BACKUP_SILENCE_MS = 1500;
-constexpr uint32_t BACKUP_REPEAT_MS = 40;
+// Power-down as in Seeed's gnss_scan_stop() (ag3335.c): $PAIR382,0 (release the sleep lock
+// set at start-up, gps_setup.cpp) up to 4 times, then $PAIR650,0 (Backup/RTC mode) up to 25
+// times, 40 ms apart, then the main supply is cut; the backup supply P0.08 stays on.
+// Copies stop at the first acknowledgement $PAIR001,<cmd>,<result> (Quectel spec V1.4,
+// 2.4.1: 0 done, 1 in progress, 2..5 failed). In Backup mode the GPS sends nothing, so
+// silence longer than the 1 s NMEA period confirms it.
+constexpr uint32_t COMMAND_REPEAT_MS = 40;
+constexpr int UNLOCK_REPEATS = 4;
 constexpr int BACKUP_REPEATS = 25;
-constexpr uint32_t BACKUP_WAIT_MS = BACKUP_REPEATS * BACKUP_REPEAT_MS + 2 * BACKUP_SILENCE_MS;
+constexpr uint32_t ACK_FINAL_WAIT_MS = 1000; // after "in progress"
+constexpr uint32_t BACKUP_SILENCE_MS = 1500;
+constexpr uint32_t BACKUP_SILENCE_WAIT_MS = 3000;
+constexpr long ACK_NONE = -1;
+constexpr long ACK_DONE = 0;
+constexpr long ACK_IN_PROGRESS = 1;
 
 // Meshtastic variant.h GPS_BAUDRATE; Seeed smtc_hal_uart.c NRF_UART_BAUDRATE_115200.
 constexpr uint32_t BAUD_RATE = 115200;
@@ -56,7 +59,8 @@ uint32_t nextStatus = 0;
 uint32_t firstFixMs = NOT_YET; // since power on
 bool rawLog = false;           // 'gps raw': every NMEA line in the log (positions included)
 bool resetTried = false;
-long backupRefusal = -1; // result of a $PAIR001,650,<result> while entering Backup mode
+long unlockAck = ACK_NONE; // last $PAIR001,382,<result>
+long backupAck = ACK_NONE; // last $PAIR001,650,<result>
 
 // Latest navigation data. The position stays in RAM only: it is never logged.
 nmea::Rmc lastRmc = {};
@@ -140,8 +144,10 @@ void finishSentence()
             handleNavigation();
             gps_setup::handleSentence(sentence);
             long result = 0;
+            if (nmea::startsWith(sentence, "$PAIR001,382,") && nmea::fieldInt(sentence, 2, 0, 9, &result))
+                unlockAck = result;
             if (nmea::startsWith(sentence, "$PAIR001,650,") && nmea::fieldInt(sentence, 2, 0, 9, &result))
-                backupRefusal = result;
+                backupAck = result;
         } else if (!sentenceTooLong && sentence[0] == '$') {
             badChecksums++;
         }
@@ -181,35 +187,63 @@ void readUart()
     }
 }
 
-// Sends $PAIR650,0 up to BACKUP_REPEATS times and waits for silence.
-// Blocks for up to BACKUP_WAIT_MS (4 s).
-bool enterBackupMode()
+void waitMs(uint32_t ms)
 {
-    backupRefusal = -1;
-    int sent = 0;
+    const uint32_t start = millis();
+    while (millis() - start < ms) {
+        readUart();
+        delay(1);
+    }
+}
+
+// Sends body every COMMAND_REPEAT_MS, at most `repeats` times, until it is acknowledged;
+// waits up to ACK_FINAL_WAIT_MS for a final result after "in progress". Returns the
+// result or ACK_NONE. Blocks for at most repeats * 40 ms + 1 s.
+long sendUntilAcknowledged(const char *body, long *ack, int repeats, int *sent)
+{
+    *ack = ACK_NONE;
+    *sent = 0;
+    while (*sent < repeats && *ack == ACK_NONE) {
+        gps::sendCommand(body, false);
+        (*sent)++;
+        waitMs(COMMAND_REPEAT_MS);
+    }
+    const uint32_t start = millis();
+    while (*ack == ACK_IN_PROGRESS && millis() - start < ACK_FINAL_WAIT_MS) {
+        readUart();
+        delay(1);
+    }
+    return *ack;
+}
+
+// True when the GPS has sent nothing for BACKUP_SILENCE_MS (within BACKUP_SILENCE_WAIT_MS).
+bool waitForSilence()
+{
     const uint32_t start = millis();
     uint32_t lastData = start;
-    uint32_t nextSend = start;
-    bool silent = false;
-    while (millis() - start < BACKUP_WAIT_MS && backupRefusal < 0) {
-        const uint32_t now = millis();
-        if (sent < BACKUP_REPEATS && (int32_t)(now - nextSend) >= 0) {
-            gps::sendCommand("PAIR650,0", false);
-            sent++;
-            nextSend += BACKUP_REPEAT_MS;
-        }
+    while (millis() - start < BACKUP_SILENCE_WAIT_MS) {
         if (Serial1.available() > 0) {
-            lastData = now;
+            lastData = millis();
             readUart();
-        } else if (now - lastData >= BACKUP_SILENCE_MS) {
-            silent = true;
-            break;
+        } else if (millis() - lastData >= BACKUP_SILENCE_MS) {
+            return true;
         }
         delay(1);
     }
-    if (backupRefusal >= 0)
-        logger::line("gps: $PAIR650,0 refused (result %ld)", backupRefusal);
-    logger::line("gps: $PAIR650,0 sent %d times, %s", sent, silent ? "GPS silent" : "GPS still sending");
+    return false;
+}
+
+// Seeed's power-down sequence; see the constants above. Blocks for about 2 s (at most 6 s).
+bool enterBackupMode()
+{
+    int unlockSent = 0;
+    int backupSent = 0;
+    const long unlock = sendUntilAcknowledged("PAIR382,0", &unlockAck, UNLOCK_REPEATS, &unlockSent);
+    const long backup = sendUntilAcknowledged("PAIR650,0", &backupAck, BACKUP_REPEATS, &backupSent);
+    const bool refused = backup != ACK_NONE && backup != ACK_DONE && backup != ACK_IN_PROGRESS;
+    const bool silent = !refused && waitForSilence();
+    logger::line("gps: $PAIR382,0 x%d -> %ld, $PAIR650,0 x%d -> %ld, GPS %s", unlockSent, unlock, backupSent, backup,
+                 silent ? "silent" : "still sending");
     return silent;
 }
 
