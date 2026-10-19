@@ -39,6 +39,14 @@ Nigdy nie ruszamy bootloadera ani SoftDevice S140 7.3.0 (żadnego SWD, mass eras
 
 Tylko DFU, bez wgrywania: `tools/dfu.sh`. Karta zostaje wtedy w bootloaderze, dopóki nie dostanie pliku `.uf2`.
 
+## Testy na komputerze
+
+```
+pio test -e native
+```
+
+Moduły bez zależności od sprzętu (parser NMEA) – testy na zmyślonych danych.
+
 ## Log po USB
 
 ```
@@ -49,7 +57,8 @@ Komendy: `v` – wersja i przyczyna ostatniego resetu, `p` – stan zasilania uk
 `dfu` – tryb wgrywania UF2, `off` – wyłączenie (System OFF) po 15 s odliczania; z podłączonym USB
 wyłączenie jest odrzucane, krótkie naciśnięcie przycisku przerywa odliczanie.
 `log` – ostatnie 16 linii logu (zdarzenia i pomiary baterii), także z czasu bez podłączonego USB.
-`gps on` / `gps off` – zasilanie GPS; surowe linie NMEA w logu (M2, krok 1).
+`gps on` / `gps off` – zasilanie GPS i jego konfiguracja; co 10 s stan: fix, satelity, wysokość, czas UTC
+(bez współrzędnych). `gps raw` / `gps raw off` – surowe linie NMEA (po fixie zawierają pozycję).
 Włączanie: przytrzymanie przycisku ok. 1 s (krótsze naciśnięcie – karta wraca do uśpienia) albo podłączenie USB.
 Diagnostyka (tylko odczyty): `diag bat` – napięcie baterii przy różnych czasach od włączenia dzielnika (ok. 4 s).
 `diag snd N` – wszystkie dźwięki z wypełnieniem PWM N% (1–50), do dobrania głośności na słuch.

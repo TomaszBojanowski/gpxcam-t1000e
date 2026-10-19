@@ -76,7 +76,7 @@ void logHelp()
     logger::transient("          off = System OFF after a 15 s countdown (refused with USB connected),");
     logger::transient("          log = last %lu log lines, also those from times without USB,",
                       (unsigned long)logger::HISTORY_LINES);
-    logger::transient("          gps on / gps off = GPS power, raw NMEA lines in the log");
+    logger::transient("          gps on / gps off = GPS power, status every 10 s; gps raw / gps raw off = NMEA lines");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
 }
 
@@ -135,6 +135,10 @@ void runCommand(const char *cmd)
         gps::on();
     } else if (strcmp(cmd, "gps off") == 0) {
         gps::off();
+    } else if (strcmp(cmd, "gps raw") == 0) {
+        gps::setRawLog(true);
+    } else if (strcmp(cmd, "gps raw off") == 0) {
+        gps::setRawLog(false);
     } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
         runSoundTest(cmd + strlen(SOUND_TEST_COMMAND));
     } else if (strcmp(cmd, "diag bat") == 0) {

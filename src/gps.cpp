@@ -25,16 +25,10 @@ constexpr uint32_t BAUD_RATE = 115200;
 // NMEA 0183 sentences are at most 82 characters including "$" and CR LF; some margin
 // for proprietary $PAIR replies.
 constexpr size_t NMEA_MAX = 100;
-constexpr uint32_t SUMMARY_PERIOD_MS = 10000;
+constexpr uint32_t STATUS_PERIOD_MS = 10000;
 constexpr size_t COMMAND_MAX = 48; // "$PAIR066,1,1,1,1,0,0*hh\r\n" is 25 characters
 constexpr uint32_t NOT_YET = UINT32_MAX;
-constexpr int NO_SATELLITES = -1;
-
-// Fields used before the real parser exists (NMEA 0183): RMC field 2 is the status
-// (A = valid position, V = not valid); GGA field 7 is the number of satellites in use.
-constexpr unsigned RMC_STATUS_FIELD = 2;
-constexpr unsigned GGA_SATELLITES_FIELD = 7;
-constexpr long MAX_SATELLITES = 99; // two digits in GGA
+constexpr size_t STATUS_TEXT_MAX = 96;
 
 bool powered = false;
 uint32_t poweredAt = 0;
@@ -44,9 +38,15 @@ uint32_t lines = 0;
 uint32_t nonAsciiBytes = 0; // many of them would mean a wrong baud rate
 uint32_t longLines = 0;
 uint32_t badChecksums = 0;
-uint32_t nextSummary = 0;
+uint32_t nextStatus = 0;
 uint32_t firstFixMs = NOT_YET; // since power on
-int lastSatellites = NO_SATELLITES;
+bool rawLog = false;           // 'gps raw': every NMEA line in the log (positions included)
+
+// Latest navigation data. The position stays in RAM only: it is never logged.
+nmea::Rmc lastRmc = {};
+nmea::Gga lastGga = {};
+bool haveGga = false;
+bool fixValid = false;
 
 char sentence[NMEA_MAX + 1];
 size_t sentenceLength = 0;
@@ -56,26 +56,57 @@ void resetCounters()
 {
     firstByteMs = firstFixMs = NOT_YET;
     bytes = lines = nonAsciiBytes = longLines = badChecksums = 0;
-    lastSatellites = NO_SATELLITES;
+    lastRmc = {};
+    lastGga = {};
+    haveGga = false;
+    fixValid = false;
     sentenceLength = 0;
     sentenceTooLong = false;
 }
 
-void checkFix()
+int satellites()
 {
-    if (nmea::isType(sentence, "GGA")) {
-        long count = 0;
-        lastSatellites = nmea::fieldInt(sentence, GGA_SATELLITES_FIELD, 0, MAX_SATELLITES, &count) ? (int)count
-                                                                                                 : NO_SATELLITES;
-    } else if (nmea::isType(sentence, "RMC") && firstFixMs == NOT_YET) {
-        const char *status = nmea::field(sentence, RMC_STATUS_FIELD);
-        if (status != nullptr && *status == 'A') {
-            firstFixMs = millis() - poweredAt;
-            // Kept in the history, without coordinates.
-            logger::line("gps: first fix %lu s after power on, %d satellites", (unsigned long)(firstFixMs / 1000),
-                         lastSatellites);
-        }
+    return haveGga ? lastGga.satellites : -1;
+}
+
+// GGA comes just before RMC of the same second on this module (M2 step 1 log).
+void handleNavigation()
+{
+    nmea::Gga gga;
+    if (nmea::parseGga(sentence, &gga)) {
+        lastGga = gga;
+        haveGga = true;
+        return;
     }
+    nmea::Rmc rmc;
+    if (!nmea::parseRmc(sentence, &rmc))
+        return;
+    lastRmc = rmc;
+    const bool valid = rmc.valid && rmc.hasPosition;
+    // Events kept in the log history, without coordinates.
+    if (valid && firstFixMs == NOT_YET) {
+        firstFixMs = millis() - poweredAt;
+        logger::line("gps: first fix %lu s after power on, %d satellites", (unsigned long)(firstFixMs / 1000),
+                     satellites());
+    } else if (valid != fixValid && firstFixMs != NOT_YET) {
+        logger::line(valid ? "gps: fix again, %d satellites" : "gps: fix lost, %d satellites", satellites());
+    }
+    fixValid = valid;
+}
+
+// "fix yes, 9 sat, alt 157 m, 19:05:12 UTC 2026-10-19" - no coordinates.
+void formatStatus(char *out, size_t size)
+{
+    char altitude[16] = "-";
+    if (haveGga && lastGga.hasAltitude) {
+        const long dm = lastGga.altitudeDm;
+        snprintf(altitude, sizeof(altitude), "%ld m", (dm >= 0 ? dm + 5 : dm - 5) / 10);
+    }
+    char clock[32] = "no time";
+    if (lastRmc.hasTime && lastRmc.hasDate)
+        snprintf(clock, sizeof(clock), "%02u:%02u:%02u UTC %04u-%02u-%02u", lastRmc.time.hour, lastRmc.time.minute,
+                 lastRmc.time.second, lastRmc.date.year, lastRmc.date.month, lastRmc.date.day);
+    snprintf(out, size, "fix %s, %d sat, alt %s, %s", fixValid ? "yes" : "no", satellites(), altitude, clock);
 }
 
 void finishSentence()
@@ -85,10 +116,11 @@ void finishSentence()
         lines++;
         if (sentenceTooLong)
             longLines++;
-        // Raw lines are sent only, not kept in the log history (they would push the events out).
-        logger::transient("nmea: %s%s", sentence, sentenceTooLong ? " (cut)" : "");
+        // Raw lines only on request ('gps raw'), never kept in the log history.
+        if (rawLog)
+            logger::transient("nmea: %s%s", sentence, sentenceTooLong ? " (cut)" : "");
         if (!sentenceTooLong && nmea::checksumOk(sentence)) {
-            checkFix();
+            handleNavigation();
             gps_setup::handleSentence(sentence);
         } else if (!sentenceTooLong && sentence[0] == '$') {
             badChecksums++;
@@ -155,7 +187,7 @@ void on()
     delay(WAKE_SETTLE_MS);
 
     powered = true;
-    nextSummary = millis() + SUMMARY_PERIOD_MS;
+    nextStatus = millis() + STATUS_PERIOD_MS;
     logger::line("gps: on (RESETB %s)", digitalRead(GPS_RESETB_OUT) == HIGH ? "high" : "low");
     gps_setup::begin();
 }
@@ -181,6 +213,12 @@ void off()
 bool isOn()
 {
     return powered;
+}
+
+void setRawLog(bool on)
+{
+    rawLog = on;
+    logger::line("gps: raw NMEA lines %s", on ? "on (they include the position)" : "off");
 }
 
 void sendCommand(const char *body)
@@ -211,10 +249,11 @@ void poll()
         handleByte(c);
     }
     gps_setup::poll();
-    if ((int32_t)(millis() - nextSummary) >= 0) {
-        nextSummary += SUMMARY_PERIOD_MS;
-        logger::transient("gps: %lu lines, %lu bytes, %lu non-ASCII bytes since power on", (unsigned long)lines,
-                          (unsigned long)bytes, (unsigned long)nonAsciiBytes);
+    if ((int32_t)(millis() - nextStatus) >= 0) {
+        nextStatus += STATUS_PERIOD_MS;
+        char status[STATUS_TEXT_MAX];
+        formatStatus(status, sizeof(status));
+        logger::transient("gps: %s", status);
     }
 }
 
@@ -226,11 +265,14 @@ void logState()
     }
     char fix[32];
     formatFix(fix, sizeof(fix));
-    logger::line("gps: on %lu s, %s, %d sat, %lu lines (%lu cut, %lu bad sum), %lu B, RESETB %s",
-                 (unsigned long)((millis() - poweredAt) / 1000), fix, lastSatellites, (unsigned long)lines,
-                 (unsigned long)longLines, (unsigned long)badChecksums, (unsigned long)bytes,
-                 digitalRead(GPS_RESETB_OUT) == HIGH ? "high" : "low");
-    logger::line("gps: %s", gps_setup::stateText());
+    char status[STATUS_TEXT_MAX];
+    formatStatus(status, sizeof(status));
+    logger::line("gps: on %lu s, %s, %s", (unsigned long)((millis() - poweredAt) / 1000), fix,
+                 gps_setup::stateText());
+    logger::line("gps: %s", status);
+    logger::line("gps: %lu lines (%lu cut, %lu bad sum, %lu non-ASCII B), %lu B, RESETB %s", (unsigned long)lines,
+                 (unsigned long)longLines, (unsigned long)badChecksums, (unsigned long)nonAsciiBytes,
+                 (unsigned long)bytes, digitalRead(GPS_RESETB_OUT) == HIGH ? "high" : "low");
 }
 
 } // namespace gps

@@ -16,7 +16,11 @@ bool isOn();
 // Sends "$<body>*hh\r\n" to the GPS (body e.g. "PAIR063,-1"). Does nothing when off.
 void sendCommand(const char *body);
 
-// Reads the UART and logs complete NMEA lines. Call from loop().
+// Every NMEA line in the log (live only, never in the history); off by default
+// because after a fix the lines contain the position.
+void setRawLog(bool on);
+
+// Reads the UART, parses RMC/GGA and logs a status line every 10 s. Call from loop().
 void poll();
 
 // One log line with the GPS state and counters.
