@@ -9,6 +9,7 @@
 #include "board.h"
 #include "gps.h"
 #include "log.h"
+#include "pairing.h"
 #include "sound.h"
 
 // Sources: nRF52840 Product Specification v1.5 (PS):
@@ -177,6 +178,7 @@ void enterSystemOff()
 {
     if (refuseWithUsb())
         return;
+    pairing::stop();      // closes a camera connection
     bluetooth::scanOff(); // the radio must be idle
     gps::off();           // a running GPS would draw milliamps in System OFF
     if (!armWakeUp())
@@ -184,7 +186,7 @@ void enterSystemOff()
 
     // Nothing else runs at this point: the sound has ended (PWM stopped), SAADC and SPI
     // are idle, so no EasyDMA transfer is in progress (PS 5.3.3). The radio is idle too:
-    // scanning was stopped above and the card does not connect yet.
+    // pairing and scanning were stopped above.
     powerDown();
 
     // Reached only in emulated System OFF (PS 5.3.3.1). Instead of an endless loop,

@@ -4,6 +4,7 @@
 #include <bluefruit.h>
 #include <string.h>
 
+#include "camera_link.h"
 #include "camera_list.h"
 #include "log.h"
 #include "lumix.h"
@@ -72,8 +73,10 @@ Counts sinceScanStart()
 // handlers (bluefruit.cpp, _ble_handler()). It must not log: logger is for the loop task.
 void onBleEvent(ble_evt_t *event)
 {
-    if (event->header.evt_id != BLE_GAP_EVT_ADV_REPORT)
+    if (event->header.evt_id != BLE_GAP_EVT_ADV_REPORT) {
+        camera_link::onBleEvent(event);
         return;
+    }
     const ble_gap_evt_adv_report_t &advert = event->evt.gap_evt.params.adv_report;
     reportsTotal++;
 
@@ -152,7 +155,11 @@ bool begin()
     // Bluefruit blinks LED_BLUE while scanning and lights it while connected. The variant
     // has no such LED (LED_BLUE is -1), so keep the library away from the pins.
     Bluefruit.autoConnLed(false);
-    if (!Bluefruit.begin(PERIPHERAL_LINKS, CENTRAL_LINKS))
+    // The camera link needs an MTU above the default 23 for writes of up to 32 bytes; the
+    // other values are the SoftDevice defaults Bluefruit uses (bluefruit.cpp).
+    Bluefruit.configCentralConn(camera_link::MAX_MTU, BLE_GAP_EVENT_LENGTH_DEFAULT, BLE_GATTS_HVN_TX_QUEUE_SIZE_DEFAULT,
+                                BLE_GATTC_WRITE_CMD_TX_QUEUE_SIZE_DEFAULT);
+    if (!Bluefruit.begin(PERIPHERAL_LINKS, CENTRAL_LINKS) || !camera_link::begin())
         return false;
     reportQueue = xQueueCreateStatic(QUEUE_LENGTH, sizeof(camera_list::Report), queueStorage, &queueControl);
     Bluefruit.setEventCallback(onBleEvent);
@@ -207,6 +214,16 @@ void scanOff()
 bool scanning()
 {
     return scanActive;
+}
+
+bool ready()
+{
+    return started;
+}
+
+const camera_list::Entry *camera(size_t i)
+{
+    return cameras.at(i);
 }
 
 void logState()

@@ -7,6 +7,7 @@
 #include <unity.h>
 
 #include "lumix.h"
+#include "pairing_record.h"
 
 void setUp() {}
 void tearDown() {}
@@ -237,6 +238,24 @@ void test_time_data()
     TEST_ASSERT_EQUAL_HEX8_ARRAY(winter, out, sizeof(winter));
 }
 
+void test_gatt_uuids()
+{
+    // the byte arrays against the text in docs/PROTOKOL.md (lower case)
+    char text[pairing_record::UUID_TEXT_LENGTH + 1];
+    pairing_record::formatUuid(lumix::SERVICE_UUID, text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("1fe71b85-8344-4e6a-bf1a-ac7acdb3f8af", text);
+    pairing_record::formatUuid(lumix::KEY_UUID, text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("239c7203-922f-43e9-bdf1-6d1fedf6f43f", text);
+    pairing_record::formatUuid(lumix::DEVICE_ID_UUID, text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("bff12e7f-5944-4eb6-a90f-48d8786157ea", text);
+    pairing_record::formatUuid(lumix::APP_NAME_UUID, text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("ed8b1352-5aa7-4155-b7c9-521292dd1932", text);
+    pairing_record::formatUuid(lumix::DEVICE_NAME_UUID, text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("05a797b6-9c2f-4d18-99a7-fa61a3880bfe", text);
+    pairing_record::formatUuid(lumix::TIME_UUID, text, sizeof(text));
+    TEST_ASSERT_EQUAL_STRING("39a02c41-c6e3-4b73-a3ea-537f23f0085a", text);
+}
+
 int main(int, char **)
 {
     UNITY_BEGIN();
@@ -256,5 +275,6 @@ int main(int, char **)
     RUN_TEST(test_device_name);
     RUN_TEST(test_app_name);
     RUN_TEST(test_time_data);
+    RUN_TEST(test_gatt_uuids);
     return UNITY_END();
 }

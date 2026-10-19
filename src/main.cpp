@@ -14,6 +14,7 @@
 #include "gps.h"
 #include "gps_test.h"
 #include "log.h"
+#include "pairing.h"
 #include "pairing_store.h"
 #include "power.h"
 #include "sound.h"
@@ -82,6 +83,7 @@ void logHelp()
     logger::transient("          gps on / gps off = GPS power, status every 10 s; gps raw / gps raw off = NMEA lines,");
     logger::transient("          gps test N = N GPS start-time cycles without USB, results in 'log'; gps test off");
     logger::transient("          scan on / scan off = look for LUMIX cameras over BLE, status every 10 s;");
+    logger::transient("          pair = pair with a camera in pairing mode (or click + hold 3 s), pair off = cancel,");
     logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera)");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
 }
@@ -106,7 +108,7 @@ void runSoundTest(const char *argument)
     if (end == argument || *end != '\0' || duty > UINT8_MAX || !sound::playTest((uint8_t)duty))
         logger::line("usage: diag snd N, N = 1..50 (%% PWM duty)");
     else
-        logger::line("sound test at %lu %% duty: click, start, shutdown", duty);
+        logger::line("sound test at %lu %% duty: click, start, shutdown, pairing, paired", duty);
 }
 
 constexpr const char *GPS_TEST_COMMAND = "gps test ";
@@ -143,6 +145,10 @@ void handleButton()
         logger::line("button: short press (%lu ms)", (unsigned long)event.heldMs);
         power::cancelCountdown(); // does nothing without a countdown
         sound::playClick();
+        pairing::stop();          // does nothing without a session
+    } else if (event.type == button::Type::ClickHold) {
+        logger::line("button: click + hold (%lu ms) - pairing", (unsigned long)event.heldMs);
+        pairing::start();
     } else if (event.type == button::Type::LongPress) {
         logger::line("button: long press (%lu ms) - powering off", (unsigned long)event.heldMs);
         power::powerOff(); // plays the shutdown melody; returns only if refused (e.g. USB)
@@ -159,6 +165,7 @@ void runCommand(const char *cmd)
         gps::logState();
         bluetooth::logState();
         pairing_store::logState();
+        pairing::logState();
         logBattery();
     } else if (strcmp(cmd, "dfu") == 0) {
         rebootToUf2Bootloader();
@@ -185,6 +192,13 @@ void runCommand(const char *cmd)
             bluetooth::scanOff();
         else
             logger::line("scan: already off");
+    } else if (strcmp(cmd, "pair") == 0) {
+        pairing::start();
+    } else if (strcmp(cmd, "pair off") == 0) {
+        if (pairing::active())
+            pairing::stop();
+        else
+            logger::line("pair: not running");
     } else if (strcmp(cmd, "unpair") == 0) {
         forgetCamera();
     } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
@@ -325,6 +339,7 @@ void loop()
     gps::poll();
     gps_test::poll();
     bluetooth::poll();
+    pairing::poll();
     handleButton();
     power::poll();
     sound::poll();

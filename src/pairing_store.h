@@ -18,6 +18,10 @@ bool ready();
 
 const pairing_record::Record &record();
 
+// Stores the camera that accepted the card (replacing an earlier one). False if not
+// ready or not written.
+bool saveCamera(const uint8_t serial[lumix::SERIAL_LENGTH]);
+
 // Removes the paired camera, keeps the card UUID. False if not ready or not written.
 bool forgetCamera();
 

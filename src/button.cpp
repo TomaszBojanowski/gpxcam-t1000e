@@ -12,6 +12,9 @@ bool stablePressed = false;  // debounced state
 bool longReported = false;   // LongPress already sent for the current hold
 uint32_t rawChangedAt = 0;
 uint32_t pressedAt = 0;
+bool afterClick = false;      // the current press began soon after a short press
+bool clickSeen = false;       // a short press has happened since start
+uint32_t clickReleasedAt = 0;
 
 bool readPressed()
 {
@@ -44,14 +47,17 @@ Event poll()
         if (stablePressed) {
             pressedAt = rawChangedAt; // the press began at the first raw change
             longReported = false;
+            afterClick = clickSeen && pressedAt - clickReleasedAt <= CLICK_HOLD_GAP_MS;
         } else if (!longReported) {
+            clickSeen = true;
+            clickReleasedAt = rawChangedAt;
             return {Type::ShortPress, rawChangedAt - pressedAt};
         }
     }
 
     if (stablePressed && !longReported && now - pressedAt >= LONG_PRESS_MS) {
         longReported = true;
-        return {Type::LongPress, now - pressedAt};
+        return {afterClick ? Type::ClickHold : Type::LongPress, now - pressedAt};
     }
     return {Type::None, 0};
 }

@@ -271,6 +271,23 @@ ok. 1 s – puszczone po 836 ms, karta startuje.
 - Sprawdzone na karcie: pierwszy start tworzy plik (ok. 0,9 s), UUID ma znaczniki wersji 4; ten sam UUID po ponownym
   wgraniu przez `dfu` i po wyłączeniu i włączeniu przyciskiem.
 
+## Parowanie (M4)
+
+- **GATT bez blokujących funkcji Bluefruit:** `BLEClientCharacteristic::read()/write_resp()` czekają tylko 100 ms
+  (`BLE_GENERIC_TIMEOUT`, bez możliwości zmiany), tworzą semafor na stercie przy każdym wywołaniu, a odpowiedź po czasie
+  trafiłaby do nieaktualnego bufora (`AdaMsg`). Połączenie, MTU, wyszukanie usługi i charakterystyk, odczyt i zapis
+  z odpowiedzią idą wprost przez API SoftDevice (`src/camera_link.cpp`), z własnymi limitami czasu
+  (`src/camera_session.cpp`). Nie rejestrujemy obiektów klienta Bluefruit, więc jego procedury ignorują nasze odpowiedzi.
+  Bluefruit odpowiada za nas na prośby aparatu: PHY, długość pakietu, parametry połączenia, MTU od aparatu.
+- **MTU:** SoftDevice skonfigurowany na 185 (`configCentralConn` przed startem; RAM wystarcza). S5II przyznaje 57 –
+  zapisy do 54 bajtów, potrzeba 32.
+- **Gest:** klik i w ciągu 0,5 s przytrzymanie 3 s (`CLICK_HOLD_GAP_MS`); samo przytrzymanie 3 s nadal wyłącza kartę.
+- **Sprawdzone na karcie (krok 3):** bez fixa przez 120 s – rezygnacja z jasnym komunikatem, GPS z powrotem w tryb
+  Backup; aparat w `00` i w `06` – komunikat „not in pairing mode”, bez łączenia, rezygnacja po 60 s; aparat w menu
+  parowania – sparowany za pierwszą próbą w ok. 1,8 s, aparat pokazał „Pairing completed”, na liście urządzeń
+  „T1000-E”; gest uruchamia sesję, krótkie naciśnięcie ją przerywa; numer aparatu zostaje po wyłączeniu i włączeniu.
+- **Nie sprawdzone na karcie:** ścieżka porażki z przerwami 10 s i 30 s – żadna próba nie zakończyła się porażką.
+
 ## Otwarte pytania
 
 - **Wybudzenie a LATCH (M2, krok 4):** raz po wybudzeniu przyciskiem bit P0.06 w `LATCH` nie dał się skasować

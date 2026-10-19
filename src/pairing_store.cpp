@@ -126,6 +126,19 @@ const pairing_record::Record &record()
     return current;
 }
 
+bool saveCamera(const uint8_t serial[lumix::SERIAL_LENGTH])
+{
+    if (!loaded)
+        return false;
+    pairing_record::Record changed = current;
+    changed.paired = true;
+    memcpy(changed.serial, serial, sizeof(changed.serial));
+    if (!writeFile(changed))
+        return false;
+    current = changed;
+    return true;
+}
+
 bool forgetCamera()
 {
     if (!loaded)

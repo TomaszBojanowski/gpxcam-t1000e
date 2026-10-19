@@ -19,6 +19,11 @@ bool isOn();
 // Seconds from power-on to the first fix of this power-on; false while there is none.
 bool firstFix(uint32_t *secondsAfterPowerOn);
 
+// UTC now, in Unix seconds: the time of the last RMC with a fix (at most 2 s old) plus the
+// time since it arrived. False without a recent fix. The RMC reaches the card a fraction
+// of a second after its time, so the result may lag by that much.
+bool utcNow(int64_t *unixSeconds);
+
 // Sends "$<body>*hh\r\n" to the GPS (body e.g. "PAIR063,-1") and, with echo, shows it in
 // the log (not in the history). Does nothing when off.
 void sendCommand(const char *body, bool echo = true);

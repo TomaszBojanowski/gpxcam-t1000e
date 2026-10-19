@@ -4,10 +4,15 @@
 // advertises and never accepts connections.
 #pragma once
 
+#include <stddef.h>
+
+#include "camera_list.h"
+
 namespace bluetooth {
 
-// Starts the SoftDevice; scanning stays off. Call once in setup(), after
-// power::handleWakeUp(), so a short wake-up press goes back to System OFF without it.
+// Starts the SoftDevice and registers the camera's GATT UUIDs; scanning stays off. Call
+// once in setup(), after power::handleWakeUp(), so a short wake-up press goes back to
+// System OFF without it.
 // Bluefruit also mounts its file system in the data area 0xED000-0xF4000 (bond_init() in
 // Bluefruit52Lib/src/utility/bonding.cpp); if it cannot be mounted, it is erased and
 // formatted, which happens once and takes up to about 1 s.
@@ -23,6 +28,12 @@ void scanOn();
 void scanOff();
 
 bool scanning();
+
+// True after begin() succeeded.
+bool ready();
+
+// Camera i (0..camera_list::MAX_CAMERAS-1) seen in the current or last scan, or nullptr.
+const camera_list::Entry *camera(size_t i);
 
 // Logs the BLE state, for the 'p' command.
 void logState();

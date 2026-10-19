@@ -6,6 +6,7 @@
 #include "gps_setup.h"
 #include "log.h"
 #include "nmea.h"
+#include "utc.h"
 
 namespace {
 
@@ -47,6 +48,7 @@ constexpr uint32_t STATUS_PERIOD_MS = 10000;
 constexpr size_t COMMAND_MAX = 48; // "$PAIR066,1,1,1,1,0,0*hh\r\n" is 25 characters
 constexpr uint32_t NOT_YET = UINT32_MAX;
 constexpr size_t STATUS_TEXT_MAX = 96;
+constexpr uint32_t TIME_MAX_AGE_MS = 2000; // RMC comes every second
 
 bool powered = false;
 uint32_t poweredAt = 0;
@@ -69,6 +71,11 @@ nmea::Gga lastGga = {};
 bool haveGga = false;
 bool fixValid = false;
 
+// Time of the last RMC with a fix, and when it arrived (millis()).
+bool timeValid = false;
+int64_t timeUnixMs = 0;
+uint32_t timeReceivedMs = 0;
+
 char sentence[NMEA_MAX + 1];
 size_t sentenceLength = 0;
 bool sentenceTooLong = false;
@@ -81,6 +88,7 @@ void resetCounters()
     lastGga = {};
     haveGga = false;
     fixValid = false;
+    timeValid = false;
     resetTried = false;
     sentenceLength = 0;
     sentenceTooLong = false;
@@ -89,6 +97,17 @@ void resetCounters()
 int satellites()
 {
     return haveGga ? lastGga.satellites : -1;
+}
+
+void rememberTime(const nmea::Rmc &rmc, bool fix)
+{
+    const utc::DateTime t = {rmc.date.year, rmc.date.month, rmc.date.day,
+                             rmc.time.hour, rmc.time.minute, rmc.time.second};
+    if (!fix || !rmc.hasTime || !rmc.hasDate || !utc::isValid(t))
+        return;
+    timeUnixMs = utc::toUnixSeconds(t) * 1000 + rmc.time.millisecond;
+    timeReceivedMs = millis();
+    timeValid = true;
 }
 
 // GGA comes just before RMC of the same second on this module (M2 step 1 log).
@@ -105,6 +124,7 @@ void handleNavigation()
         return;
     lastRmc = rmc;
     const bool valid = rmc.valid && rmc.hasPosition;
+    rememberTime(rmc, valid);
     // Events kept in the log history, without coordinates.
     if (valid && firstFixMs == NOT_YET) {
         firstFixMs = millis() - poweredAt;
@@ -317,6 +337,15 @@ bool firstFix(uint32_t *secondsAfterPowerOn)
     if (!powered || firstFixMs == NOT_YET)
         return false;
     *secondsAfterPowerOn = firstFixMs / 1000;
+    return true;
+}
+
+bool utcNow(int64_t *unixSeconds)
+{
+    const uint32_t age = millis() - timeReceivedMs;
+    if (!powered || !timeValid || age > TIME_MAX_AGE_MS)
+        return false;
+    *unixSeconds = (timeUnixMs + age) / 1000;
     return true;
 }
 

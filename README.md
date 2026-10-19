@@ -4,12 +4,13 @@ Program na kartę Seeed SenseCAP **T1000-E**, który ma przekazywać pozycję z 
 do aparatu Panasonic LUMIX S5II przez Bluetooth LE – bez telefonu.
 Protokół jak w aplikacji gpxcam na Androida.
 
-Stan: **M2 zakończony, M3 w toku.** Wszystkie układy wyłączone, dioda mruga, wersja w logu po USB, wejście w tryb
+Stan: **M3 zakończony, M4 w toku.** Wszystkie układy wyłączone, dioda mruga, wersja w logu po USB, wejście w tryb
 wgrywania komendą `dfu`, melodia przy starcie, przycisk: krótkie naciśnięcie = cichy sygnał,
 przytrzymanie 3 s = wyłączenie z melodią (System OFF; z podłączonym USB odrzucane – dwa kliknięcia), napięcie baterii
 i stan ładowania w logu co 60 s. GPS (M2): konfiguracja tylko w RAM, fix, satelity, wysokość i czas UTC w logu,
 między użyciami tryb Backup (gorący start po 2–3 s). Bluetooth (M3): SoftDevice S140 startuje przy włączeniu,
 tylko rola central; `scan on` szuka aparatów LUMIX i loguje ich numer, stan, adres i RSSI.
+Parowanie (M4): `pair` albo klik + przytrzymanie przycisku 3 s.
 
 ## Wymagania
 
@@ -67,12 +68,18 @@ Backup, 5 min przerwy); wyniki w `log`. `gps test off` przerywa.
 `scan on` / `scan off` – skan BLE w poszukiwaniu aparatów LUMIX (po starcie wyłączony). W logu tylko aparaty:
 numer seryjny, stan, adres z typem (public/RPA), RSSI – przy pierwszym zobaczeniu, przy zmianie stanu lub adresu
 i gdy aparat zniknie na 30 s; co 10 s linia stanu. Log zawiera prawdziwy numer i adres aparatu – nie publikować.
+`pair` – parowanie z aparatem w trybie parowania (stan `03`; aparat: menu Bluetooth, parowanie). Potrzebny czas UTC
+z GPS: GPS jest włączany na czas sesji, karta czeka na fix do 120 s, potem szuka aparatu do 60 s; najwyżej 3 próby
+z przerwami 10 s i 30 s. Z aparatem w stanie `00` lub `06` karta się nie łączy. `pair off` albo krótkie naciśnięcie
+przycisku przerywa. Przycisk: klik i w ciągu 0,5 s przytrzymanie 3 s = parowanie (dwa krótkie sygnały), udane
+parowanie – rosnąca melodia, rezygnacja – dwa kliknięcia.
 `unpair` – zapomina sparowany aparat (identyfikator karty zostaje). `p` pokazuje też identyfikator karty (UUID)
 i sparowany aparat – także tych wartości nie publikować.
 Włączanie: przytrzymanie przycisku ok. 1 s (krótsze naciśnięcie – karta wraca do uśpienia; dioda może mignąć
 od bootloadera) albo podłączenie USB.
 Diagnostyka (tylko odczyty): `diag bat` – napięcie baterii przy różnych czasach od włączenia dzielnika (ok. 4 s).
-`diag snd N` – wszystkie dźwięki z wypełnieniem PWM N% (1–50), do dobrania głośności na słuch.
+`diag snd N` – wszystkie dźwięki (klik, start, wyłączenie, parowanie, sparowano) z wypełnieniem PWM N% (1–50),
+do dobrania głośności na słuch.
 Portu nie otwierać z prędkością 1200 bps – to uruchamia bootloader bez dysku.
 
 ## Powrót do Meshtastic

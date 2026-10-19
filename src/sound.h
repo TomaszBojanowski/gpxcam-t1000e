@@ -12,10 +12,12 @@ bool begin();
 void playStart();    // power-on melody
 void playShutdown(); // power-off melody
 void playClick();    // one short, quiet tick for a short button press
-void playRefuse();   // two clicks: power off refused
+void playRefuse();   // two clicks: power off or pairing refused
+void playPairing();  // two short high beeps: pairing started
+void playPaired();   // rising melody: the camera accepted the card
 
-// Plays click, start and shutdown melody at the given PWM duty (1..50 %) so the
-// volume can be chosen by ear. Returns false for a duty outside that range.
+// Plays all sounds (click, start, shutdown, pairing, paired) at the given PWM duty
+// (1..50 %) so the volume can be chosen by ear. Returns false for a duty outside that range.
 bool playTest(uint8_t dutyPercent);
 
 // Advances the current sound. Call from loop().

@@ -26,6 +26,7 @@ template <size_t N> constexpr Melody melody(const Note (&notes)[N])
 constexpr uint16_t NOTE_FS3 = 185;
 constexpr uint16_t NOTE_AS3 = 233;
 constexpr uint16_t NOTE_CS4 = 277;
+constexpr uint16_t NOTE_FS4 = 370; // M4: one chord note above the start melody
 constexpr uint16_t PAUSE = 0;
 constexpr uint32_t GAP_PERCENT = 30;
 
@@ -33,6 +34,8 @@ constexpr Note START_NOTES[] = {{NOTE_FS3, 100}, {NOTE_AS3, 100}, {NOTE_CS4, 150
 constexpr Note SHUTDOWN_NOTES[] = {{NOTE_CS4, 100}, {NOTE_AS3, 100}, {NOTE_FS3, 150}};
 constexpr Note CLICK_NOTES[] = {{NOTE_AS3, 20}}; // Meshtastic's key-press "chirp"
 constexpr Note REFUSE_NOTES[] = {{NOTE_AS3, 20}, {PAUSE, 100}, {NOTE_AS3, 20}};
+constexpr Note PAIRING_NOTES[] = {{NOTE_CS4, 60}, {PAUSE, 60}, {NOTE_CS4, 60}};
+constexpr Note PAIRED_NOTES[] = {{NOTE_AS3, 100}, {NOTE_CS4, 100}, {NOTE_FS4, 200}};
 constexpr Note TEST_PAUSE_NOTES[] = {{PAUSE, 700}};
 
 // Volume = PWM duty, the share of each period the buzzer is driven. Meshtastic's
@@ -48,7 +51,7 @@ constexpr uint8_t PWM_CLOCK_DIV = PWM_PRESCALER_PRESCALER_DIV_16;
 constexpr uint32_t PWM_CLOCK_HZ = 16000000 / 16;
 // COUNTERTOP = PWM_CLOCK_HZ / f: 3610..5405 for 277..185 Hz, within its 15-bit range.
 
-constexpr size_t QUEUE_MAX = 5; // the longest sequence is the volume test
+constexpr size_t QUEUE_MAX = 9; // the longest sequence is the volume test
 
 bool available = false;
 bool isPlaying = false;
@@ -161,12 +164,26 @@ void playRefuse()
     play(sequence, 1, DUTY_PERCENT);
 }
 
+void playPairing()
+{
+    const Melody sequence[] = {melody(PAIRING_NOTES)};
+    play(sequence, 1, DUTY_PERCENT);
+}
+
+void playPaired()
+{
+    const Melody sequence[] = {melody(PAIRED_NOTES)};
+    play(sequence, 1, DUTY_PERCENT);
+}
+
 bool playTest(uint8_t duty)
 {
     if (duty < 1 || duty > MAX_DUTY_PERCENT)
         return false;
-    const Melody sequence[] = {melody(CLICK_NOTES), melody(TEST_PAUSE_NOTES), melody(START_NOTES),
-                               melody(TEST_PAUSE_NOTES), melody(SHUTDOWN_NOTES)};
+    const Melody sequence[] = {melody(CLICK_NOTES),    melody(TEST_PAUSE_NOTES), melody(START_NOTES),
+                               melody(TEST_PAUSE_NOTES), melody(SHUTDOWN_NOTES), melody(TEST_PAUSE_NOTES),
+                               melody(PAIRING_NOTES),    melody(TEST_PAUSE_NOTES), melody(PAIRED_NOTES)};
+    static_assert(sizeof(sequence) / sizeof(sequence[0]) <= QUEUE_MAX, "the test must fit in the queue");
     play(sequence, sizeof(sequence) / sizeof(sequence[0]), duty);
     return true;
 }

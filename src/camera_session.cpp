@@ -1,0 +1,442 @@
+#include "camera_session.h"
+
+#include <Arduino.h>
+#include <ble_gatt.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "camera_link.h"
+#include "gps.h"
+#include "log.h"
+#include "utc.h"
+#include "version.h"
+
+namespace {
+
+using camera_link::Characteristic;
+
+// Time limits (M4 decisions).
+constexpr uint32_t CONNECT_MS = 10000;
+constexpr uint32_t MTU_MS = 3000;
+constexpr uint32_t STEP_MS = 5000; // service, characteristics, key and every write
+constexpr uint32_t DISCONNECT_MS = 5000;
+
+// A write request carries 3 bytes of ATT header; the longest write is the 32-byte app name.
+constexpr uint16_t MTU_REQUEST = camera_link::MAX_MTU;
+constexpr uint16_t ATT_WRITE_HEADER = 3;
+constexpr uint16_t MTU_NEEDED = lumix::APP_NAME_LENGTH + ATT_WRITE_HEADER;
+
+// M4 decisions: names shown by the camera, time zone Europe/Warsaw with the EU rule.
+constexpr const char *DEVICE_NAME = "T1000-E";
+constexpr const char *APP_NAME = "gpxcam T1000-E " FW_VERSION;
+constexpr int16_t STANDARD_OFFSET_MINUTES = 60;
+
+enum class Step { Idle, Connecting, Mtu, Service, Characteristics, Key, DeviceId, AppName, DeviceName, Time,
+                  Disconnecting, Done };
+
+Step step = Step::Idle;
+uint32_t stepStart = 0;
+uint32_t stepLimit = 0;
+bool accepted = false;
+char failureText[80] = "";
+
+uint8_t cardUuid[lumix::UUID_LENGTH];
+uint16_t mtu = BLE_GATT_ATT_MTU_DEFAULT;
+uint16_t serviceEnd = 0;
+uint16_t handles[camera_link::CHARACTERISTIC_COUNT];
+uint8_t properties[camera_link::CHARACTERISTIC_COUNT];
+uint8_t key[lumix::KEY_LENGTH];
+
+// The data of the write in progress; the SoftDevice may read it until WriteDone.
+uint8_t txData[lumix::APP_NAME_LENGTH];
+static_assert(lumix::DEVICE_ID_LENGTH <= sizeof(txData) && lumix::DEVICE_NAME_MAX_LENGTH <= sizeof(txData) &&
+                  lumix::TIME_LENGTH <= sizeof(txData),
+              "every write fits txData");
+
+const char *stepName(Step s)
+{
+    switch (s) {
+    case Step::Connecting:
+        return "connect";
+    case Step::Mtu:
+        return "MTU";
+    case Step::Service:
+        return "service";
+    case Step::Characteristics:
+        return "characteristics";
+    case Step::Key:
+        return "key";
+    case Step::DeviceId:
+        return "identifier";
+    case Step::AppName:
+        return "app name";
+    case Step::DeviceName:
+        return "device name";
+    case Step::Time:
+        return "time";
+    case Step::Disconnecting:
+        return "disconnect";
+    case Step::Idle:
+    case Step::Done:
+        break;
+    }
+    return "-";
+}
+
+void enter(Step next, uint32_t limitMs)
+{
+    step = next;
+    stepStart = millis();
+    stepLimit = limitMs;
+}
+
+void setFailure(const char *format, ...) __attribute__((format(printf, 1, 2)));
+void setFailure(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    vsnprintf(failureText, sizeof(failureText), format, args);
+    va_end(args);
+}
+
+// Closes the connection (also after success) and waits for the Disconnected event.
+void closeLink()
+{
+    if (camera_link::connected() && camera_link::disconnect())
+        enter(Step::Disconnecting, DISCONNECT_MS);
+    else
+        step = Step::Done;
+}
+
+void fail()
+{
+    accepted = false;
+    closeLink();
+}
+
+void requestCharacteristics(uint16_t fromHandle)
+{
+    if (!camera_link::findCharacteristics(fromHandle, serviceEnd)) {
+        setFailure("characteristics: request refused");
+        fail();
+    }
+}
+
+// Starts a write of txData[0..length) to the characteristic and moves to the next step.
+void startWrite(Characteristic which, size_t length, Step next)
+{
+    if (length + ATT_WRITE_HEADER > mtu) {
+        setFailure("%s: %u bytes do not fit MTU %u", stepName(next), (unsigned)length, mtu);
+        fail();
+    } else if (!camera_link::write(handles[which], txData, (uint16_t)length)) {
+        setFailure("%s: write refused by the SoftDevice", stepName(next));
+        fail();
+    } else {
+        enter(next, STEP_MS);
+    }
+}
+
+void writeDeviceId()
+{
+    lumix::deviceIdPlain(cardUuid, txData);
+    lumix::applyKey(txData, lumix::DEVICE_ID_LENGTH, key);
+    startWrite(camera_link::DEVICE_ID, lumix::DEVICE_ID_LENGTH, Step::DeviceId);
+}
+
+void writeAppName()
+{
+    lumix::appName(APP_NAME, txData);
+    startWrite(camera_link::APP_NAME, lumix::APP_NAME_LENGTH, Step::AppName);
+}
+
+void writeDeviceName()
+{
+    const size_t length = lumix::deviceNamePlain(DEVICE_NAME, txData);
+    lumix::applyKey(txData, length, key);
+    startWrite(camera_link::DEVICE_NAME, length, Step::DeviceName);
+}
+
+// The time of this moment, as the camera expects (docs/PROTOKOL.md).
+void writeTime()
+{
+    int64_t now = 0;
+    if (!gps::utcNow(&now)) {
+        setFailure("time: no GPS time any more");
+        fail();
+        return;
+    }
+    lumix::timeData(utc::fromUnixSeconds(now), STANDARD_OFFSET_MINUTES, utc::euSummerTime(now), txData);
+    startWrite(camera_link::TIME, lumix::TIME_LENGTH, Step::Time);
+}
+
+void readKey()
+{
+    for (uint8_t which = 0; which < camera_link::CHARACTERISTIC_COUNT; which++) {
+        if (handles[which] == 0) {
+            setFailure("characteristics: number %u (0 = key .. 4 = time) not found", (unsigned)which);
+            fail();
+            return;
+        }
+        const uint8_t needed = which == camera_link::KEY ? camera_link::PROPERTY_READ : camera_link::PROPERTY_WRITE;
+        if ((properties[which] & needed) == 0) {
+            setFailure("characteristics: no %s on characteristic %u", needed == camera_link::PROPERTY_READ ? "read" : "write",
+                       (unsigned)which);
+            fail();
+            return;
+        }
+    }
+    logger::transient("camera: service and %u characteristics found", (unsigned)camera_link::CHARACTERISTIC_COUNT);
+    if (!camera_link::read(handles[camera_link::KEY])) {
+        setFailure("key: read refused by the SoftDevice");
+        fail();
+        return;
+    }
+    enter(Step::Key, STEP_MS);
+}
+
+void onCharacteristics(const camera_link::Event &event)
+{
+    for (uint8_t i = 0; i < event.characteristics.count; i++) {
+        const camera_link::FoundCharacteristic &found = event.characteristics.list[i];
+        handles[found.which] = found.valueHandle;
+        properties[found.which] = found.properties;
+    }
+    // ATT "attribute not found" ends the discovery; so does reaching the end of the service.
+    const uint16_t last = event.characteristics.lastHandle;
+    if (event.status == BLE_GATT_STATUS_SUCCESS && last != 0 && last < serviceEnd)
+        requestCharacteristics(last + 1);
+    else
+        readKey();
+}
+
+// A write answer: next step on success, failure otherwise.
+void onWritten(const camera_link::Event &event, void (*next)())
+{
+    if (event.status != BLE_GATT_STATUS_SUCCESS) {
+        setFailure("%s: refused (GATT 0x%04x)", stepName(step), event.status);
+        fail();
+        return;
+    }
+    logger::transient("camera: %s accepted", stepName(step));
+    next();
+}
+
+void onTimeAccepted()
+{
+    accepted = true;
+    closeLink();
+}
+
+void onMtu(const camera_link::Event &event)
+{
+    mtu = event.status == BLE_GATT_STATUS_SUCCESS ? min(MTU_REQUEST, event.mtu) : BLE_GATT_ATT_MTU_DEFAULT;
+    logger::transient("camera: MTU %u", mtu);
+    if (mtu < MTU_NEEDED) {
+        setFailure("MTU: %u, writes of 32 bytes need %u", mtu, MTU_NEEDED);
+        fail();
+    } else if (!camera_link::findService()) {
+        setFailure("service: request refused");
+        fail();
+    } else {
+        enter(Step::Service, STEP_MS);
+    }
+}
+
+void onService(const camera_link::Event &event)
+{
+    if (!event.service.found) {
+        setFailure("service: not on this camera (GATT 0x%04x)", event.status);
+        fail();
+        return;
+    }
+    serviceEnd = event.service.endHandle;
+    enter(Step::Characteristics, STEP_MS);
+    requestCharacteristics(event.service.startHandle);
+}
+
+void onKey(const camera_link::Event &event)
+{
+    if (event.status != BLE_GATT_STATUS_SUCCESS || event.read.length < lumix::KEY_LENGTH) {
+        setFailure("key: not read (GATT 0x%04x, %u bytes)", event.status, event.read.length);
+        fail();
+        return;
+    }
+    memcpy(key, event.read.data, lumix::KEY_LENGTH);
+    logger::transient("camera: key read");
+    writeDeviceId();
+}
+
+void onConnected()
+{
+    logger::transient("camera: connected");
+    if (!camera_link::exchangeMtu(MTU_REQUEST)) {
+        setFailure("MTU: request refused");
+        fail();
+        return;
+    }
+    enter(Step::Mtu, MTU_MS);
+}
+
+// Events that may come in any step.
+bool handleCommonEvent(const camera_link::Event &event)
+{
+    switch (event.type) {
+    case camera_link::EventType::Disconnected:
+        if (step != Step::Disconnecting)
+            setFailure("%s: the camera disconnected (HCI 0x%02x)", stepName(step), event.status);
+        step = Step::Done;
+        return true;
+    case camera_link::EventType::GattTimeout:
+        setFailure("%s: no ATT answer for 30 s", stepName(step));
+        fail();
+        return true;
+    case camera_link::EventType::SecurityRequest:
+        logger::line("camera: asked for encryption - not answered (as the gpxcam app)");
+        return true;
+    default:
+        return false;
+    }
+}
+
+void handleEvent(const camera_link::Event &event)
+{
+    if (handleCommonEvent(event))
+        return;
+    using camera_link::EventType;
+    switch (step) {
+    case Step::Connecting:
+        if (event.type == EventType::Connected)
+            onConnected();
+        break;
+    case Step::Mtu:
+        if (event.type == EventType::MtuExchanged)
+            onMtu(event);
+        break;
+    case Step::Service:
+        if (event.type == EventType::ServiceFound)
+            onService(event);
+        break;
+    case Step::Characteristics:
+        if (event.type == EventType::CharacteristicsFound)
+            onCharacteristics(event);
+        break;
+    case Step::Key:
+        if (event.type == EventType::ReadDone)
+            onKey(event);
+        break;
+    case Step::DeviceId:
+        if (event.type == EventType::WriteDone)
+            onWritten(event, writeAppName);
+        break;
+    case Step::AppName:
+        if (event.type == EventType::WriteDone)
+            onWritten(event, writeDeviceName);
+        break;
+    case Step::DeviceName:
+        if (event.type == EventType::WriteDone)
+            onWritten(event, writeTime);
+        break;
+    case Step::Time:
+        if (event.type == EventType::WriteDone)
+            onWritten(event, onTimeAccepted);
+        break;
+    case Step::Disconnecting:
+    case Step::Idle:
+    case Step::Done:
+        break;
+    }
+}
+
+void handleTimeout()
+{
+    switch (step) {
+    case Step::Disconnecting:
+        // The SoftDevice ends the link itself by supervision timeout; the next start
+        // closes a link that is still open.
+        step = Step::Done;
+        break;
+    case Step::Connecting:
+        camera_link::cancelConnect();
+        setFailure("connect: no answer in %lu s", (unsigned long)(stepLimit / 1000));
+        fail(); // in case the connection came up just now
+        break;
+    default:
+        setFailure("%s: no answer in %lu s", stepName(step), (unsigned long)(stepLimit / 1000));
+        fail();
+        break;
+    }
+}
+
+} // namespace
+
+namespace camera_session {
+
+bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LENGTH])
+{
+    if (step != Step::Idle) {
+        setFailure("a session is running");
+        return false;
+    }
+    if (camera.camera.state == lumix::STATE_STANDBY) { // connecting would wake the camera
+        setFailure("the camera is in standby");
+        return false;
+    }
+    if (camera_link::connected()) {
+        camera_link::disconnect();
+        setFailure("an earlier connection was still open - closed now");
+        return false;
+    }
+    memcpy(cardUuid, uuid, sizeof(cardUuid));
+    memset(handles, 0, sizeof(handles));
+    memset(properties, 0, sizeof(properties));
+    mtu = BLE_GATT_ATT_MTU_DEFAULT;
+    serviceEnd = 0;
+    accepted = false;
+    failureText[0] = '\0';
+    if (!camera_link::connect(camera)) {
+        setFailure("connect: refused by the SoftDevice");
+        return false;
+    }
+    enter(Step::Connecting, CONNECT_MS);
+    return true;
+}
+
+Result poll()
+{
+    if (step == Step::Idle)
+        return Result::Failed;
+    camera_link::Event event;
+    while (step != Step::Done && camera_link::nextEvent(&event))
+        handleEvent(event);
+    if (step != Step::Done && millis() - stepStart >= stepLimit)
+        handleTimeout();
+    if (step != Step::Done)
+        return Result::Running;
+    step = Step::Idle;
+    return accepted ? Result::Accepted : Result::Failed;
+}
+
+const char *failure()
+{
+    return failureText;
+}
+
+void cancel()
+{
+    if (step == Step::Idle)
+        return;
+    if (step == Step::Connecting)
+        camera_link::cancelConnect();
+    if (camera_link::connected())
+        camera_link::disconnect();
+    accepted = false;
+    step = Step::Idle;
+}
+
+bool active()
+{
+    return step != Step::Idle;
+}
+
+} // namespace camera_session
