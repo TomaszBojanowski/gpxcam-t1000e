@@ -32,6 +32,7 @@ constexpr uint32_t GAP_PERCENT = 30;
 constexpr Note START_NOTES[] = {{NOTE_FS3, 100}, {NOTE_AS3, 100}, {NOTE_CS4, 150}};
 constexpr Note SHUTDOWN_NOTES[] = {{NOTE_CS4, 100}, {NOTE_AS3, 100}, {NOTE_FS3, 150}};
 constexpr Note CLICK_NOTES[] = {{NOTE_AS3, 20}}; // Meshtastic's key-press "chirp"
+constexpr Note REFUSE_NOTES[] = {{NOTE_AS3, 20}, {PAUSE, 100}, {NOTE_AS3, 20}};
 constexpr Note TEST_PAUSE_NOTES[] = {{PAUSE, 700}};
 
 // Volume = PWM duty, the share of each period the buzzer is driven. Meshtastic's
@@ -151,6 +152,12 @@ void playShutdown()
 void playClick()
 {
     const Melody sequence[] = {melody(CLICK_NOTES)};
+    play(sequence, 1, DUTY_PERCENT);
+}
+
+void playRefuse()
+{
+    const Melody sequence[] = {melody(REFUSE_NOTES)};
     play(sequence, 1, DUTY_PERCENT);
 }
 

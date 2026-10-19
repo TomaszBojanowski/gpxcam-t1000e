@@ -193,18 +193,22 @@ void poll()
 void powerOff()
 {
     countdown = false;
-    if (refuseWithUsb())
+    if (refuseWithUsb()) {
+        sound::playRefuse();
         return;
+    }
     sound::playShutdown();
     if (!waitForRelease(RELEASE_TIMEOUT_MS)) {
         sound::stop();
         logger::line("power off cancelled: button still pressed after %lu s",
                      (unsigned long)(RELEASE_TIMEOUT_MS / 1000));
+        sound::playRefuse();
         return;
     }
     waitForSoundEnd();
     board::led(false);
     enterSystemOff();
+    sound::playRefuse(); // reached only when enterSystemOff() refused
 }
 
 } // namespace power

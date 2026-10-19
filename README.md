@@ -6,7 +6,7 @@ Protokół jak w aplikacji gpxcam na Androida.
 
 Stan: **M1 w toku** – wszystkie układy wyłączone, dioda mruga, wersja w logu po USB, wejście w tryb
 wgrywania komendą `dfu`, melodia przy starcie, przycisk: krótkie naciśnięcie = cichy sygnał,
-przytrzymanie 3 s = wyłączenie z melodią (System OFF; z podłączonym USB odrzucane), napięcie baterii
+przytrzymanie 3 s = wyłączenie z melodią (System OFF; z podłączonym USB odrzucane – dwa kliknięcia), napięcie baterii
 i stan ładowania w logu co 60 s.
 
 ## Wymagania

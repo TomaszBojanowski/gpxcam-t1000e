@@ -33,8 +33,9 @@ bool countdownActive();
 void poll();
 
 // Plays the shutdown melody, waits for the button to be released and enters
-// System OFF. Returns, with a log line, only when powering off is refused:
-// USB connected, button still pressed, or a wake-up condition already active.
+// System OFF. Returns, with a log line and the refusal sound (two clicks), only
+// when powering off is refused: USB connected, button still pressed, or a
+// wake-up condition already active.
 void powerOff();
 
 } // namespace power

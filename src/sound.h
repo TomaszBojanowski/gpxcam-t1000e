@@ -12,6 +12,7 @@ bool begin();
 void playStart();    // power-on melody
 void playShutdown(); // power-off melody
 void playClick();    // one short, quiet tick for a short button press
+void playRefuse();   // two clicks: power off refused
 
 // Plays click, start and shutdown melody at the given PWM duty (1..50 %) so the
 // volume can be chosen by ear. Returns false for a duty outside that range.
