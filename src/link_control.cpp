@@ -19,6 +19,12 @@ namespace {
 
 constexpr uint32_t STEP_MS = 5000; // GPS mode, descriptors, notifications, every location (M4/M5)
 
+// Scan timing of the search modes (M6 decisions; link_policy::SearchMode).
+constexpr uint16_t RARE_SCAN_INTERVAL_MS = 2000;
+constexpr uint16_t RARE_SCAN_WINDOW_MS = 100;
+constexpr uint16_t STANDBY_SCAN_INTERVAL_MS = 10000;
+constexpr uint16_t STANDBY_SCAN_WINDOW_MS = 100;
+
 // CCCD values (Bluetooth Core Vol 3, Part G, 3.3.3.3), little-endian.
 constexpr uint8_t CCCD_NOTIFICATIONS[] = {0x01, 0x00};
 constexpr uint8_t CCCD_INDICATIONS[] = {0x02, 0x00};
@@ -51,6 +57,16 @@ int32_t pendingLongitudeE7 = 0;
 link_policy::Send pendingReason = link_policy::Send::No;
 bool noFixLogged = false;
 bool waitingForTimeLogged = false; // "waiting for GPS time" said once per search
+bool weakSignalLogged = false;     // "too weak" said once per search
+
+// The paired camera as the scan last saw it (kept when the camera list forgets it) and the
+// search mode that follows from it (M6).
+bool cameraSeen = false;
+uint32_t cameraSeenMs = 0;
+uint8_t cameraState = 0;
+uint32_t standbySinceMs = 0;
+uint32_t searchStartMs = 0; // since 'link on'
+link_policy::SearchMode mode = link_policy::SearchMode::Normal;
 
 // Counters since 'link on'.
 uint32_t sentCount = 0;
@@ -89,7 +105,96 @@ void startSearch()
     if (!bluetooth::scanning())
         bluetooth::scanOn();
     waitingForTimeLogged = false;
+    weakSignalLogged = false;
     enter(Phase::Searching);
+}
+
+const char *modeText()
+{
+    switch (mode) {
+    case link_policy::SearchMode::Normal:
+        return "normal";
+    case link_policy::SearchMode::Rare:
+        return "rare";
+    case link_policy::SearchMode::Standby:
+        return "standby";
+    }
+    return "?";
+}
+
+const camera_list::Entry *pairedCamera()
+{
+    const pairing_record::Record &record = pairing_store::record();
+    for (size_t i = 0; i < camera_list::MAX_CAMERAS; i++) {
+        const camera_list::Entry *camera = bluetooth::camera(i);
+        if (camera != nullptr && memcmp(camera->last.camera.serial, record.serial, lumix::SERIAL_LENGTH) == 0)
+            return camera;
+    }
+    return nullptr;
+}
+
+// Remembers the last report of the paired camera, whatever its state or signal.
+void noteSighting()
+{
+    const camera_list::Entry *camera = pairedCamera();
+    if (camera == nullptr || (cameraSeen && camera->lastSeenMs == cameraSeenMs))
+        return;
+    const uint8_t state = camera->last.camera.state;
+    if (state == lumix::STATE_STANDBY && (!cameraSeen || cameraState != lumix::STATE_STANDBY))
+        standbySinceMs = camera->lastSeenMs;
+    cameraSeen = true;
+    cameraSeenMs = camera->lastSeenMs;
+    cameraState = state;
+}
+
+void setScanFor(link_policy::SearchMode searchMode)
+{
+    switch (searchMode) {
+    case link_policy::SearchMode::Normal:
+        bluetooth::setNormalScanTiming();
+        break;
+    case link_policy::SearchMode::Rare:
+        bluetooth::setScanTiming(RARE_SCAN_INTERVAL_MS, RARE_SCAN_WINDOW_MS);
+        break;
+    case link_policy::SearchMode::Standby:
+        bluetooth::setScanTiming(STANDBY_SCAN_INTERVAL_MS, STANDBY_SCAN_WINDOW_MS);
+        break;
+    }
+}
+
+// Picks the search mode and sets the scan and the GPS for it (M6).
+void applyMode(uint32_t now)
+{
+    const link_policy::SearchMode next =
+        link_policy::searchMode(cameraSeen, now - cameraSeenMs, cameraState, now - searchStartMs);
+    if (next != mode) {
+        mode = next;
+        setScanFor(mode);
+        switch (mode) {
+        case link_policy::SearchMode::Normal:
+            logger::line("link: camera %s is back - normal scan, GPS on", serialText);
+            break;
+        case link_policy::SearchMode::Rare:
+            logger::line("link: camera %s not seen for 5 min - scan %u ms every %u s, GPS in Backup", serialText,
+                         RARE_SCAN_WINDOW_MS, RARE_SCAN_INTERVAL_MS / 1000);
+            break;
+        case link_policy::SearchMode::Standby:
+            logger::line("link: camera %s in standby - scan %u ms every %u s, waiting for it to switch on",
+                         serialText, STANDBY_SCAN_WINDOW_MS, STANDBY_SCAN_INTERVAL_MS / 1000);
+            break;
+        }
+    }
+    // The GPS is switched on only in normal mode; in standby it may stay on for a minute,
+    // but coming from rare mode it is not switched on again.
+    const bool gpsWanted = link_policy::gpsNeeded(mode, now - standbySinceMs);
+    if (mode == link_policy::SearchMode::Normal && !gps::isOn()) {
+        gps::on();
+    } else if (!gpsWanted && gps::isOn()) {
+        if (mode == link_policy::SearchMode::Standby)
+            logger::line("link: camera in standby for %lu s - GPS in Backup",
+                         (unsigned long)(link_policy::STANDBY_GPS_OFF_MS / 1000));
+        gps::off(); // about 2 s; the next start is a hot start
+    }
 }
 
 bool connectionOpen()
@@ -100,8 +205,12 @@ bool connectionOpen()
 
 void pause(const char *why)
 {
-    if (connectionOpen())
+    if (connectionOpen()) {
         sound::playDisconnected();
+        cameraSeen = true; // the connection showed it until now
+        cameraSeenMs = millis();
+        cameraState = lumix::STATE_ON;
+    }
     // A connection that lasted starts the pauses again from 5 s, however it ended.
     if (connectionOpen() && millis() - connectedAt >= link_policy::STABLE_CONNECTION_MS)
         failuresInARow = 0;
@@ -365,6 +474,10 @@ void introducing()
 
 void search(uint32_t now)
 {
+    noteSighting();
+    applyMode(now);
+    if (mode != link_policy::SearchMode::Normal)
+        return; // rare or standby: only watch; never connect in standby
     // The introduction ends with the time, so connecting before the GPS has it would only
     // be a connection the card has to drop (M5 step 2 test).
     int64_t utcNow = 0;
@@ -375,6 +488,13 @@ void search(uint32_t now)
         return;
     }
     const pairing_record::Record &record = pairing_store::record();
+    const camera_list::Entry *paired = pairedCamera();
+    if (paired != nullptr && paired->last.camera.state == lumix::STATE_ON &&
+        paired->last.rssi < link_policy::MIN_RSSI_DBM && !weakSignalLogged) {
+        logger::line("link: camera %s seen at %d dBm - too weak, waiting for %d dBm", serialText, paired->last.rssi,
+                     link_policy::MIN_RSSI_DBM);
+        weakSignalLogged = true;
+    }
     for (size_t i = 0; i < camera_list::MAX_CAMERAS; i++) {
         const camera_list::Entry *camera = bluetooth::camera(i);
         if (camera == nullptr || !link_policy::shouldConnect(record, *camera, now))
@@ -437,6 +557,10 @@ void start()
     }
     lumix::formatSerial(pairing_store::record().serial, serialText, sizeof(serialText));
     failuresInARow = 0;
+    cameraSeen = false;
+    searchStartMs = millis();
+    mode = link_policy::SearchMode::Normal;
+    bluetooth::setNormalScanTiming();
     sentCount = failedCount = 0;
     everSent = false;
     if (!gps::isOn())
@@ -454,6 +578,7 @@ void stop(bool keepGps)
         camera_link::disconnect();
     if (bluetooth::scanning())
         bluetooth::scanOff();
+    bluetooth::setNormalScanTiming(); // for 'scan on' and pairing
     if (!keepGps)
         gps::off();
     logger::line("link: off");
@@ -485,6 +610,9 @@ void logState()
     else if (phase == Phase::Pausing)
         logger::line("link: pause, looking again in %lu s; last location %s, %lu sent",
                      (unsigned long)((pauseLength - min(pauseLength, now - phaseStart)) / 1000), last,
+                     (unsigned long)sentCount);
+    else if (phase == Phase::Searching)
+        logger::line("link: looking for the camera, %s mode; last location %s, %lu sent", modeText(), last,
                      (unsigned long)sentCount);
     else
         logger::line("link: %s; last location %s, %lu sent", phaseText(), last, (unsigned long)sentCount);

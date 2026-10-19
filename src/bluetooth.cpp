@@ -24,6 +24,11 @@ constexpr uint8_t CENTRAL_LINKS = 1;    // the camera
 // listens 50 ms of every 100 ms, until stopped.
 constexpr uint16_t SCAN_INTERVAL_MS = 100;
 constexpr uint16_t SCAN_WINDOW_MS = 50;
+// The SoftDevice accepts a legacy scan interval up to 10.24 s (ble_gap.h, BLE_GAP_SCAN_INTERVAL_MAX).
+constexpr uint16_t SCAN_INTERVAL_MAX_MS = 10240;
+
+uint16_t scanIntervalMs = SCAN_INTERVAL_MS;
+uint16_t scanWindowMs = SCAN_WINDOW_MS;
 constexpr uint16_t SCAN_UNTIL_STOPPED = 0; // BLEScanner::start() timeout: 0 = none
 
 constexpr uint32_t STATUS_PERIOD_MS = 10000;
@@ -193,8 +198,36 @@ void scanOn()
     }
     scanStartMs = millis();
     lastStatusMs = scanStartMs;
-    logger::line("scan: on - active, radio %u ms of every %u ms, logging LUMIX cameras only", SCAN_WINDOW_MS,
-                 SCAN_INTERVAL_MS);
+    logger::line("scan: on - active, radio %u ms of every %u ms, logging LUMIX cameras only", scanWindowMs,
+                 scanIntervalMs);
+}
+
+bool setScanTiming(uint16_t intervalMs, uint16_t windowMs)
+{
+    if (!started || intervalMs > SCAN_INTERVAL_MAX_MS || windowMs == 0 || windowMs > intervalMs)
+        return false;
+    if (intervalMs == scanIntervalMs && windowMs == scanWindowMs)
+        return true;
+    scanIntervalMs = intervalMs;
+    scanWindowMs = windowMs;
+    Bluefruit.Scanner.setIntervalMS(scanIntervalMs, scanWindowMs);
+    if (!scanActive)
+        return true;
+    // Restart with the new timing; the camera list and the counters stay.
+    scanActive = false; // the BLE task stops resuming
+    Bluefruit.Scanner.stop();
+    scanActive = true;
+    if (!Bluefruit.Scanner.start(SCAN_UNTIL_STOPPED)) {
+        scanActive = false;
+        logger::line("scan: could not restart with the new timing");
+        return false;
+    }
+    return true;
+}
+
+void setNormalScanTiming()
+{
+    setScanTiming(SCAN_INTERVAL_MS, SCAN_WINDOW_MS);
 }
 
 void scanOff()

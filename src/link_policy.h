@@ -33,7 +33,8 @@ constexpr uint32_t STANDBY_GPS_OFF_MS = 60000;
 // lastState: of its last report; msSearching: since the search started.
 SearchMode searchMode(bool cameraSeen, uint32_t msSinceSeen, uint8_t lastState, uint32_t msSearching);
 
-// Whether the GPS should be on in this mode; msInStandby: since the camera went to standby.
+// Whether the GPS may stay on in this mode; msInStandby: since the camera went to standby.
+// (It is switched on only in normal mode.)
 bool gpsNeeded(SearchMode mode, uint32_t msInStandby);
 
 // Pause before looking for the camera again after a disconnect or a failed connection

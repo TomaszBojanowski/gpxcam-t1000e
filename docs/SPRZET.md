@@ -309,6 +309,21 @@ ok. 1 s – puszczone po 836 ms, karta startuje.
 - **Zasięg (krok 3):** utrata zasięgu po 134 s – `HCI 0x08` (przekroczenie czasu nadzoru), przerwa 5 s; próba przy
   −90 dBm nieudana (`HCI 0x3e`), przerwa 15 s; po powrocie połączenie w 1,5 s.
 
+## Energia (M6)
+
+- **Tryby szukania** (`link_policy::searchMode`), tylko gdy karta nie jest połączona:
+  - normalny – skan 50 ms co 100 ms, GPS włączony;
+  - rzadki – aparatu nie widać od 5 min: skan 100 ms co 2 s, GPS w Backup;
+  - czuwanie – ostatni raport aparatu to `06`: skan 100 ms co 10 s, GPS w Backup po minucie; karta tylko czeka na `00`.
+
+  Raport w stanie `00` od razu przywraca tryb normalny (GPS włączany tylko w nim). Próba połączenia dopiero przy
+  co najmniej −85 dBm.
+- **Sprawdzone na karcie (krok 2):** czuwanie – po minucie GPS w Backup; od włączenia aparatu do połączenia ok. 25 s
+  (skan co 10 s + gorący start GPS 5 s + połączenie); poza zasięgiem – rozłączenie `HCI 0x08`, po 5 min tryb rzadki;
+  po powrocie połączenie ok. 11 s od wykrycia (gorący start GPS 9 s). W czuwaniu aparat bywa niewidoczny przez 30 s
+  (rzadkie ogłoszenia w czuwaniu i rzadki skan) – tryb zostaje, bo karta pamięta ostatni stan.
+- **DC/DC:** nie włączamy – brak potwierdzenia, że płytka ma cewkę dla REG1, Meshtastic też go nie włącza.
+
 ## Otwarte pytania
 
 - **Wybudzenie a LATCH (M2, krok 4):** raz po wybudzeniu przyciskiem bit P0.06 w `LATCH` nie dał się skasować
