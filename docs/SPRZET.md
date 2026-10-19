@@ -79,7 +79,14 @@ GPIO DETECT, np. przycisk (bit 16 `OFF`), **VBUS – podłączenie kabla USB** (
 pole NFC (bit 19) i reset pinem (bit 0). Wybudzenie zawsze kończy się resetem, więc bootloader (w tym ręczny DFU)
 działa po każdym wybudzeniu. Wybudzenia przez VBUS nie da się wyłączyć (Nordic DevZone). Jeśli warunek GPIO DETECT
 jest spełniony w chwili wejścia w System OFF, procesor od razu się budzi – przed wyłączeniem trzeba poczekać
-na puszczenie przycisku.
+na puszczenie przycisku. VBUS budzi tylko wtedy, gdy napięcie **wzrośnie** w czasie System OFF (PS 5.3.2), dlatego
+program nie wchodzi w System OFF z podłączonym USB.
+
+Sprawdzone na karcie (M1, krok 4): wyłączenie na baterii działa (po odłączeniu kabla nRF przestaje widzieć VBUS);
+podłączenie kabla budzi procesor (`RESETREAS` = 0x00100000, `VBUS`); przycisk budzi procesor
+(`RESETREAS` = 0x00010000, `OFF`). Konfiguracja pinów i GPREGRET przetrwają System OFF (PS 6.9, 5.3.6.8, 5.3.7.16),
+ale bootloader przed uruchomieniem programu przywraca wszystkie piny do stanu po resecie (`board_teardown()`
+w `src/boards/boards.c`) – po każdym starcie trzeba ponownie ustawić piny i uśpić LR1110.
 
 ## Piny
 
