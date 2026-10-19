@@ -40,11 +40,18 @@ char command[COMMAND_MAX + 1];
 size_t commandLen = 0;
 bool commandTooLong = false;
 
-void logVersion()
+// The periodic status line is not kept in the log history (it would push the
+// events out); the version shown at start and with 'v' is.
+void logVersion(bool keepInHistory)
 {
     // No build date/time: the same source must give the same UF2 image.
-    logger::line("%s %s (git %s), uptime %lu s, log dropped %lu", FW_NAME, FW_VERSION, FW_GIT,
-                 (unsigned long)(millis() / 1000), (unsigned long)logger::dropped());
+    char text[logger::LINE_MAX];
+    snprintf(text, sizeof(text), "%s %s (git %s), uptime %lu s, log dropped %lu", FW_NAME, FW_VERSION,
+             FW_GIT, (unsigned long)(millis() / 1000), (unsigned long)logger::dropped());
+    if (keepInHistory)
+        logger::line("%s", text);
+    else
+        logger::transient("%s", text);
 }
 
 void logBattery()
@@ -55,9 +62,11 @@ void logBattery()
 
 void logHelp()
 {
-    logger::line("commands: v = version and reset reason, p = power state, dfu = UF2 bootloader,");
-    logger::line("          off = System OFF after a 15 s countdown (refused with USB connected)");
-    logger::line("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
+    logger::transient("commands: v = version and reset reason, p = power state, dfu = UF2 bootloader,");
+    logger::transient("          off = System OFF after a 15 s countdown (refused with USB connected),");
+    logger::transient("          log = last %lu log lines, also those from times without USB",
+                      (unsigned long)logger::HISTORY_LINES);
+    logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
 }
 
 void rebootToUf2Bootloader()
@@ -99,7 +108,7 @@ void handleButton()
 void runCommand(const char *cmd)
 {
     if (strcmp(cmd, "v") == 0) {
-        logVersion();
+        logVersion(true);
         diag::logResetInfo();
     } else if (strcmp(cmd, "p") == 0) {
         board::logPowerState();
@@ -108,6 +117,8 @@ void runCommand(const char *cmd)
         rebootToUf2Bootloader();
     } else if (strcmp(cmd, "off") == 0) {
         power::startCountdown();
+    } else if (strcmp(cmd, "log") == 0) {
+        logger::dumpHistory();
     } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
         runSoundTest(cmd + strlen(SOUND_TEST_COMMAND));
     } else if (strcmp(cmd, "diag bat") == 0) {
@@ -182,7 +193,7 @@ void setup()
         delay(LOOP_DELAY_MS);
     }
 
-    logVersion();
+    logVersion(true);
     if (!soundReady)
         logger::line("sound: PWM3 is in use, buzzer disabled");
     diag::logResetInfo();
@@ -202,7 +213,7 @@ void loop()
 
     if (now - lastStatus >= STATUS_PERIOD_MS) {
         lastStatus = now;
-        logVersion();
+        logVersion(false);
     }
     if (now - lastBattery >= BATTERY_PERIOD_MS) {
         lastBattery = now;
