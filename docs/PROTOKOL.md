@@ -11,6 +11,9 @@ Sprawdzony na S5II w aplikacji gpxcam na Androida (repo `TomaszBojanowski/gpxcam
 - Ogłaszana usługa: `054AC620-3214-11E6-AC0D-0002A5D5C51B`.
 - Włączony: adres RPA. Czuwanie: adres publiczny. Legacy ADV_IND, connectable.
 - Łączymy się tylko, gdy stan i numer seryjny są znane, a numer zgadza się z zapamiętanym.
+- Karta przyjmuje tylko dokładnie ten układ: dane producenta (typ AD `0xFF`) mają 8 bajtów razem z `3a 00`.
+  Dane Panasonic w innym układzie (inne urządzenia tej firmy) nie są aparatem. Dane mogą przyjść w ogłoszeniu
+  albo w odpowiedzi na skan – czytamy oba (`src/lumix.cpp`).
 
 ## Usługa i charakterystyki
 Usługa: `1FE71B85-8344-4E6A-BF1A-AC7ACDB3F8AF`
@@ -70,6 +73,11 @@ Chwila: 2026-10-13 22:30:29 UTC, strefa Europe/Warsaw (czas letni).
 - nazwa „iPhone” przed XOR → `6850690600656e6fffffff00`; „iPhone 17 Pro Max” → 24 bajty
 - identyfikator dla UUID `00010203-0405-0607-0809-0a0b0c0d0e0f` przed XOR → `03020100070605040b0a09080f0e0d0cffffffcd`
 - `xor(00 00 00 00 0f, 01 02 03 04)` → `010203040e`
+
+Ogłoszenie (zmyślony numer seryjny `12 34 56 78 9a`, testy `test/test_lumix`):
+- `02 01 06 09 ff 3a 00 00 12 34 56 78 9a` → aparat, stan `00` (włączony), numer `123456789a`
+- `09 ff 3a 00 06 12 34 56 78 9a` (sama odpowiedź na skan) → aparat, stan `06` (czuwanie)
+- `05 ff 3a 00 01 02` → dane Panasonic w innym układzie, nie aparat
 
 ## Zachowania aparatu warte uwagi
 - Po kilku odrzuconych połączeniach aparat przestaje się ogłaszać – pomaga wyłączenie i włączenie aparatu.

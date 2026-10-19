@@ -47,7 +47,7 @@ Tylko DFU, bez wgrywania: `tools/dfu.sh`. Karta zostaje wtedy w bootloaderze, do
 pio test -e native
 ```
 
-Moduły bez zależności od sprzętu (parser NMEA) – testy na zmyślonych danych.
+Moduły bez zależności od sprzętu (parser NMEA, ogłoszenie aparatu LUMIX) – testy na zmyślonych danych.
 
 ## Log po USB
 
