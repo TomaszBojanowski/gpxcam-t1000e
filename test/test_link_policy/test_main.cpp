@@ -22,13 +22,14 @@ pairing_record::Record paired(uint8_t lastSerialByte)
     return record;
 }
 
-camera_list::Entry seen(uint8_t lastSerialByte, uint8_t state, uint32_t lastSeenMs)
+camera_list::Entry seen(uint8_t lastSerialByte, uint8_t state, uint32_t lastSeenMs, int8_t rssi = -60)
 {
     camera_list::Entry entry = {};
     const uint8_t serial[lumix::SERIAL_LENGTH] = {0x12, 0x34, 0x56, 0x78, lastSerialByte};
     entry.used = true;
     memcpy(entry.last.camera.serial, serial, sizeof(serial));
     entry.last.camera.state = state;
+    entry.last.rssi = rssi;
     entry.lastSeenMs = lastSeenMs;
     return entry;
 }
@@ -55,6 +56,45 @@ void test_no_connection_without_pairing_or_entry()
     camera_list::Entry empty = seen(0x9a, lumix::STATE_ON, 10000);
     empty.used = false;
     TEST_ASSERT_FALSE(link_policy::shouldConnect(paired(0x9a), empty, 10000));
+}
+
+void test_no_connection_below_the_rssi_threshold()
+{
+    const pairing_record::Record record = paired(0x9a);
+    TEST_ASSERT_TRUE(link_policy::shouldConnect(record, seen(0x9a, lumix::STATE_ON, 10000, -85), 10000));
+    TEST_ASSERT_FALSE(link_policy::shouldConnect(record, seen(0x9a, lumix::STATE_ON, 10000, -86), 10000));
+    TEST_ASSERT_FALSE(link_policy::shouldConnect(record, seen(0x9a, lumix::STATE_ON, 10000, -90), 10000));
+    // a strong signal never makes standby connectable
+    TEST_ASSERT_FALSE(link_policy::shouldConnect(record, seen(0x9a, lumix::STATE_STANDBY, 10000, -40), 10000));
+}
+
+void test_search_mode()
+{
+    using link_policy::SearchMode;
+    const uint32_t FIVE_MINUTES = link_policy::RARE_AFTER_MS;
+    // never seen since the link started
+    TEST_ASSERT_EQUAL(SearchMode::Normal, link_policy::searchMode(false, 0, 0, 0));
+    TEST_ASSERT_EQUAL(SearchMode::Normal, link_policy::searchMode(false, 0, 0, FIVE_MINUTES - 1));
+    TEST_ASSERT_EQUAL(SearchMode::Rare, link_policy::searchMode(false, 0, 0, FIVE_MINUTES));
+    // seen on, recently and long ago
+    TEST_ASSERT_EQUAL(SearchMode::Normal, link_policy::searchMode(true, 1000, lumix::STATE_ON, FIVE_MINUTES * 3));
+    TEST_ASSERT_EQUAL(SearchMode::Rare, link_policy::searchMode(true, FIVE_MINUTES, lumix::STATE_ON, FIVE_MINUTES));
+    // seen in standby, recently and long ago (Bluetooth off or carried away)
+    TEST_ASSERT_EQUAL(SearchMode::Standby, link_policy::searchMode(true, 1000, lumix::STATE_STANDBY, 0));
+    TEST_ASSERT_EQUAL(SearchMode::Standby,
+                      link_policy::searchMode(true, FIVE_MINUTES - 1, lumix::STATE_STANDBY, FIVE_MINUTES * 2));
+    TEST_ASSERT_EQUAL(SearchMode::Rare, link_policy::searchMode(true, FIVE_MINUTES, lumix::STATE_STANDBY, 0));
+    // pairing state is not standby: look normally
+    TEST_ASSERT_EQUAL(SearchMode::Normal, link_policy::searchMode(true, 1000, lumix::STATE_PAIRING, 0));
+}
+
+void test_gps_needed()
+{
+    using link_policy::SearchMode;
+    TEST_ASSERT_TRUE(link_policy::gpsNeeded(SearchMode::Normal, 0));
+    TEST_ASSERT_FALSE(link_policy::gpsNeeded(SearchMode::Rare, 0));
+    TEST_ASSERT_TRUE(link_policy::gpsNeeded(SearchMode::Standby, link_policy::STANDBY_GPS_OFF_MS - 1));
+    TEST_ASSERT_FALSE(link_policy::gpsNeeded(SearchMode::Standby, link_policy::STANDBY_GPS_OFF_MS));
 }
 
 void test_pause_sequence()
@@ -98,6 +138,9 @@ int main(int, char **)
     UNITY_BEGIN();
     RUN_TEST(test_connect_only_to_the_paired_camera_when_on);
     RUN_TEST(test_no_connection_without_pairing_or_entry);
+    RUN_TEST(test_no_connection_below_the_rssi_threshold);
+    RUN_TEST(test_search_mode);
+    RUN_TEST(test_gps_needed);
     RUN_TEST(test_pause_sequence);
     RUN_TEST(test_location_due);
     RUN_TEST(test_distance);
