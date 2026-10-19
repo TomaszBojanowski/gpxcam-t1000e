@@ -160,7 +160,9 @@ W uśpieniu LR1110 trzyma BUSY w stanie wysokim; program sprawdza to i zapisuje 
   nRF od razu widzi VBUS (`USBREGSTATUS.VBUSDETECT`).
 - **Ładowarka** (oba sygnały aktywne stanem niskim, wg Meshtastic): w trakcie ładowania P1.03 = 0, P1.04 = 1;
   po naładowaniu (4,18 V) P1.04 = 0 – program pokazuje wtedy `USB, charged`. Bez kabla ładowarka nie działa,
-  więc program czyta te linie tylko przy obecnym VBUS. Pomiar baterii bez kabla – jeszcze nie sprawdzony.
+  więc program czyta te linie tylko przy obecnym VBUS.
+- **Bateria bez kabla** (M1, bufor logu): pełny akumulator, 10 minut na baterii – 4174–4184 mV, rozrzut
+  pojedynczych pomiarów ok. ±5 mV; spadku w tym czasie nie widać. Zużycie prądu – do zmierzenia w M6.
 
 ## Bootloader a dioda
 
