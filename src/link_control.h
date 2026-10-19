@@ -22,6 +22,10 @@ void stop(bool keepGps);
 
 bool active();
 
+// What the LED shows (M5 decision).
+enum class Indication { Off, Searching, Connected };
+Indication indication();
+
 // Logs the link state, the time since the last location and the counters, for 'p'.
 void logState();
 

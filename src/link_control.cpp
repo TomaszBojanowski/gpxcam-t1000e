@@ -100,6 +100,8 @@ bool connectionOpen()
 
 void pause(const char *why)
 {
+    if (connectionOpen())
+        sound::playDisconnected();
     // A connection that lasted starts the pauses again from 5 s, however it ended.
     if (connectionOpen() && millis() - connectedAt >= link_policy::STABLE_CONNECTION_MS)
         failuresInARow = 0;
@@ -190,6 +192,7 @@ void onAccepted()
     }
     connectedAt = millis();
     logger::line("link: connected to camera %s (MTU %u)", serialText, found.mtu);
+    sound::playConnected();
     const uint8_t gpsOn[] = {lumix::GPS_MODE_ON};
     if (writeTo(gpsModeHandle, gpsOn, sizeof(gpsOn)))
         enter(Phase::GpsMode);
@@ -328,7 +331,9 @@ void settingUp(uint32_t now)
                        last != 0 && last < serviceEnd) {
                 findCccd(last + 1);
             } else {
-                logger::line("link: no notification descriptor - sending every 25 s only");
+                // The S5II: the next characteristic follows the value at once (M5 step 2), and
+                // the gpxcam app does not write a CCCD then either. Notifications still count.
+                logger::line("link: no CCCD on the notification characteristic (as on the S5II) - listening without it");
                 enterConnected();
             }
         } else if (phase == Phase::EnablingNotifications && event.type == camera_link::EventType::WriteDone) {
@@ -458,6 +463,13 @@ void stop(bool keepGps)
 bool active()
 {
     return phase != Phase::Off && phase != Phase::Rejected;
+}
+
+Indication indication()
+{
+    if (phase == Phase::Connected)
+        return Indication::Connected;
+    return active() ? Indication::Searching : Indication::Off;
 }
 
 void logState()

@@ -26,6 +26,12 @@ namespace {
 constexpr uint32_t LED_PERIOD_MS = 1000;      // heartbeat: one short flash per second
 constexpr uint32_t LED_ON_MS = 100;
 constexpr uint32_t COUNTDOWN_LED_PERIOD_MS = 200; // fast blinking while 'off' counts down
+// Link (M5 decision): looking for the camera - two short flashes every 2 s; connected -
+// one short flash every 4 s.
+constexpr uint32_t LINK_FLASH_MS = 50;
+constexpr uint32_t SEARCH_LED_PERIOD_MS = 2000;
+constexpr uint32_t SEARCH_SECOND_FLASH_MS = 200; // the second flash starts here
+constexpr uint32_t CONNECTED_LED_PERIOD_MS = 4000;
 constexpr uint32_t STATUS_PERIOD_MS = 10000;  // version/uptime line in the log
 constexpr uint32_t BATTERY_PERIOD_MS = 60000; // battery line in the log
 constexpr uint32_t SERIAL_WAIT_MS = 2000;     // at start: wait this long for a terminal
@@ -69,6 +75,23 @@ void logVersion(bool keepInHistory)
         logger::transient("%s", text);
 }
 
+bool ledLit(uint32_t now) // not ledOn(): the core has one
+{
+    if (power::countdownActive())
+        return now % COUNTDOWN_LED_PERIOD_MS < LED_ON_MS;
+    switch (link_control::indication()) {
+    case link_control::Indication::Connected:
+        return now % CONNECTED_LED_PERIOD_MS < LINK_FLASH_MS;
+    case link_control::Indication::Searching: {
+        const uint32_t t = now % SEARCH_LED_PERIOD_MS;
+        return t < LINK_FLASH_MS || (t >= SEARCH_SECOND_FLASH_MS && t < SEARCH_SECOND_FLASH_MS + LINK_FLASH_MS);
+    }
+    case link_control::Indication::Off:
+        break;
+    }
+    return now % LED_PERIOD_MS < LED_ON_MS;
+}
+
 void logBattery()
 {
     const battery::Status status = battery::read();
@@ -110,7 +133,8 @@ void runSoundTest(const char *argument)
     if (end == argument || *end != '\0' || duty > UINT8_MAX || !sound::playTest((uint8_t)duty))
         logger::line("usage: diag snd N, N = 1..50 (%% PWM duty)");
     else
-        logger::line("sound test at %lu %% duty: click, start, shutdown, pairing, paired", duty);
+        logger::line("sound test at %lu %% duty: click, start, shutdown, pairing, paired, connected, disconnected",
+                     duty);
 }
 
 constexpr const char *GPS_TEST_COMMAND = "gps test ";
@@ -336,8 +360,7 @@ void loop()
     static uint32_t lastBattery = millis(); // measured once in setup()
     const uint32_t now = millis();
 
-    const uint32_t ledPeriod = power::countdownActive() ? COUNTDOWN_LED_PERIOD_MS : LED_PERIOD_MS;
-    board::led(now % ledPeriod < LED_ON_MS);
+    board::led(ledLit(now));
 
     if (now - lastStatus >= STATUS_PERIOD_MS) {
         lastStatus = now;

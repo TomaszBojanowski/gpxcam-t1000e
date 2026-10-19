@@ -36,6 +36,8 @@ constexpr Note CLICK_NOTES[] = {{NOTE_AS3, 20}}; // Meshtastic's key-press "chir
 constexpr Note REFUSE_NOTES[] = {{NOTE_AS3, 20}, {PAUSE, 100}, {NOTE_AS3, 20}};
 constexpr Note PAIRING_NOTES[] = {{NOTE_CS4, 60}, {PAUSE, 60}, {NOTE_CS4, 60}};
 constexpr Note PAIRED_NOTES[] = {{NOTE_AS3, 100}, {NOTE_CS4, 100}, {NOTE_FS4, 200}};
+constexpr Note CONNECTED_NOTES[] = {{NOTE_CS4, 60}, {NOTE_FS4, 60}};    // M5
+constexpr Note DISCONNECTED_NOTES[] = {{NOTE_FS4, 60}, {NOTE_CS4, 60}}; // M5
 constexpr Note TEST_PAUSE_NOTES[] = {{PAUSE, 700}};
 
 // Volume = PWM duty, the share of each period the buzzer is driven. Meshtastic's
@@ -51,7 +53,7 @@ constexpr uint8_t PWM_CLOCK_DIV = PWM_PRESCALER_PRESCALER_DIV_16;
 constexpr uint32_t PWM_CLOCK_HZ = 16000000 / 16;
 // COUNTERTOP = PWM_CLOCK_HZ / f: 3610..5405 for 277..185 Hz, within its 15-bit range.
 
-constexpr size_t QUEUE_MAX = 9; // the longest sequence is the volume test
+constexpr size_t QUEUE_MAX = 13; // the longest sequence is the volume test
 
 bool available = false;
 bool isPlaying = false;
@@ -176,13 +178,27 @@ void playPaired()
     play(sequence, 1, DUTY_PERCENT);
 }
 
+void playConnected()
+{
+    const Melody sequence[] = {melody(CONNECTED_NOTES)};
+    play(sequence, 1, DUTY_PERCENT);
+}
+
+void playDisconnected()
+{
+    const Melody sequence[] = {melody(DISCONNECTED_NOTES)};
+    play(sequence, 1, DUTY_PERCENT);
+}
+
 bool playTest(uint8_t duty)
 {
     if (duty < 1 || duty > MAX_DUTY_PERCENT)
         return false;
     const Melody sequence[] = {melody(CLICK_NOTES),    melody(TEST_PAUSE_NOTES), melody(START_NOTES),
                                melody(TEST_PAUSE_NOTES), melody(SHUTDOWN_NOTES), melody(TEST_PAUSE_NOTES),
-                               melody(PAIRING_NOTES),    melody(TEST_PAUSE_NOTES), melody(PAIRED_NOTES)};
+                               melody(PAIRING_NOTES),    melody(TEST_PAUSE_NOTES), melody(PAIRED_NOTES),
+                               melody(TEST_PAUSE_NOTES), melody(CONNECTED_NOTES),  melody(TEST_PAUSE_NOTES),
+                               melody(DISCONNECTED_NOTES)};
     static_assert(sizeof(sequence) / sizeof(sequence[0]) <= QUEUE_MAX, "the test must fit in the queue");
     play(sequence, sizeof(sequence) / sizeof(sequence[0]), duty);
     return true;

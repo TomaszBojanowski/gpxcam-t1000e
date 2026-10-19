@@ -299,8 +299,15 @@ ok. 1 s – puszczone po 836 ms, karta startuje.
   19 s przed zdjęciem (ostatnia wysyłka), status `A`; `gps off` w trakcie – połączenie trwa, lokalizacje czekają,
   `gps on` – fix po 8 s i wysyłki wracają; wyłączenie aparatu – aparat zamyka połączenie (`HCI 0x13`), karta widzi
   go w czuwaniu `06` i nie łączy się przez 5 min; włączenie – połączenie w 1,6 s.
-- **Do wyjaśnienia:** karta nie znajduje deskryptora CCCD przy charakterystyce powiadomień, więc powiadomienia od
-  aparatu nie są włączone (lokalizacje idą co 25 s). Aparat nie zapisuje w EXIF wysokości, choć karta ją wysyła.
+- **Powiadomienia bez CCCD:** w S5II charakterystyka powiadomień (uchwyt `0x008e`, tylko „notify”) nie ma deskryptora
+  CCCD – zaraz za wartością jest deklaracja następnej charakterystyki (`0x2803`). gpxcam też nic nie zapisuje
+  (`getDescriptor` zwraca null). Karta słucha powiadomień bez CCCD; aparat wysłał jedno ok. 2 s przed wyłączeniem.
+- **Wysokość:** S5II nie zapisuje jej w EXIF ani z kartą, ani z aplikacją Lumix Lab (ten sam zestaw znaczników GPS,
+  `GPSMeasureMode` 0); karta wysyła wysokość zgodnie z protokołem.
+- **Sygnalizacja (krok 3):** dioda – szukanie: dwa mignięcia 50 ms co 2 s, połączony: jedno co 4 s, bez `link`: co 1 s;
+  dźwięki – połączenie: dwa rosnące tony (CS4, FS4), koniec połączenia: dwa opadające.
+- **Zasięg (krok 3):** utrata zasięgu po 134 s – `HCI 0x08` (przekroczenie czasu nadzoru), przerwa 5 s; próba przy
+  −90 dBm nieudana (`HCI 0x3e`), przerwa 15 s; po powrocie połączenie w 1,5 s.
 
 ## Otwarte pytania
 

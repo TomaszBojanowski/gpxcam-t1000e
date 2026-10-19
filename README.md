@@ -79,13 +79,15 @@ Włącza GPS i skan, łączy się tylko ze sparowanym numerem w stanie `00` i do
 w aparacie i lokalizacja od razu, dalej co 25 s (wcześniej po przesunięciu o ponad 20 m albo na prośbę aparatu, nie
 częściej niż co 5 s). Bez fixa połączenie trwa, ale lokalizacje czekają. Po rozłączeniu przerwa 5 s, 15 s, potem 60 s;
 gdy aparat odrzuci kartę – koniec łączenia do `link on` albo `pair`. `link off` rozłącza i wyłącza GPS. Gdy działa
-`link`, skanem steruje on (`scan on/off` jest odrzucane).
+`link`, skanem steruje on (`scan on/off` jest odrzucane). Dioda: szukanie – dwa krótkie mignięcia co 2 s, połączony –
+jedno co 4 s. Dźwięki: połączenie – dwa rosnące tony, koniec połączenia – dwa opadające.
 `unpair` – zapomina sparowany aparat (identyfikator karty zostaje). `p` pokazuje też identyfikator karty (UUID)
 i sparowany aparat – także tych wartości nie publikować.
 Włączanie: przytrzymanie przycisku ok. 1 s (krótsze naciśnięcie – karta wraca do uśpienia; dioda może mignąć
 od bootloadera) albo podłączenie USB.
 Diagnostyka (tylko odczyty): `diag bat` – napięcie baterii przy różnych czasach od włączenia dzielnika (ok. 4 s).
-`diag snd N` – wszystkie dźwięki (klik, start, wyłączenie, parowanie, sparowano) z wypełnieniem PWM N% (1–50),
+`diag snd N` – wszystkie dźwięki (klik, start, wyłączenie, parowanie, sparowano, połączenie, rozłączenie)
+z wypełnieniem PWM N% (1–50),
 do dobrania głośności na słuch.
 Portu nie otwierać z prędkością 1200 bps – to uruchamia bootloader bez dysku.
 
