@@ -1,0 +1,9 @@
+#pragma once
+
+#define FW_NAME "gpxcam-t1000e"
+#define FW_VERSION "0.0.1"
+
+// Set by tools/version.py from `git describe`.
+#ifndef FW_GIT
+#define FW_GIT "none"
+#endif
