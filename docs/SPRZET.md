@@ -86,11 +86,11 @@ na puszczenie przycisku.
 Numeracja nRF: P0.x = x, P1.x = 32 + x. Podstawa: `variant.h` Meshtastic. Uzupełnienia z SDK Seeed
 (`Seeed-Tracker-T1000-E-for-LoRaWAN-dev-board`, `smtc_hal/inc/smtc_hal_config.h`).
 
-| Funkcja | Pin | Stan po starcie programu (M0) |
+| Funkcja | Pin | Stan po starcie programu |
 |---|---|---|
 | Dioda zielona (świeci przy 1 – sprawdzone na karcie w M0) | P0.24 | mruga |
 | Dioda czerwona (tylko Seeed) | P0.03 | 0 |
-| Przycisk | P0.06 | nieużywany w M0 |
+| Przycisk (aktywny stanem wysokim, bez rezystora na płytce) | P0.06 | odłączony (M1: podciąganie w dół) |
 | Brzęczyk: zasilanie / PWM | P1.05 / P0.25 | 0 / 0 |
 | GPS: zasilanie | P1.11 | 0 |
 | GPS: podtrzymanie RTC (VRTC) | P0.08 | 0 (zob. odstępstwa i M2) |
@@ -98,13 +98,13 @@ Numeracja nRF: P0.x = x, P1.x = 32 + x. Podstawa: `variant.h` Meshtastic. Uzupe�
 | GPS: UART (nRF TX / nRF RX) | P0.13 / P0.14 | odłączone |
 | Akcelerometr: zasilanie / INT | P1.07 / P1.02 | 0 / odłączone |
 | I2C SDA / SCL | P0.26 / P0.27 | odłączone |
-| Czujniki temperatury i światła: zasilanie | P1.06 | 0 |
+| Zasilanie czujników temperatury i światła oraz dzielników baterii i P0.04 | P1.06 | 0 |
 | LR1110: NRESET / NSS / BUSY / IRQ | P1.10 / P0.12 / P0.07 / P1.01 | 1 / 1 / wejście / odłączone |
 | LR1110: SCK / MOSI / MISO | P0.11 / P1.09 / P1.08 | 0 / 0 / odłączone |
-| Pomiar baterii (dzielnik ×2) | P0.02 (AIN0) | nieużywany w M0 |
-| Wykrycie ładowarki / ładowanie / naładowane | P0.05 (AIN3) / P1.03 / P1.04 | nieużywane w M0 |
+| Pomiar baterii (dzielnik ×2, zasilany z P1.06) | P0.02 (AIN0) | odłączony |
+| Wykrycie zasilania zewn. / ładowanie (aktywny 0) / naładowane | P0.05 (AIN3) / P1.03 / P1.04 | odłączone |
 | Zasilanie flasha QSPI (tylko Seeed) | P1.13 | nieruszany |
-| P0.04 (rola niepewna) | P0.04 | nieruszany |
+| Pomiar napięcia linii P1.06 (dzielnik ≈ 1:2) | P0.04 (AIN2) | nieruszany |
 
 „Odłączone” = stan po resecie nRF52: wejście z odłączonym buforem, bez podciągania – najmniejszy
 upływ i brak zasilania wyłączonego układu przez jego wyprowadzenia.
@@ -123,24 +123,41 @@ W uśpieniu LR1110 trzyma BUSY w stanie wysokim; program sprawdza to i zapisuje 
 - **P0.04:** Meshtastic – `T1000X_SENSOR_EN_PIN` (wyjście, ustawia 1). Wariant Arduino Seeed – `A1`
   „VCC voltage detect”, SDK Seeed – definicja `SENSE_ADC_VCC` (AIN2), ale nieużywana: „VCC” SDK mierzy
   wewnętrznym kanałem VDD przetwornika (`smtc_hal_adc.c`: `VCC_ADC_CHANNEL = NRF_SAADC_INPUT_VDD`).
-  Źródła się nie zgadzają, więc pin zostaje nieruszony (w M1 tylko odczyt analogowy: `diag p004`).
+  Pomiar na karcie (M1) potwierdza wersję Seeed: P0.04 to wejście pomiarowe (≈ VDD/2 przy włączonym P1.06),
+  a nie wyjście. Nie sterujemy nim.
 - **P0.03:** druga (czerwona) dioda według Seeed; Meshtastic jej nie definiuje.
 - **P1.13:** zasilanie flasha QSPI według Seeed; nikt go nie steruje, my też nie.
 - **USB:** program przedstawia się jako 2886:8057 (Seeed), nie 239a:8029 (Adafruit Feather) jak Meshtastic.
 - **Wgrywanie:** bez „1200 bps touch” i nrfutil – tylko UF2 (`tools/flash.sh`).
 - **Limit programu:** do 0xEA000 zamiast 0xED000 (zob. mapa flasha).
 
-## Niezgodności do sprawdzenia w kolejnych etapach
+## Sprawdzone na karcie (M1, krok 1 – komendy `diag`)
 
-- **Przycisk P0.06:** Meshtastic – aktywny stanem wysokim, `INPUT_PULLDOWN_SENSE` (podciąganie w dół,
-  wybudzanie stanem wysokim); SDK Seeed – wciśnięty = 1, bez podciągania. Bootloader `488711a` –
-  `BUTTON_PULL = PULLUP`: w `board_init()` ustawia P0.06 z podciąganiem w górę na cały czas pracy
-  (także w DFU), a `button_pressed()` uznaje stan niski za wciśnięty, co przy starcie oznacza DFU.
-  Meshtastic przed System OFF ustawia GPREGRET = 0x6D (`DFU_MAGIC_SKIP`), żeby bootloader po wybudzeniu
-  pominął sprawdzanie DFU. Sprawdzić w M1 (`diag btn`).
-- **Pomiar baterii a P1.06:** SDK Seeed włącza P1.06 tylko na czas pomiaru baterii (`sensor_bat_sample()`:
-  AIN0, wzmocnienie 1/5, odniesienie wewnętrzne, 12 bit, 40 µs, wynik ×2); Meshtastic trzyma P1.06
-  włączone cały czas. Sprawdzić w M1 (`diag bat`), czy dzielnik baterii wymaga P1.06.
+- **Przycisk P0.06:** aktywny stanem wysokim, stan wysoki trwa przez cały czas wciśnięcia (przytrzymanie 4 s
+  = 19 kolejnych próbek co 0,2 s). Puszczony pin „wisi” (bez podciągania odczyt zależy od poprzedniego
+  ustawienia), więc na płytce nie ma rezystora – potrzebne wewnętrzne podciąganie w dół, jak w Meshtastic
+  (`INPUT_PULLDOWN_SENSE`). Bootloader `488711a` ustawia podciąganie w górę i uznaje stan niski za wciśnięty,
+  a przy podciąganiu w górę pin zawsze ma stan wysoki – **bootloader nigdy nie uzna przycisku za żądanie DFU**.
+  Krótkie naciśnięcie ani przytrzymanie 4 s nie resetuje procesora.
+- **Bateria:** dzielnik ×2 na AIN0 jest zasilany z P1.06. P1.06 = 0: 0 mV; P1.06 = 1: 2088 mV na pinie,
+  czyli 4176 mV baterii (z podłączonym kablem, w trakcie ładowania); znowu 0: 1 mV. P1.06 włączamy tylko
+  na czas pomiaru, jak SDK Seeed (`sensor_bat_sample()`: AIN0, wzmocnienie 1/5, odniesienie wewnętrzne,
+  12 bit, 40 µs, wynik ×2). Meshtastic trzyma P1.06 włączone cały czas.
+- **P0.04:** 0 mV przy P1.06 = 0, ok. 1502 mV (≈ VDD/2) przy P1.06 = 1 – wejście pomiarowe, zob. odstępstwa.
+- **Zasilanie nRF:** VDD = 3,0 V, regulator w trybie normalnym (zasilanie przez VDD, nie VDDH).
+- **Pin RESET:** P0.18 włączony jako reset (`UICR.PSELRESET` = 0x00000012).
+- **Kabel USB:** podłączenie **nie resetuje** procesora (działał dalej na baterii, przyczyna resetu bez zmian);
+  nRF od razu widzi VBUS (`USBREGSTATUS.VBUSDETECT`).
+- **Ładowarka:** z kablem i baterią 4,18 V: P1.03 = 0 (ładowanie, aktywny stanem niskim wg Meshtastic),
+  P1.04 = 1.
+
+## Otwarte pytania
+
+- **P0.05:** odczyt analogowy 2,73 V, ale cyfrowo 0, także z podciąganiem w górę – sprzeczne, niewyjaśnione.
+  Do wykrywania zasilania z USB używamy rejestru VBUS w nRF, P0.05 nie jest potrzebny.
+- **Ręczny DFU (przycisk + dwa razy kabel):** działa, ale ani samo podłączenie kabla, ani samo naciśnięcie
+  nie resetuje procesora, więc mechanizm jest inny. Bootloader wchodzi w DFU po podwójnym resecie pinem
+  RESET (P0.18), a pin jest włączony – prawdopodobnie coś na płytce wywołuje ten reset. Nie badamy, dopóki działa.
 
 ## Ustalenia na kolejne etapy
 
