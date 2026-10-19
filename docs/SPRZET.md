@@ -197,6 +197,12 @@ Sprawdzone na karcie (krok 1, `gps on` przy oknie, zimny start, bez wysyłania c
   w stanie po resecie przez sekundy) zegar GPS wrócił do domyślnego 1980-01-06 – podtrzymanie zgasło; wgrywanie
   nie nadaje się więc do oceny gorącego startu.
 - Krok 3: parser RMC/GGA działa na karcie; co 10 s linia stanu bez współrzędnych, 0 błędnych sum kontrolnych.
+- Krok 4 (tryb Backup, `gps test 2` przy oknie bez USB): zimny start – fix po 61 s (10 satelitów); po 5 min
+  w trybie Backup gorący start – fix po 2 s (8 satelitów). Moduł domyślnie usypia swój procesor między
+  pomiarami i gubi wtedy komendy: pojedyncze `$PAIR650,0` bywało ignorowane. Działa sekwencja Seeed:
+  `$PAIR382,1` (blokada usypiania) po każdym starcie, przy wyłączaniu `$PAIR382,0`, a potem `$PAIR650,0`
+  powtarzane co 40 ms do potwierdzenia `$PAIR001,650,0` (przy oknie dopiero 23.–24. kopia, przy biurku 11.–14.)
+  i 1,5 s ciszy. Po wybudzeniu z trybu Backup pierwszy bajt przychodzi po 100–120 ms zamiast 190 ms.
 
 ## Otwarte pytania
 
