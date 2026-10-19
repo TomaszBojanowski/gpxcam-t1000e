@@ -114,35 +114,6 @@ void logDigital(const char *label, uint32_t pin)
     logger::line("bat: %s: no-pull %d, pull-up %d", label, noPull, pullUp);
 }
 
-// ---- Button -----------------------------------------------------------------
-
-constexpr uint32_t BUTTON_DIAG_MS = 15000;
-constexpr uint32_t BUTTON_SAMPLE_MS = 200;
-
-bool buttonActive = false;
-uint32_t buttonStart = 0;
-uint32_t buttonNext = 0;
-
-// Each pull setting is followed by a no-pull reading: if the no-pull value just
-// follows the previous pull, the pin floats; if it stays put, something on the
-// board pulls or drives it.
-void sampleButton(uint32_t elapsedMs)
-{
-    const int pullDown = readWithMode(BUTTON_PIN, INPUT_PULLDOWN);
-    const int afterDown = readWithMode(BUTTON_PIN, INPUT);
-    const int pullUp = readWithMode(BUTTON_PIN, INPUT_PULLUP); // the bootloader's setting
-    const int afterUp = readWithMode(BUTTON_PIN, INPUT);
-    logger::line("btn %5lu ms: pull-down %d, then none %d | pull-up %d, then none %d",
-                 (unsigned long)elapsedMs, pullDown, afterDown, pullUp, afterUp);
-}
-
-void stopButton()
-{
-    buttonActive = false;
-    board::releasePin(BUTTON_PIN);
-    logger::line("btn: done");
-}
-
 } // namespace
 
 namespace diag {
@@ -168,31 +139,6 @@ void logResetInfo()
                  (unsigned long)NRF_UICR->PSELRESET[1], connected ? "connected" : "not connected",
                  (unsigned long)((psel & UICR_PSELRESET_PORT_Msk) >> UICR_PSELRESET_PORT_Pos),
                  (unsigned long)((psel & UICR_PSELRESET_PIN_Msk) >> UICR_PSELRESET_PIN_Pos));
-}
-
-void startButton()
-{
-    buttonActive = true;
-    buttonStart = millis();
-    buttonNext = buttonStart;
-    logger::line("btn: sampling P0.06 for %lu s - press and release the button a few times",
-                 (unsigned long)(BUTTON_DIAG_MS / 1000));
-}
-
-void poll()
-{
-    if (!buttonActive)
-        return;
-    const uint32_t now = millis();
-    const uint32_t elapsed = now - buttonStart;
-    if (elapsed >= BUTTON_DIAG_MS) {
-        stopButton();
-        return;
-    }
-    if ((int32_t)(now - buttonNext) >= 0) {
-        buttonNext += BUTTON_SAMPLE_MS;
-        sampleButton(elapsed);
-    }
 }
 
 void battery()

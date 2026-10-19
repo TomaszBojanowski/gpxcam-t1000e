@@ -7,6 +7,7 @@
 #include <Adafruit_TinyUSB.h>
 
 #include "board.h"
+#include "button.h"
 #include "diag.h"
 #include "log.h"
 #include "sound.h"
@@ -45,7 +46,7 @@ void logVersion()
 void logHelp()
 {
     logger::line("commands: v = version and reset reason, p = power state, dfu = UF2 bootloader");
-    logger::line("diagnostics: diag btn (15 s), diag bat, diag p004 (read-only), diag snd 1..50 (%% duty)");
+    logger::line("diagnostics: diag bat, diag p004 (read-only), diag snd 1..50 (volume test, %% duty)");
 }
 
 void rebootToUf2Bootloader()
@@ -71,6 +72,20 @@ void runSoundTest(const char *argument)
         logger::line("sound test at %lu %% duty: click, start, shutdown", duty);
 }
 
+void handleButton()
+{
+    const button::Event event = button::poll();
+    if (event.type == button::Type::ShortPress) {
+        logger::line("button: short press (%lu ms)", (unsigned long)event.heldMs);
+        sound::playClick();
+    } else if (event.type == button::Type::LongPress) {
+        // M1 step 4 will power off here; for now only the log line and the melody.
+        logger::line("button: long press (%lu ms) - power off is not implemented yet",
+                     (unsigned long)event.heldMs);
+        sound::playShutdown();
+    }
+}
+
 void runCommand(const char *cmd)
 {
     if (strcmp(cmd, "v") == 0) {
@@ -80,8 +95,6 @@ void runCommand(const char *cmd)
         board::logPowerState();
     } else if (strcmp(cmd, "dfu") == 0) {
         rebootToUf2Bootloader();
-    } else if (strcmp(cmd, "diag btn") == 0) {
-        diag::startButton();
     } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
         runSoundTest(cmd + strlen(SOUND_TEST_COMMAND));
     } else if (strcmp(cmd, "diag bat") == 0) {
@@ -155,6 +168,7 @@ void setup()
     board::logPowerState();
     logHelp();
 
+    button::begin();
     if (!sound::begin())
         logger::line("sound: PWM3 is in use, buzzer disabled");
     sound::playStart();
@@ -173,7 +187,7 @@ void loop()
     }
 
     readSerial();
-    diag::poll();
+    handleButton();
     sound::poll();
     delay(LOOP_DELAY_MS);
 }

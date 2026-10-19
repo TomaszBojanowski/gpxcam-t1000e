@@ -4,8 +4,9 @@ Program na kartę Seeed SenseCAP **T1000-E**, który ma przekazywać pozycję z 
 do aparatu Panasonic LUMIX S5II przez Bluetooth LE – bez telefonu.
 Protokół jak w aplikacji gpxcam na Androida.
 
-Stan: **M0** – szkielet: wszystkie układy wyłączone, dioda mruga, wersja w logu po USB,
-wejście w tryb wgrywania komendą `dfu`.
+Stan: **M1 w toku** – wszystkie układy wyłączone, dioda mruga, wersja w logu po USB, wejście w tryb
+wgrywania komendą `dfu`, melodia przy starcie, przycisk: krótkie naciśnięcie = cichy sygnał,
+przytrzymanie 3 s = melodia wyłączenia (samo wyłączanie dojdzie w kolejnym kroku).
 
 ## Wymagania
 
@@ -43,7 +44,9 @@ Tylko DFU, bez wgrywania: `tools/dfu.sh`. Karta zostaje wtedy w bootloaderze, do
 pio device monitor
 ```
 
-Komendy: `v` – wersja, `p` – stan zasilania układów, `dfu` – tryb wgrywania UF2.
+Komendy: `v` – wersja i przyczyna ostatniego resetu, `p` – stan zasilania układów, `dfu` – tryb wgrywania UF2.
+Diagnostyka (tylko odczyty): `diag bat` – bateria i ładowarka, `diag p004` – napięcie na P0.04.
+`diag snd N` – wszystkie dźwięki z wypełnieniem PWM N% (1–50), do dobrania głośności na słuch.
 Portu nie otwierać z prędkością 1200 bps – to uruchamia bootloader bez dysku.
 
 ## Powrót do Meshtastic
