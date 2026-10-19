@@ -18,9 +18,10 @@ oznacza odczyt z naszego egzemplarza.
 - SoftDevice: **S140 7.3.0**.
 - Program fabryczny: Meshtastic 2.7.15.567b8ea.
 
-Bootloader to Adafruit nRF52 Bootloader; konfiguracja tej płytki jest w repozytorium Adafruit
-(`src/boards/t1000_e/`). Zachowanie bootloadera opisane niżej pochodzi z kodu upstream
-(`src/main.c`, `src/usb/uf2/ghostfat.c`, `Makefile`) i zgadza się z tym, co widać na karcie.
+Bootloader to dokładnie upstream Adafruit nRF52 Bootloader, commit `488711a` (lipiec 2024, PR #336,
+który dodał płytkę `src/boards/t1000_e/`) – wersja `0.9.1-5-g488711a` z `INFO_UF2.TXT` to 5 commitów po tagu 0.9.1.
+Zachowanie bootloadera opisane niżej pochodzi z kodu tej wersji (`src/main.c`, `src/boards/boards.c`,
+`src/usb/uf2/ghostfat.c`, `Makefile`) i zgadza się z tym, co widać na karcie.
 
 ## Mapa flasha
 
@@ -71,6 +72,15 @@ Bootloader to Adafruit nRF52 Bootloader; konfiguracja tej płytki jest w repozyt
 - Po wejściu przez GPREGRET (komenda lub 1200 bps) bootloader czeka, dopóki USB jest podłączone,
   aż dostanie plik (`main.c`: limit 3 s działa tylko wtedy, gdy USB się nie połączy).
 
+## Wybudzanie z System OFF (nRF52840)
+
+Według opisów bitów `RESETREAS` w nagłówku Nordic MDK (`nrf52840_bitfields.h`) procesor budzi się z System OFF przez:
+GPIO DETECT, np. przycisk (bit 16 `OFF`), **VBUS – podłączenie kabla USB** (bit 20 `VBUS`), LPCOMP (bit 17),
+pole NFC (bit 19) i reset pinem (bit 0). Wybudzenie zawsze kończy się resetem, więc bootloader (w tym ręczny DFU)
+działa po każdym wybudzeniu. Wybudzenia przez VBUS nie da się wyłączyć (Nordic DevZone). Jeśli warunek GPIO DETECT
+jest spełniony w chwili wejścia w System OFF, procesor od razu się budzi – przed wyłączeniem trzeba poczekać
+na puszczenie przycisku.
+
 ## Piny
 
 Numeracja nRF: P0.x = x, P1.x = 32 + x. Podstawa: `variant.h` Meshtastic. Uzupełnienia z SDK Seeed
@@ -110,8 +120,10 @@ W uśpieniu LR1110 trzyma BUSY w stanie wysokim; program sprawdza to i zapisuje 
 - **P0.08 (podtrzymanie RTC GPS):** Meshtastic trzyma 1 cały czas. W M0 jest 0, tak jak w procedurze
   wyłączania karty w SDK Seeed (`app_user_power_off()`).
 - **Linie sterujące GPS** przy wyłączonym GPS są odłączone (Meshtastic trzyma SLEEP_INT w stanie 1).
-- **P0.04:** Meshtastic – `T1000X_SENSOR_EN_PIN` (wyjście, ustawia 1). SDK i wariant Arduino Seeed –
-  `SENSE_ADC_VCC` (wejście analogowe AIN2). Źródła się nie zgadzają, więc pin zostaje nieruszony.
+- **P0.04:** Meshtastic – `T1000X_SENSOR_EN_PIN` (wyjście, ustawia 1). Wariant Arduino Seeed – `A1`
+  „VCC voltage detect”, SDK Seeed – definicja `SENSE_ADC_VCC` (AIN2), ale nieużywana: „VCC” SDK mierzy
+  wewnętrznym kanałem VDD przetwornika (`smtc_hal_adc.c`: `VCC_ADC_CHANNEL = NRF_SAADC_INPUT_VDD`).
+  Źródła się nie zgadzają, więc pin zostaje nieruszony (w M1 tylko odczyt analogowy: `diag p004`).
 - **P0.03:** druga (czerwona) dioda według Seeed; Meshtastic jej nie definiuje.
 - **P1.13:** zasilanie flasha QSPI według Seeed; nikt go nie steruje, my też nie.
 - **USB:** program przedstawia się jako 2886:8057 (Seeed), nie 239a:8029 (Adafruit Feather) jak Meshtastic.
@@ -120,10 +132,15 @@ W uśpieniu LR1110 trzyma BUSY w stanie wysokim; program sprawdza to i zapisuje 
 
 ## Niezgodności do sprawdzenia w kolejnych etapach
 
-- **Przycisk P0.06:** Meshtastic – aktywny stanem wysokim, podciąganie w dół. Bootloader upstream
-  (`src/boards/t1000_e/board.h`) – `BUTTON_PULL = PULLUP`. Sprawdzić w M1.
-- **Pomiar baterii a P1.06:** SDK Seeed opisuje wyłączanie P1.06 jako „power off temp&light/battery”.
-  Sprawdzić w M1, czy dzielnik baterii wymaga włączenia P1.06.
+- **Przycisk P0.06:** Meshtastic – aktywny stanem wysokim, `INPUT_PULLDOWN_SENSE` (podciąganie w dół,
+  wybudzanie stanem wysokim); SDK Seeed – wciśnięty = 1, bez podciągania. Bootloader `488711a` –
+  `BUTTON_PULL = PULLUP`: w `board_init()` ustawia P0.06 z podciąganiem w górę na cały czas pracy
+  (także w DFU), a `button_pressed()` uznaje stan niski za wciśnięty, co przy starcie oznacza DFU.
+  Meshtastic przed System OFF ustawia GPREGRET = 0x6D (`DFU_MAGIC_SKIP`), żeby bootloader po wybudzeniu
+  pominął sprawdzanie DFU. Sprawdzić w M1 (`diag btn`).
+- **Pomiar baterii a P1.06:** SDK Seeed włącza P1.06 tylko na czas pomiaru baterii (`sensor_bat_sample()`:
+  AIN0, wzmocnienie 1/5, odniesienie wewnętrzne, 12 bit, 40 µs, wynik ×2); Meshtastic trzyma P1.06
+  włączone cały czas. Sprawdzić w M1 (`diag bat`), czy dzielnik baterii wymaga P1.06.
 
 ## Ustalenia na kolejne etapy
 
