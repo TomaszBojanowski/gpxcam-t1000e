@@ -9,15 +9,25 @@
 
 namespace {
 
-// Power-up sequence from Seeed's SDK for this card (Seeed-Tracker-T1000-E-for-LoRaWAN-dev-board
-// @ 03147a91c5fa, t1000_e/peripherals/src/ag3335.c: gnss_init() and gnss_scan_start()):
-// supply on, 10 ms; reset (active high) for 10 ms; UART; 50 ms; RTC_INT high for 3 ms
-// (leaves RTC mode); 50 ms. The commands Seeed sends afterwards come in a later step.
-constexpr uint32_t SUPPLY_SETTLE_MS = 10;
-constexpr uint32_t RESET_PULSE_MS = 10;
+// Power-up as in Seeed's SDK for this card (Seeed-Tracker-T1000-E-for-LoRaWAN-dev-board
+// @ 03147a91c5fa, t1000_e/peripherals/src/ag3335.c, gnss_scan_start()): supply on; UART; 50 ms;
+// RTC_INT high for 3 ms (wakes the GPS from RTC/Backup mode); 50 ms. Seeed pulses RESET
+// (active high, 10 ms) only once, in gnss_init(); here only when the GPS sends nothing
+// within NO_DATA_RESET_MS - a reset is not needed after Backup mode or a cold power-up.
 constexpr uint32_t UART_SETTLE_MS = 50;
 constexpr uint32_t RTC_WAKE_PULSE_MS = 3;
 constexpr uint32_t WAKE_SETTLE_MS = 50;
+constexpr uint32_t RESET_PULSE_MS = 10;
+constexpr uint32_t NO_DATA_RESET_MS = 1500; // first byte came after 220 ms in every test so far
+
+// Power-down as in Seeed's gnss_scan_stop(): $PAIR650,0 puts the GPS in Backup (RTC) mode,
+// then the main supply is cut; the backup supply P0.08 stays on (hot start next time).
+// Quectel spec V1.4, 2.4.51: in Backup mode the module answers nothing, a refusal comes as
+// $PAIR001,650,<error>. Success is therefore silence longer than the 1 s NMEA period.
+// ($PAIR382,0 that Seeed sends first releases a sleep lock this firmware never sets.)
+constexpr uint32_t BACKUP_SILENCE_MS = 1500;
+constexpr uint32_t BACKUP_WAIT_MS = 3000; // per attempt
+constexpr int BACKUP_ATTEMPTS = 2;
 
 // Meshtastic variant.h GPS_BAUDRATE; Seeed smtc_hal_uart.c NRF_UART_BAUDRATE_115200.
 constexpr uint32_t BAUD_RATE = 115200;
@@ -41,6 +51,8 @@ uint32_t badChecksums = 0;
 uint32_t nextStatus = 0;
 uint32_t firstFixMs = NOT_YET; // since power on
 bool rawLog = false;           // 'gps raw': every NMEA line in the log (positions included)
+bool resetTried = false;
+long backupRefusal = -1; // result of a $PAIR001,650,<result> while entering Backup mode
 
 // Latest navigation data. The position stays in RAM only: it is never logged.
 nmea::Rmc lastRmc = {};
@@ -60,6 +72,7 @@ void resetCounters()
     lastGga = {};
     haveGga = false;
     fixValid = false;
+    resetTried = false;
     sentenceLength = 0;
     sentenceTooLong = false;
 }
@@ -122,6 +135,9 @@ void finishSentence()
         if (!sentenceTooLong && nmea::checksumOk(sentence)) {
             handleNavigation();
             gps_setup::handleSentence(sentence);
+            long result = 0;
+            if (nmea::startsWith(sentence, "$PAIR001,650,") && nmea::fieldInt(sentence, 2, 0, 9, &result))
+                backupRefusal = result;
         } else if (!sentenceTooLong && sentence[0] == '$') {
             badChecksums++;
         }
@@ -148,6 +164,40 @@ void handleByte(int c)
         sentenceTooLong = true;
 }
 
+void readUart()
+{
+    while (Serial1.available() > 0) {
+        const int c = Serial1.read();
+        bytes++;
+        if (firstByteMs == NOT_YET) {
+            firstByteMs = millis() - poweredAt;
+            logger::line("gps: first byte %lu ms after power on", (unsigned long)firstByteMs);
+        }
+        handleByte(c);
+    }
+}
+
+// Sends $PAIR650,0 and waits for silence. Blocks for up to BACKUP_ATTEMPTS * BACKUP_WAIT_MS.
+bool enterBackupMode()
+{
+    for (int attempt = 0; attempt < BACKUP_ATTEMPTS; attempt++) {
+        backupRefusal = -1;
+        gps::sendCommand("PAIR650,0");
+        const uint32_t start = millis();
+        uint32_t lastData = start;
+        while (millis() - start < BACKUP_WAIT_MS && backupRefusal < 0) {
+            if (Serial1.available() > 0) {
+                lastData = millis();
+                readUart();
+            } else if (millis() - lastData >= BACKUP_SILENCE_MS) {
+                return true;
+            }
+            delay(1);
+        }
+    }
+    return false;
+}
+
 void formatFix(char *out, size_t size)
 {
     if (firstFixMs == NOT_YET)
@@ -168,10 +218,6 @@ void on()
 
     digitalWrite(PIN_GPS_EN, HIGH); // main supply; the backup supply P0.08 is always on
     poweredAt = millis();
-    delay(SUPPLY_SETTLE_MS);
-    digitalWrite(PIN_GPS_RESET, HIGH);
-    delay(RESET_PULSE_MS);
-    digitalWrite(PIN_GPS_RESET, LOW);
 
     // GPIO setup before enabling the UARTE: TXD output high, RXD input (nRF52840 PS v1.5,
     // 6.34.8, table 135). Only now, with the GPS powered, so TXD never feeds an unpowered chip.
@@ -199,6 +245,7 @@ void off()
     // The core's Uart::end() waits for the TXSTOPPED and RXTO events without a timeout;
     // they follow the STOP tasks within microseconds.
     gps_setup::stop();
+    const bool backup = firstByteMs != NOT_YET && enterBackupMode();
     Serial1.end();
     board::releasePin(GPS_TX_PIN);
     board::releasePin(GPS_RX_PIN);
@@ -206,13 +253,21 @@ void off()
     powered = false;
     char fix[32];
     formatFix(fix, sizeof(fix));
-    logger::line("gps: off after %lu s, %lu lines, %lu bytes, %s", (unsigned long)((millis() - poweredAt) / 1000),
-                 (unsigned long)lines, (unsigned long)bytes, fix);
+    logger::line("gps: off after %lu s, %s, %s", (unsigned long)((millis() - poweredAt) / 1000), fix,
+                 backup ? "Backup mode" : "Backup mode NOT confirmed");
 }
 
 bool isOn()
 {
     return powered;
+}
+
+bool firstFix(uint32_t *secondsAfterPowerOn)
+{
+    if (!powered || firstFixMs == NOT_YET)
+        return false;
+    *secondsAfterPowerOn = firstFixMs / 1000;
+    return true;
 }
 
 void setRawLog(bool on)
@@ -239,14 +294,13 @@ void poll()
 {
     if (!powered)
         return;
-    while (Serial1.available() > 0) {
-        const int c = Serial1.read();
-        bytes++;
-        if (firstByteMs == NOT_YET) {
-            firstByteMs = millis() - poweredAt;
-            logger::line("gps: first byte %lu ms after power on", (unsigned long)firstByteMs);
-        }
-        handleByte(c);
+    readUart();
+    if (firstByteMs == NOT_YET && !resetTried && millis() - poweredAt >= NO_DATA_RESET_MS) {
+        resetTried = true;
+        logger::line("gps: no data %lu ms after power on, reset pulse", (unsigned long)NO_DATA_RESET_MS);
+        digitalWrite(PIN_GPS_RESET, HIGH);
+        delay(RESET_PULSE_MS);
+        digitalWrite(PIN_GPS_RESET, LOW);
     }
     gps_setup::poll();
     if ((int32_t)(millis() - nextStatus) >= 0) {
