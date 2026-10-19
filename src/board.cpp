@@ -40,13 +40,6 @@ void driveHigh(uint32_t pin)
     digitalWrite(pin, HIGH);
 }
 
-// nRF52 reset state: input with the buffer disconnected, no pull. Lowest
-// leakage, and never feeds current into a chip whose supply is off.
-void release(uint32_t pin)
-{
-    nrf_gpio_cfg_default(g_ADigitalPinMap[pin]);
-}
-
 bool waitRadioNotBusy()
 {
     const uint32_t start = millis();
@@ -131,17 +124,17 @@ void init()
     driveLow(PIN_GPS_EN);    // P1.11 main supply
     driveLow(GPS_VRTC_EN);   // P0.08 backup supply
     driveLow(PIN_GPS_RESET); // P1.15
-    release(GPS_SLEEP_INT);  // P1.12
-    release(GPS_RTC_INT);    // P0.15
-    release(GPS_RESETB_OUT); // P1.14
-    release(GPS_RX_PIN);     // P0.14 UART
-    release(GPS_TX_PIN);     // P0.13 UART
+    releasePin(GPS_SLEEP_INT);  // P1.12
+    releasePin(GPS_RTC_INT);    // P0.15
+    releasePin(GPS_RESETB_OUT); // P1.14
+    releasePin(GPS_RX_PIN);     // P0.14 UART
+    releasePin(GPS_TX_PIN);     // P0.13 UART
 
     // Accelerometer QMA6100P: supply off, interrupt and I2C released.
     driveLow(PIN_3V3_ACC_EN); // P1.07
-    release(QMA_6100P_INT_PIN); // P1.02
-    release(PIN_WIRE_SDA);      // P0.26
-    release(PIN_WIRE_SCL);      // P0.27
+    releasePin(QMA_6100P_INT_PIN); // P1.02
+    releasePin(PIN_WIRE_SDA);      // P0.26
+    releasePin(PIN_WIRE_SCL);      // P0.27
 
     // Temperature and light sensors: supply off.
     driveLow(PIN_3V3_EN); // P1.06, SENSE_POWER_EN in the Seeed SDK
@@ -153,6 +146,17 @@ void init()
 void led(bool on)
 {
     digitalWrite(PIN_LED1, on ? HIGH : LOW);
+}
+
+void sensorPower(bool on)
+{
+    digitalWrite(PIN_3V3_EN, on ? HIGH : LOW);
+}
+
+// Lowest leakage, and never feeds current into a chip whose supply is off.
+void releasePin(uint32_t pin)
+{
+    nrf_gpio_cfg_default(g_ADigitalPinMap[pin]);
 }
 
 void logPowerState()

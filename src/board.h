@@ -18,6 +18,9 @@
 // Second LED (red), USER_LED_R in the Seeed SDK. Not used by Meshtastic.
 #define PIN_LED_RED (0 + 3) // P0.03
 
+// Charger "charge done" status, CHARGER_DONE in the Seeed SDK (Meshtastic has it commented out).
+#define PIN_CHARGE_DONE (32 + 4) // P1.04
+
 namespace board {
 
 // Puts every peripheral in its off state and prepares the green LED.
@@ -26,6 +29,13 @@ void init();
 
 // Green LED (P0.24).
 void led(bool on);
+
+// Supply of the temperature/light sensors, P1.06 (SENSE_POWER_EN in the Seeed SDK).
+// Seeed also switches it on for battery measurements.
+void sensorPower(bool on);
+
+// Back to the nRF52 reset state: input with the buffer disconnected, no pull.
+void releasePin(uint32_t pin);
 
 // Logs the state set by init(), one line per group of peripherals.
 void logPowerState();

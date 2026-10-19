@@ -7,6 +7,7 @@
 #include <Adafruit_TinyUSB.h>
 
 #include "board.h"
+#include "diag.h"
 #include "log.h"
 #include "version.h"
 
@@ -35,7 +36,8 @@ void logVersion()
 
 void logHelp()
 {
-    logger::line("commands: v = version, p = power state, dfu = reboot to UF2 bootloader");
+    logger::line("commands: v = version and reset reason, p = power state, dfu = UF2 bootloader");
+    logger::line("diagnostics: diag btn (15 s), diag bat, diag p004 - read-only");
 }
 
 void rebootToUf2Bootloader()
@@ -50,13 +52,20 @@ void rebootToUf2Bootloader()
 
 void runCommand(const char *cmd)
 {
-    if (strcmp(cmd, "v") == 0)
+    if (strcmp(cmd, "v") == 0) {
         logVersion();
-    else if (strcmp(cmd, "p") == 0)
+        diag::logResetInfo();
+    } else if (strcmp(cmd, "p") == 0) {
         board::logPowerState();
-    else if (strcmp(cmd, "dfu") == 0)
+    } else if (strcmp(cmd, "dfu") == 0) {
         rebootToUf2Bootloader();
-    else if (cmd[0] != '\0') {
+    } else if (strcmp(cmd, "diag btn") == 0) {
+        diag::startButton();
+    } else if (strcmp(cmd, "diag bat") == 0) {
+        diag::battery();
+    } else if (strcmp(cmd, "diag p004") == 0) {
+        diag::p004();
+    } else if (cmd[0] != '\0') {
         logger::line("unknown command '%s'", cmd);
         logHelp();
     }
@@ -95,6 +104,7 @@ void setup()
         delay(LOOP_DELAY_MS);
 
     logVersion();
+    diag::logResetInfo();
     board::logPowerState();
     logHelp();
 }
@@ -112,5 +122,6 @@ void loop()
     }
 
     readSerial();
+    diag::poll();
     delay(LOOP_DELAY_MS);
 }
