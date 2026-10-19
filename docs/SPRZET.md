@@ -314,12 +314,14 @@ ok. 1 s – puszczone po 836 ms, karta startuje.
 - **Tryby szukania** (`link_policy::searchMode`), tylko gdy karta nie jest połączona:
   - normalny – skan 50 ms co 100 ms, GPS włączony;
   - rzadki – aparatu nie widać od 5 min: skan 100 ms co 2 s, GPS w Backup;
-  - czuwanie – ostatni raport aparatu to `06`: skan 100 ms co 10 s, GPS w Backup po minucie; karta tylko czeka na `00`.
+  - czuwanie – ostatni raport aparatu to `06`, karta tylko czeka na `00`: przez pierwsze 10 min (przerwa między
+    zdjęciami) skan 100 ms co 5 s i GPS zostaje włączony z fixem; potem skan 100 ms co 10 s, GPS w Backup.
 
   Raport w stanie `00` od razu przywraca tryb normalny (GPS włączany tylko w nim). Próba połączenia dopiero przy
   co najmniej −85 dBm.
-- **Sprawdzone na karcie (krok 2):** czuwanie – po minucie GPS w Backup; od włączenia aparatu do połączenia ok. 25 s
-  (skan co 10 s + gorący start GPS 5 s + połączenie); poza zasięgiem – rozłączenie `HCI 0x08`, po 5 min tryb rzadki;
+- **Sprawdzone na karcie (krok 2):** pierwsza wersja (GPS w Backup po minucie czuwania, skan co 10 s) – od włączenia
+  aparatu do połączenia ok. 25 s (skan + gorący start GPS 5 s + połączenie); stąd dwustopniowe czuwanie: przerwa
+  2 min – ok. 8 s od włączenia aparatu, lokalizacja 2 s po wykryciu; poza zasięgiem – rozłączenie `HCI 0x08`, po 5 min tryb rzadki;
   po powrocie połączenie ok. 11 s od wykrycia (gorący start GPS 9 s). W czuwaniu aparat bywa niewidoczny przez 30 s
   (rzadkie ogłoszenia w czuwaniu i rzadki skan) – tryb zostaje, bo karta pamięta ostatni stan.
 - **DC/DC:** nie włączamy – brak potwierdzenia, że płytka ma cewkę dla REG1, Meshtastic też go nie włącza.

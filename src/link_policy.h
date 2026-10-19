@@ -20,22 +20,25 @@ constexpr int8_t MIN_RSSI_DBM = -85;
 // (06) or pairing (03), never to another camera.
 bool shouldConnect(const pairing_record::Record &pairing, const camera_list::Entry &camera, uint32_t nowMs);
 
-// How the card looks for the camera while not connected (M6 decisions):
-//   Normal  - scan 50 ms of every 100 ms, GPS on;
-//   Rare    - the camera not seen for RARE_AFTER_MS: scan 100 ms every 2 s, GPS in Backup;
-//   Standby - the camera's last report says standby (06): scan 100 ms every 10 s, GPS in
-//             Backup after STANDBY_GPS_OFF_MS; the card only waits for state 00.
-enum class SearchMode { Normal, Rare, Standby };
+// How the card looks for the camera while not connected (M6 decisions). In both standby
+// modes the camera's last report says standby (06) and the card only waits for state 00.
+//   Normal      - scan 50 ms of every 100 ms, GPS on;
+//   Rare        - the camera not seen for RARE_AFTER_MS: scan 100 ms every 2 s, GPS in Backup;
+//   Standby     - the first LONG_STANDBY_AFTER_MS of standby (a break between photos):
+//                 scan 100 ms every 5 s, the GPS stays on, so the location is there at once;
+//   LongStandby - after that: scan 100 ms every 10 s, GPS in Backup.
+enum class SearchMode { Normal, Rare, Standby, LongStandby };
 constexpr uint32_t RARE_AFTER_MS = 5 * 60000;
-constexpr uint32_t STANDBY_GPS_OFF_MS = 60000;
+constexpr uint32_t LONG_STANDBY_AFTER_MS = 10 * 60000; // M6 decision: a break between photos
 
 // cameraSeen: a report of the paired camera since the link started; msSinceSeen and
-// lastState: of its last report; msSearching: since the search started.
-SearchMode searchMode(bool cameraSeen, uint32_t msSinceSeen, uint8_t lastState, uint32_t msSearching);
+// lastState: of its last report; msSearching: since the search started; msInStandby:
+// since the camera went to standby.
+SearchMode searchMode(bool cameraSeen, uint32_t msSinceSeen, uint8_t lastState, uint32_t msSearching,
+                      uint32_t msInStandby);
 
-// Whether the GPS may stay on in this mode; msInStandby: since the camera went to standby.
-// (It is switched on only in normal mode.)
-bool gpsNeeded(SearchMode mode, uint32_t msInStandby);
+// Whether the GPS may stay on in this mode. (It is switched on only in normal mode.)
+bool gpsNeeded(SearchMode mode);
 
 // Pause before looking for the camera again after a disconnect or a failed connection
 // (M5 decision): 5 s, 15 s, then 60 s for every further one. failuresInARow starts at 1.

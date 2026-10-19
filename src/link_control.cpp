@@ -22,8 +22,10 @@ constexpr uint32_t STEP_MS = 5000; // GPS mode, descriptors, notifications, ever
 // Scan timing of the search modes (M6 decisions; link_policy::SearchMode).
 constexpr uint16_t RARE_SCAN_INTERVAL_MS = 2000;
 constexpr uint16_t RARE_SCAN_WINDOW_MS = 100;
-constexpr uint16_t STANDBY_SCAN_INTERVAL_MS = 10000;
+constexpr uint16_t STANDBY_SCAN_INTERVAL_MS = 5000;
 constexpr uint16_t STANDBY_SCAN_WINDOW_MS = 100;
+constexpr uint16_t LONG_STANDBY_SCAN_INTERVAL_MS = 10000;
+constexpr uint16_t LONG_STANDBY_SCAN_WINDOW_MS = 100;
 
 // CCCD values (Bluetooth Core Vol 3, Part G, 3.3.3.3), little-endian.
 constexpr uint8_t CCCD_NOTIFICATIONS[] = {0x01, 0x00};
@@ -118,6 +120,8 @@ const char *modeText()
         return "rare";
     case link_policy::SearchMode::Standby:
         return "standby";
+    case link_policy::SearchMode::LongStandby:
+        return "long standby";
     }
     return "?";
 }
@@ -159,14 +163,17 @@ void setScanFor(link_policy::SearchMode searchMode)
     case link_policy::SearchMode::Standby:
         bluetooth::setScanTiming(STANDBY_SCAN_INTERVAL_MS, STANDBY_SCAN_WINDOW_MS);
         break;
+    case link_policy::SearchMode::LongStandby:
+        bluetooth::setScanTiming(LONG_STANDBY_SCAN_INTERVAL_MS, LONG_STANDBY_SCAN_WINDOW_MS);
+        break;
     }
 }
 
 // Picks the search mode and sets the scan and the GPS for it (M6).
 void applyMode(uint32_t now)
 {
-    const link_policy::SearchMode next =
-        link_policy::searchMode(cameraSeen, now - cameraSeenMs, cameraState, now - searchStartMs);
+    const link_policy::SearchMode next = link_policy::searchMode(cameraSeen, now - cameraSeenMs, cameraState,
+                                                                 now - searchStartMs, now - standbySinceMs);
     if (next != mode) {
         mode = next;
         setScanFor(mode);
@@ -179,22 +186,22 @@ void applyMode(uint32_t now)
                          RARE_SCAN_WINDOW_MS, RARE_SCAN_INTERVAL_MS / 1000);
             break;
         case link_policy::SearchMode::Standby:
-            logger::line("link: camera %s in standby - scan %u ms every %u s, waiting for it to switch on",
-                         serialText, STANDBY_SCAN_WINDOW_MS, STANDBY_SCAN_INTERVAL_MS / 1000);
+            logger::line("link: camera %s in standby - scan %u ms every %u s, waiting for it to switch on", serialText,
+                         STANDBY_SCAN_WINDOW_MS, STANDBY_SCAN_INTERVAL_MS / 1000);
+            break;
+        case link_policy::SearchMode::LongStandby:
+            logger::line("link: camera %s in standby for %lu min - scan %u ms every %u s, GPS in Backup", serialText,
+                         (unsigned long)(link_policy::LONG_STANDBY_AFTER_MS / 60000), LONG_STANDBY_SCAN_WINDOW_MS,
+                         LONG_STANDBY_SCAN_INTERVAL_MS / 1000);
             break;
         }
     }
-    // The GPS is switched on only in normal mode; in standby it may stay on for a minute,
-    // but coming from rare mode it is not switched on again.
-    const bool gpsWanted = link_policy::gpsNeeded(mode, now - standbySinceMs);
-    if (mode == link_policy::SearchMode::Normal && !gps::isOn()) {
+    // The GPS is switched on only in normal mode. In a short standby it stays on if it is on
+    // (the fix is there when the camera wakes); coming from rare mode it stays off.
+    if (mode == link_policy::SearchMode::Normal && !gps::isOn())
         gps::on();
-    } else if (!gpsWanted && gps::isOn()) {
-        if (mode == link_policy::SearchMode::Standby)
-            logger::line("link: camera in standby for %lu s - GPS in Backup",
-                         (unsigned long)(link_policy::STANDBY_GPS_OFF_MS / 1000));
+    else if (!link_policy::gpsNeeded(mode) && gps::isOn())
         gps::off(); // about 2 s; the next start is a hot start
-    }
 }
 
 bool connectionOpen()

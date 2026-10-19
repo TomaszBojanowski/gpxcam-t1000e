@@ -31,26 +31,21 @@ bool shouldConnect(const pairing_record::Record &pairing, const camera_list::Ent
            camera.last.rssi >= MIN_RSSI_DBM;
 }
 
-SearchMode searchMode(bool cameraSeen, uint32_t msSinceSeen, uint8_t lastState, uint32_t msSearching)
+SearchMode searchMode(bool cameraSeen, uint32_t msSinceSeen, uint8_t lastState, uint32_t msSearching,
+                      uint32_t msInStandby)
 {
     if (!cameraSeen)
         return msSearching >= RARE_AFTER_MS ? SearchMode::Rare : SearchMode::Normal;
     if (msSinceSeen >= RARE_AFTER_MS)
         return SearchMode::Rare;
-    return lastState == lumix::STATE_STANDBY ? SearchMode::Standby : SearchMode::Normal;
+    if (lastState != lumix::STATE_STANDBY)
+        return SearchMode::Normal;
+    return msInStandby >= LONG_STANDBY_AFTER_MS ? SearchMode::LongStandby : SearchMode::Standby;
 }
 
-bool gpsNeeded(SearchMode mode, uint32_t msInStandby)
+bool gpsNeeded(SearchMode mode)
 {
-    switch (mode) {
-    case SearchMode::Normal:
-        return true;
-    case SearchMode::Rare:
-        return false;
-    case SearchMode::Standby:
-        return msInStandby < STANDBY_GPS_OFF_MS;
-    }
-    return true;
+    return mode == SearchMode::Normal || mode == SearchMode::Standby;
 }
 
 uint32_t pauseMs(uint32_t failuresInARow)

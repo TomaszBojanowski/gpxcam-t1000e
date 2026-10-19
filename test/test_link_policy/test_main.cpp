@@ -72,29 +72,32 @@ void test_search_mode()
 {
     using link_policy::SearchMode;
     const uint32_t FIVE_MINUTES = link_policy::RARE_AFTER_MS;
+    const uint32_t LONG = link_policy::LONG_STANDBY_AFTER_MS;
     // never seen since the link started
-    TEST_ASSERT_EQUAL(SearchMode::Normal, link_policy::searchMode(false, 0, 0, 0));
-    TEST_ASSERT_EQUAL(SearchMode::Normal, link_policy::searchMode(false, 0, 0, FIVE_MINUTES - 1));
-    TEST_ASSERT_EQUAL(SearchMode::Rare, link_policy::searchMode(false, 0, 0, FIVE_MINUTES));
+    TEST_ASSERT_EQUAL(SearchMode::Normal, link_policy::searchMode(false, 0, 0, 0, 0));
+    TEST_ASSERT_EQUAL(SearchMode::Normal, link_policy::searchMode(false, 0, 0, FIVE_MINUTES - 1, 0));
+    TEST_ASSERT_EQUAL(SearchMode::Rare, link_policy::searchMode(false, 0, 0, FIVE_MINUTES, 0));
     // seen on, recently and long ago
-    TEST_ASSERT_EQUAL(SearchMode::Normal, link_policy::searchMode(true, 1000, lumix::STATE_ON, FIVE_MINUTES * 3));
-    TEST_ASSERT_EQUAL(SearchMode::Rare, link_policy::searchMode(true, FIVE_MINUTES, lumix::STATE_ON, FIVE_MINUTES));
-    // seen in standby, recently and long ago (Bluetooth off or carried away)
-    TEST_ASSERT_EQUAL(SearchMode::Standby, link_policy::searchMode(true, 1000, lumix::STATE_STANDBY, 0));
-    TEST_ASSERT_EQUAL(SearchMode::Standby,
-                      link_policy::searchMode(true, FIVE_MINUTES - 1, lumix::STATE_STANDBY, FIVE_MINUTES * 2));
-    TEST_ASSERT_EQUAL(SearchMode::Rare, link_policy::searchMode(true, FIVE_MINUTES, lumix::STATE_STANDBY, 0));
+    TEST_ASSERT_EQUAL(SearchMode::Normal, link_policy::searchMode(true, 1000, lumix::STATE_ON, FIVE_MINUTES * 3, 0));
+    TEST_ASSERT_EQUAL(SearchMode::Rare, link_policy::searchMode(true, FIVE_MINUTES, lumix::STATE_ON, FIVE_MINUTES, 0));
+    // standby: short, then long; not seen for 5 minutes at all: rare
+    TEST_ASSERT_EQUAL(SearchMode::Standby, link_policy::searchMode(true, 1000, lumix::STATE_STANDBY, 0, 0));
+    TEST_ASSERT_EQUAL(SearchMode::Standby, link_policy::searchMode(true, 1000, lumix::STATE_STANDBY, 0, LONG - 1));
+    TEST_ASSERT_EQUAL(SearchMode::LongStandby, link_policy::searchMode(true, 1000, lumix::STATE_STANDBY, 0, LONG));
+    TEST_ASSERT_EQUAL(SearchMode::LongStandby,
+                      link_policy::searchMode(true, FIVE_MINUTES - 1, lumix::STATE_STANDBY, 0, LONG * 10));
+    TEST_ASSERT_EQUAL(SearchMode::Rare, link_policy::searchMode(true, FIVE_MINUTES, lumix::STATE_STANDBY, 0, 0));
     // pairing state is not standby: look normally
-    TEST_ASSERT_EQUAL(SearchMode::Normal, link_policy::searchMode(true, 1000, lumix::STATE_PAIRING, 0));
+    TEST_ASSERT_EQUAL(SearchMode::Normal, link_policy::searchMode(true, 1000, lumix::STATE_PAIRING, 0, LONG));
 }
 
 void test_gps_needed()
 {
     using link_policy::SearchMode;
-    TEST_ASSERT_TRUE(link_policy::gpsNeeded(SearchMode::Normal, 0));
-    TEST_ASSERT_FALSE(link_policy::gpsNeeded(SearchMode::Rare, 0));
-    TEST_ASSERT_TRUE(link_policy::gpsNeeded(SearchMode::Standby, link_policy::STANDBY_GPS_OFF_MS - 1));
-    TEST_ASSERT_FALSE(link_policy::gpsNeeded(SearchMode::Standby, link_policy::STANDBY_GPS_OFF_MS));
+    TEST_ASSERT_TRUE(link_policy::gpsNeeded(SearchMode::Normal));
+    TEST_ASSERT_TRUE(link_policy::gpsNeeded(SearchMode::Standby)); // a break between photos: keep the fix
+    TEST_ASSERT_FALSE(link_policy::gpsNeeded(SearchMode::LongStandby));
+    TEST_ASSERT_FALSE(link_policy::gpsNeeded(SearchMode::Rare));
 }
 
 void test_pause_sequence()

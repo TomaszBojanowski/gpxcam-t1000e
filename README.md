@@ -80,8 +80,9 @@ w aparacie i lokalizacja od razu, dalej co 25 s (wcześniej po przesunięciu o p
 częściej niż co 5 s). Bez fixa połączenie trwa, ale lokalizacje czekają. Po rozłączeniu przerwa 5 s, 15 s, potem 60 s;
 gdy aparat odrzuci kartę – koniec łączenia do `link on` albo `pair`. `link off` rozłącza i wyłącza GPS. Gdy działa
 `link`, skanem steruje on (`scan on/off` jest odrzucane). Oszczędzanie (M6): łączy się tylko przy sygnale co najmniej
-−85 dBm; gdy aparatu nie widać od 5 min – skan rzadki i GPS w Backup; gdy aparat jest w czuwaniu (`06`) – skan bardzo
-rzadki, GPS w Backup po minucie, karta czeka na włączenie aparatu. Powrót aparatu przywraca pełny skan i GPS. Dioda: szukanie – dwa krótkie mignięcia co 2 s, połączony –
+−85 dBm; gdy aparatu nie widać od 5 min – skan rzadki i GPS w Backup; gdy aparat jest w czuwaniu (`06`) – karta czeka na
+jego włączenie: przez pierwsze 10 min skan co 5 s i GPS gotowy (pozycja od razu po włączeniu aparatu), potem skan
+co 10 s i GPS w Backup. Powrót aparatu przywraca pełny skan i GPS. Dioda: szukanie – dwa krótkie mignięcia co 2 s, połączony –
 jedno co 4 s. Dźwięki: połączenie – dwa rosnące tony, koniec połączenia – dwa opadające.
 `unpair` – zapomina sparowany aparat (identyfikator karty zostaje). `p` pokazuje też identyfikator karty (UUID)
 i sparowany aparat – także tych wartości nie publikować.
