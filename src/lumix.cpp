@@ -35,6 +35,15 @@ void putU16(uint8_t *out, uint16_t value)
     out[1] = (uint8_t)(value >> 8);
 }
 
+void putU32(uint8_t *out, uint32_t value)
+{
+    for (size_t i = 0; i < 4; i++)
+        out[i] = (uint8_t)(value >> (8 * i));
+}
+
+constexpr uint8_t LOCATION_VALID = 0x41; // 'A'
+constexpr int32_t DM_PER_METRE = 10;
+
 // payload: the Panasonic manufacturer data after the company identifier.
 Advert readCamera(const uint8_t *payload, size_t length, Camera *camera)
 {
@@ -137,6 +146,24 @@ void appName(const char *name, uint8_t out[APP_NAME_LENGTH])
     const size_t length = utf8Prefix(name, APP_NAME_LENGTH);
     memset(out, 0, APP_NAME_LENGTH);
     memcpy(out, name, length);
+}
+
+void locationData(int64_t unixSeconds, int32_t latitudeE7, int32_t longitudeE7, int32_t altitudeDm,
+                  uint8_t out[LOCATION_LENGTH])
+{
+    const int64_t gpsSeconds = unixSeconds > GPS_EPOCH_UNIX_SECONDS ? unixSeconds - GPS_EPOCH_UNIX_SECONDS : 0;
+    const int32_t half = DM_PER_METRE / 2;
+    int32_t metres = (altitudeDm >= 0 ? altitudeDm + half : altitudeDm - half) / DM_PER_METRE;
+    if (metres > INT16_MAX)
+        metres = INT16_MAX;
+    if (metres < INT16_MIN)
+        metres = INT16_MIN;
+    putU32(&out[0], (uint32_t)gpsSeconds);
+    putU32(&out[4], (uint32_t)latitudeE7);
+    putU32(&out[8], (uint32_t)longitudeE7);
+    putU16(&out[12], (uint16_t)(int16_t)metres);
+    out[14] = LOCATION_VALID;
+    out[15] = 0x00;
 }
 
 void timeData(const utc::DateTime &utcNow, int16_t standardOffsetMinutes, bool summerTime,

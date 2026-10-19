@@ -77,6 +77,18 @@ void appName(const char *name, uint8_t out[APP_NAME_LENGTH]);
 void timeData(const utc::DateTime &utcNow, int16_t standardOffsetMinutes, bool summerTime,
               uint8_t out[TIME_LENGTH]);
 
+// ---- location (docs/PROTOKOL.md, "Lokalizacja") ----------------------------------------
+
+constexpr size_t LOCATION_LENGTH = 16;
+constexpr int64_t GPS_EPOCH_UNIX_SECONDS = 315964800; // 1980-01-06 00:00:00 UTC
+
+// Location, little-endian: GPS time u32 (Unix seconds - GPS_EPOCH_UNIX_SECONDS, no leap
+// seconds; 0 before the GPS epoch), latitude and longitude i32 in degrees * 10^7, altitude
+// i16 in metres (rounded half away from zero, limited to the i16 range), 0x41 ('A',
+// valid position), 0x00. The time must be the moment of sending, not of the fix.
+void locationData(int64_t unixSeconds, int32_t latitudeE7, int32_t longitudeE7, int32_t altitudeDm,
+                  uint8_t out[LOCATION_LENGTH]);
+
 // ---- GATT service and characteristics (docs/PROTOKOL.md), big-endian as written ------
 
 // 1FE71B85-8344-4E6A-BF1A-AC7ACDB3F8AF

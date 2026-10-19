@@ -49,7 +49,7 @@ pio test -e native
 ```
 
 Moduły bez zależności od sprzętu (parser NMEA, protokół LUMIX: ogłoszenie i formaty zapisu, lista aparatów,
-kalendarz UTC z czasem letnim UE) – testy na zmyślonych danych i wektorach z `docs/PROTOKOL.md`.
+kalendarz UTC z czasem letnim UE, plik parowania, reguły łączenia i wysyłania lokalizacji) – testy na zmyślonych danych i wektorach z `docs/PROTOKOL.md`.
 
 ## Log po USB
 

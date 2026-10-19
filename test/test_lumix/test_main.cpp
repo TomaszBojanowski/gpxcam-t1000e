@@ -238,6 +238,38 @@ void test_time_data()
     TEST_ASSERT_EQUAL_HEX8_ARRAY(winter, out, sizeof(winter));
 }
 
+void test_location_data()
+{
+    uint8_t out[lumix::LOCATION_LENGTH];
+    // docs/PROTOKOL.md: 2026-10-13 22:30:29 UTC, the made-up point at sea 54.6, 19.0, 0 m
+    const uint8_t vector[] = {0x85, 0x73, 0xf9, 0x57, 0x80, 0x4c, 0x8b, 0x20,
+                              0x80, 0x2b, 0x53, 0x0b, 0x00, 0x00, 0x41, 0x00};
+    lumix::locationData(1791930629, 546000000, 190000000, 0, out);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(vector, out, sizeof(vector));
+    // the made-up S/W point, -12.4 m
+    const uint8_t southWest[] = {0x85, 0x73, 0xf9, 0x57, 0xff, 0x0a, 0xd0, 0xeb,
+                                 0x57, 0x44, 0xdf, 0xa5, 0xf4, 0xff, 0x41, 0x00};
+    lumix::locationData(1791930629, -338687233, -1512094633, -124, out);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(southWest, out, sizeof(southWest));
+    // altitude above the i16 range: limited to 32767 m
+    const uint8_t high[] = {0x85, 0x73, 0xf9, 0x57, 0x80, 0x4c, 0x8b, 0x20,
+                            0x80, 0x2b, 0x53, 0x0b, 0xff, 0x7f, 0x41, 0x00};
+    lumix::locationData(1791930629, 546000000, 190000000, 400000, out);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(high, out, sizeof(high));
+    // before the GPS epoch the time is 0; 545.4 m -> 545 (0x0221)
+    const uint8_t early[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                             0x00, 0x00, 0x00, 0x00, 0x21, 0x02, 0x41, 0x00};
+    lumix::locationData(lumix::GPS_EPOCH_UNIX_SECONDS - 5, 0, 0, 5454, out);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(early, out, sizeof(early));
+    // rounding half away from zero: 0.5 m -> 1, -12.5 m -> -13 (0xfff3)
+    lumix::locationData(1791930629, 0, 0, 5, out);
+    TEST_ASSERT_EQUAL_HEX8(0x01, out[12]);
+    TEST_ASSERT_EQUAL_HEX8(0x00, out[13]);
+    lumix::locationData(1791930629, 0, 0, -125, out);
+    TEST_ASSERT_EQUAL_HEX8(0xf3, out[12]);
+    TEST_ASSERT_EQUAL_HEX8(0xff, out[13]);
+}
+
 void test_gatt_uuids()
 {
     // the byte arrays against the text in docs/PROTOKOL.md (lower case)
@@ -275,6 +307,7 @@ int main(int, char **)
     RUN_TEST(test_device_name);
     RUN_TEST(test_app_name);
     RUN_TEST(test_time_data);
+    RUN_TEST(test_location_data);
     RUN_TEST(test_gatt_uuids);
     return UNITY_END();
 }
