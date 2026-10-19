@@ -6,6 +6,7 @@
 // includes inside core headers.
 #include <Adafruit_TinyUSB.h>
 
+#include "battery.h"
 #include "board.h"
 #include "button.h"
 #include "diag.h"
@@ -18,6 +19,7 @@ namespace {
 constexpr uint32_t LED_PERIOD_MS = 1000;      // heartbeat: one short flash per second
 constexpr uint32_t LED_ON_MS = 100;
 constexpr uint32_t STATUS_PERIOD_MS = 10000;  // version/uptime line in the log
+constexpr uint32_t BATTERY_PERIOD_MS = 60000; // battery line in the log
 constexpr uint32_t SERIAL_WAIT_MS = 2000;     // at start: wait this long for a terminal
 constexpr uint32_t DFU_MESSAGE_DELAY_MS = 200; // let the last log line leave before reset
 constexpr uint32_t LOOP_DELAY_MS = 10;        // loop period; the CPU sleeps in between
@@ -43,10 +45,16 @@ void logVersion()
                  (unsigned long)(millis() / 1000), (unsigned long)logger::dropped());
 }
 
+void logBattery()
+{
+    const battery::Status status = battery::read();
+    logger::line("battery: %lu mV, %s", (unsigned long)status.batteryMv, battery::chargerText(status.charger));
+}
+
 void logHelp()
 {
     logger::line("commands: v = version and reset reason, p = power state, dfu = UF2 bootloader");
-    logger::line("diagnostics: diag bat, diag p004 (read-only), diag snd 1..50 (volume test, %% duty)");
+    logger::line("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
 }
 
 void rebootToUf2Bootloader()
@@ -93,14 +101,13 @@ void runCommand(const char *cmd)
         diag::logResetInfo();
     } else if (strcmp(cmd, "p") == 0) {
         board::logPowerState();
+        logBattery();
     } else if (strcmp(cmd, "dfu") == 0) {
         rebootToUf2Bootloader();
     } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
         runSoundTest(cmd + strlen(SOUND_TEST_COMMAND));
     } else if (strcmp(cmd, "diag bat") == 0) {
         diag::battery();
-    } else if (strcmp(cmd, "diag p004") == 0) {
-        diag::p004();
     } else if (cmd[0] != '\0') {
         logger::line("unknown command '%s'", cmd);
         logHelp();
@@ -166,6 +173,7 @@ void setup()
     logVersion();
     diag::logResetInfo();
     board::logPowerState();
+    logBattery();
     logHelp();
 
     button::begin();
@@ -177,6 +185,7 @@ void setup()
 void loop()
 {
     static uint32_t lastStatus = 0;
+    static uint32_t lastBattery = millis(); // measured once in setup()
     const uint32_t now = millis();
 
     board::led(now % LED_PERIOD_MS < LED_ON_MS);
@@ -184,6 +193,10 @@ void loop()
     if (now - lastStatus >= STATUS_PERIOD_MS) {
         lastStatus = now;
         logVersion();
+    }
+    if (now - lastBattery >= BATTERY_PERIOD_MS) {
+        lastBattery = now;
+        logBattery();
     }
 
     readSerial();

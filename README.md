@@ -6,7 +6,8 @@ Protokół jak w aplikacji gpxcam na Androida.
 
 Stan: **M1 w toku** – wszystkie układy wyłączone, dioda mruga, wersja w logu po USB, wejście w tryb
 wgrywania komendą `dfu`, melodia przy starcie, przycisk: krótkie naciśnięcie = cichy sygnał,
-przytrzymanie 3 s = melodia wyłączenia (samo wyłączanie dojdzie w kolejnym kroku).
+przytrzymanie 3 s = melodia wyłączenia (samo wyłączanie dojdzie w kolejnym kroku), napięcie baterii
+i stan ładowania w logu co 60 s.
 
 ## Wymagania
 
@@ -44,8 +45,9 @@ Tylko DFU, bez wgrywania: `tools/dfu.sh`. Karta zostaje wtedy w bootloaderze, do
 pio device monitor
 ```
 
-Komendy: `v` – wersja i przyczyna ostatniego resetu, `p` – stan zasilania układów, `dfu` – tryb wgrywania UF2.
-Diagnostyka (tylko odczyty): `diag bat` – bateria i ładowarka, `diag p004` – napięcie na P0.04.
+Komendy: `v` – wersja i przyczyna ostatniego resetu, `p` – stan zasilania układów i bateria,
+`dfu` – tryb wgrywania UF2.
+Diagnostyka (tylko odczyty): `diag bat` – napięcie baterii przy różnych czasach od włączenia dzielnika (ok. 4 s).
 `diag snd N` – wszystkie dźwięki z wypełnieniem PWM N% (1–50), do dobrania głośności na słuch.
 Portu nie otwierać z prędkością 1200 bps – to uruchamia bootloader bez dysku.
 
