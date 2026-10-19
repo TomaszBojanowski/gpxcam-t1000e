@@ -91,10 +91,8 @@ void handleButton()
         power::cancelCountdown(); // does nothing without a countdown
         sound::playClick();
     } else if (event.type == button::Type::LongPress) {
-        // M1 step 4 will power off here; for now only the log line and the melody.
-        logger::line("button: long press (%lu ms) - power off is not implemented yet",
-                     (unsigned long)event.heldMs);
-        sound::playShutdown();
+        logger::line("button: long press (%lu ms) - powering off", (unsigned long)event.heldMs);
+        power::powerOff(); // plays the shutdown melody; returns only if refused (e.g. USB)
     }
 }
 
