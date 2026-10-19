@@ -77,6 +77,9 @@ Chwila: 2026-10-13 22:30:29 UTC, strefa Europe/Warsaw (czas letni).
 - identyfikator dla UUID `00010203-0405-0607-0809-0a0b0c0d0e0f` przed XOR → `03020100070605040b0a09080f0e0d0cffffffcd`
 - `xor(00 00 00 00 0f, 01 02 03 04)` → `010203040e`
 
+Wszystkie wektory poza lokalizacją (M5) są sprawdzane w `test/test_lumix`; kalendarz i reguła czasu letniego UE –
+w `test/test_utc`. Nazwa „Zażółć gęślą jaźń aparatu” (34 bajty UTF-8) jest cięta do 22 bajtów, jak w gpxcam.
+
 Ogłoszenie (zmyślony numer seryjny `12 34 56 78 9a`, testy `test/test_lumix`):
 - `02 01 06 09 ff 3a 00 00 12 34 56 78 9a` → aparat, stan `00` (włączony), numer `123456789a`
 - `09 ff 3a 00 06 12 34 56 78 9a` (sama odpowiedź na skan) → aparat, stan `06` (czuwanie)

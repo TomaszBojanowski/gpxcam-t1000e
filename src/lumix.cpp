@@ -12,6 +12,29 @@ constexpr uint8_t AD_TYPE_MANUFACTURER_DATA = 0xFF;
 constexpr size_t COMPANY_ID_LENGTH = 2;
 constexpr size_t CAMERA_DATA_LENGTH = 1 + SERIAL_LENGTH; // state + serial number
 
+constexpr uint8_t DEVICE_ID_END[] = {0xff, 0xff, 0xff, 0xcd};
+constexpr uint8_t DEVICE_NAME_END[] = {0xff, 0xff, 0xff, 0x00};
+constexpr size_t WORD = 4;
+
+// Number of leading bytes of a UTF-8 text that fit in maxBytes without splitting a
+// character (continuation bytes are 10xxxxxx).
+size_t utf8Prefix(const char *text, size_t maxBytes)
+{
+    const size_t length = strlen(text);
+    if (length <= maxBytes)
+        return length;
+    size_t n = maxBytes;
+    while (n > 0 && ((uint8_t)text[n] & 0xC0) == 0x80)
+        n--;
+    return n;
+}
+
+void putU16(uint8_t *out, uint16_t value)
+{
+    out[0] = (uint8_t)value;
+    out[1] = (uint8_t)(value >> 8);
+}
+
 // payload: the Panasonic manufacturer data after the company identifier.
 Advert readCamera(const uint8_t *payload, size_t length, Camera *camera)
 {
@@ -72,6 +95,61 @@ size_t formatSerial(const uint8_t serial[SERIAL_LENGTH], char *out, size_t size)
     }
     out[TEXT_LENGTH] = '\0';
     return TEXT_LENGTH;
+}
+
+size_t wordSwap(const uint8_t *in, size_t length, uint8_t *out, size_t outSize)
+{
+    const size_t padded = (length + WORD - 1) / WORD * WORD;
+    if (padded > outSize)
+        return 0;
+    for (size_t i = 0; i < padded; i++) {
+        const size_t source = i / WORD * WORD + (WORD - 1 - i % WORD);
+        out[i] = source < length ? in[source] : 0;
+    }
+    return padded;
+}
+
+void applyKey(uint8_t *data, size_t length, const uint8_t key[KEY_LENGTH])
+{
+    for (size_t i = 0; i < length; i++)
+        data[i] ^= key[i % KEY_LENGTH];
+}
+
+void deviceIdPlain(const uint8_t uuid[UUID_LENGTH], uint8_t out[DEVICE_ID_LENGTH])
+{
+    wordSwap(uuid, UUID_LENGTH, out, DEVICE_ID_LENGTH);
+    memcpy(&out[UUID_LENGTH], DEVICE_ID_END, sizeof(DEVICE_ID_END));
+}
+
+size_t deviceNamePlain(const char *name, uint8_t out[DEVICE_NAME_MAX_LENGTH])
+{
+    uint8_t text[1 + DEVICE_NAME_TEXT_MAX];
+    const size_t textLength = utf8Prefix(name, DEVICE_NAME_TEXT_MAX);
+    text[0] = (uint8_t)textLength;
+    memcpy(&text[1], name, textLength);
+    const size_t swapped = wordSwap(text, 1 + textLength, out, DEVICE_NAME_MAX_LENGTH - sizeof(DEVICE_NAME_END));
+    memcpy(&out[swapped], DEVICE_NAME_END, sizeof(DEVICE_NAME_END));
+    return swapped + sizeof(DEVICE_NAME_END);
+}
+
+void appName(const char *name, uint8_t out[APP_NAME_LENGTH])
+{
+    const size_t length = utf8Prefix(name, APP_NAME_LENGTH);
+    memset(out, 0, APP_NAME_LENGTH);
+    memcpy(out, name, length);
+}
+
+void timeData(const utc::DateTime &utcNow, int16_t standardOffsetMinutes, bool summerTime,
+              uint8_t out[TIME_LENGTH])
+{
+    putU16(&out[0], utcNow.year);
+    out[2] = utcNow.month;
+    out[3] = utcNow.day;
+    out[4] = utcNow.hour;
+    out[5] = utcNow.minute;
+    out[6] = utcNow.second;
+    putU16(&out[7], (uint16_t)standardOffsetMinutes);
+    out[9] = summerTime ? 1 : 0;
 }
 
 } // namespace lumix

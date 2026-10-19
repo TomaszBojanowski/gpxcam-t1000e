@@ -1,6 +1,8 @@
 // Unit tests for src/lumix.cpp, run on the PC: pio test -e native
 // All camera values are made up: serial number 12 34 56 78 9a. The service UUID is the one
-// the camera advertises (docs/PROTOKOL.md), the same for every camera.
+// the camera advertises (docs/PROTOKOL.md), the same for every camera. The vectors of the
+// byte formats come from docs/PROTOKOL.md; the other expected values were computed with a
+// Python copy of the gpxcam app's LumixProtocol.kt.
 #include <string.h>
 #include <unity.h>
 
@@ -147,6 +149,94 @@ void test_format_serial()
     TEST_ASSERT_EQUAL(0, lumix::formatSerial(SERIAL, small, sizeof(small)));
 }
 
+// ---- introducing the card ---------------------------------------------------------
+
+void test_word_swap()
+{
+    // docs/PROTOKOL.md: wordSwap(01 02 03 04 05) -> 0403020100000005
+    const uint8_t in[] = {0x01, 0x02, 0x03, 0x04, 0x05};
+    const uint8_t expected[] = {0x04, 0x03, 0x02, 0x01, 0x00, 0x00, 0x00, 0x05};
+    uint8_t out[8];
+    TEST_ASSERT_EQUAL(8, lumix::wordSwap(in, sizeof(in), out, sizeof(out)));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, out, sizeof(expected));
+    uint8_t small[7];
+    TEST_ASSERT_EQUAL(0, lumix::wordSwap(in, sizeof(in), small, sizeof(small)));
+    TEST_ASSERT_EQUAL(0, lumix::wordSwap(in, 0, out, sizeof(out)));
+}
+
+void test_apply_key()
+{
+    // docs/PROTOKOL.md: xor(00 00 00 00 0f, 01 02 03 04) -> 010203040e
+    uint8_t data[] = {0x00, 0x00, 0x00, 0x00, 0x0f};
+    const uint8_t key[lumix::KEY_LENGTH] = {0x01, 0x02, 0x03, 0x04};
+    const uint8_t expected[] = {0x01, 0x02, 0x03, 0x04, 0x0e};
+    lumix::applyKey(data, sizeof(data), key);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, data, sizeof(expected));
+}
+
+void test_device_id()
+{
+    // docs/PROTOKOL.md: UUID 00010203-0405-0607-0809-0a0b0c0d0e0f before XOR
+    uint8_t uuid[lumix::UUID_LENGTH];
+    for (uint8_t i = 0; i < lumix::UUID_LENGTH; i++)
+        uuid[i] = i;
+    const uint8_t expected[lumix::DEVICE_ID_LENGTH] = {0x03, 0x02, 0x01, 0x00, 0x07, 0x06, 0x05, 0x04, 0x0b, 0x0a,
+                                                       0x09, 0x08, 0x0f, 0x0e, 0x0d, 0x0c, 0xff, 0xff, 0xff, 0xcd};
+    uint8_t out[lumix::DEVICE_ID_LENGTH];
+    lumix::deviceIdPlain(uuid, out);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, out, sizeof(expected));
+}
+
+void test_device_name()
+{
+    uint8_t out[lumix::DEVICE_NAME_MAX_LENGTH];
+    // docs/PROTOKOL.md: "iPhone" -> 6850690600656e6fffffff00
+    const uint8_t iphone[] = {0x68, 0x50, 0x69, 0x06, 0x00, 0x65, 0x6e, 0x6f, 0xff, 0xff, 0xff, 0x00};
+    TEST_ASSERT_EQUAL(sizeof(iphone), lumix::deviceNamePlain("iPhone", out));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(iphone, out, sizeof(iphone));
+    // docs/PROTOKOL.md: "iPhone 17 Pro Max" -> 24 bytes
+    const uint8_t longer[] = {0x68, 0x50, 0x69, 0x11, 0x20, 0x65, 0x6e, 0x6f, 0x50, 0x20, 0x37, 0x31,
+                              0x4d, 0x20, 0x6f, 0x72, 0x00, 0x00, 0x78, 0x61, 0xff, 0xff, 0xff, 0x00};
+    TEST_ASSERT_EQUAL(sizeof(longer), lumix::deviceNamePlain("iPhone 17 Pro Max", out));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(longer, out, sizeof(longer));
+    // the card's name
+    const uint8_t card[] = {0x30, 0x31, 0x54, 0x07, 0x45, 0x2d, 0x30, 0x30, 0xff, 0xff, 0xff, 0x00};
+    TEST_ASSERT_EQUAL(sizeof(card), lumix::deviceNamePlain("T1000-E", out));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(card, out, sizeof(card));
+    // 34 bytes of UTF-8: cut to 22, because byte 23 would split a character
+    const uint8_t polish[] = {0xc5, 0x61, 0x5a, 0x16, 0xc5, 0xb3, 0xc3, 0xbc, 0x20, 0x87, 0xc4, 0x82, 0xc5, 0x99,
+                              0xc4, 0x67, 0x85, 0xc4, 0x6c, 0x9b, 0x00, 0x61, 0x6a, 0x20, 0xff, 0xff, 0xff, 0x00};
+    TEST_ASSERT_EQUAL(sizeof(polish), lumix::deviceNamePlain("Zażółć gęślą jaźń aparatu", out));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(polish, out, sizeof(polish));
+}
+
+void test_app_name()
+{
+    uint8_t out[lumix::APP_NAME_LENGTH];
+    uint8_t expected[lumix::APP_NAME_LENGTH] = {};
+    memcpy(expected, "gpxcam T1000-E 0.0.1", 20);
+    lumix::appName("gpxcam T1000-E 0.0.1", out);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, out, sizeof(expected));
+    // 31 ASCII bytes and a 2-byte letter that does not fit: cut before it
+    memset(expected, 'a', 31);
+    expected[31] = 0;
+    lumix::appName("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\xc5\x82", out);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, out, sizeof(expected));
+}
+
+void test_time_data()
+{
+    // docs/PROTOKOL.md: 2026-10-13 22:30:29 UTC, Europe/Warsaw in summer time
+    const uint8_t summer[] = {0xea, 0x07, 0x0a, 0x0d, 0x16, 0x1e, 0x1d, 0x3c, 0x00, 0x01};
+    uint8_t out[lumix::TIME_LENGTH];
+    lumix::timeData(utc::DateTime{2026, 10, 13, 22, 30, 29}, 60, true, out);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(summer, out, sizeof(summer));
+    // winter, and a negative offset (-300 min = 0xfed4) to check the sign
+    const uint8_t winter[] = {0xea, 0x07, 0x0c, 0x18, 0x0c, 0x00, 0x00, 0xd4, 0xfe, 0x00};
+    lumix::timeData(utc::DateTime{2026, 12, 24, 12, 0, 0}, -300, false, out);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(winter, out, sizeof(winter));
+}
+
 int main(int, char **)
 {
     UNITY_BEGIN();
@@ -160,5 +250,11 @@ int main(int, char **)
     RUN_TEST(test_malformed_or_empty);
     RUN_TEST(test_state_names);
     RUN_TEST(test_format_serial);
+    RUN_TEST(test_word_swap);
+    RUN_TEST(test_apply_key);
+    RUN_TEST(test_device_id);
+    RUN_TEST(test_device_name);
+    RUN_TEST(test_app_name);
+    RUN_TEST(test_time_data);
     return UNITY_END();
 }
