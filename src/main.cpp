@@ -6,7 +6,12 @@
 // includes inside core headers.
 #include <Adafruit_TinyUSB.h>
 
-void setup() {}
+#include "board.h"
+
+void setup()
+{
+    board::init();
+}
 
 void loop()
 {
