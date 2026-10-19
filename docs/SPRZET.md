@@ -61,9 +61,10 @@ Bootloader to Adafruit nRF52 Bootloader; konfiguracja tej płytki jest w repozyt
 ## Wejście w tryb wgrywania (DFU)
 
 - **Ręcznie:** przytrzymać przycisk i dwa razy szybko podłączyć kabel. Dioda świeci na zielono, pojawia się dysk T1000-E.
-  Działa zawsze, niezależnie od programu na karcie.
+  Działa zawsze, niezależnie od programu na karcie. Sprawdzone na karcie (M0).
 - **Komenda `dfu`** (program gpxcam, `tools/dfu.sh`): `enterUf2Dfu()` z rdzenia wyłącza SoftDevice, ustawia
-  GPREGRET = 0x57 i resetuje. Bootloader startuje z dyskiem.
+  GPREGRET = 0x57 i resetuje. Bootloader startuje z dyskiem. Sprawdzone na karcie (M0);
+  `INFO_UF2.TXT` po tej operacji jest identyczny jak przed pierwszym wgraniem.
 - **„1200 bps touch”** (otwarcie i zamknięcie portu z prędkością 1200): rdzeń wywołuje `enterSerialDfu()`
   (GPREGRET = 0x4E). Bootloader startuje **bez dysku**, tylko z portem szeregowym.
   Wyjście: ręczny DFU i wgranie pliku UF2. Dlatego monitora portu nie uruchamiamy z prędkością 1200.
