@@ -9,6 +9,8 @@
 // C library function.) Loop task only.
 #pragma once
 
+#include <stdint.h>
+
 namespace link_control {
 
 // Starts the link when a camera is paired. Call once at the end of setup().
@@ -25,6 +27,11 @@ bool active();
 // What the LED shows (M5 decision).
 enum class Indication { Off, Searching, Connected };
 Indication indication();
+
+// What the link is doing, for the battery log (stored as a byte: keep the values).
+enum class Activity : uint8_t { Off = 0, Connected = 1, Normal = 2, Rare = 3, Standby = 4, LongStandby = 5 };
+Activity activity();
+const char *activityName(uint8_t activity); // "off", "connected", ...; "?" for others
 
 // Logs the link state, the time since the last location and the counters, for 'p'.
 void logState();

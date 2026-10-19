@@ -21,6 +21,11 @@ constexpr uint32_t WAKE_HOLD_MS = 400;
 // Countdown of the 'off' command, long enough to unplug the cable (M1 step 4 tests).
 constexpr uint32_t OFF_COUNTDOWN_MS = 15000;
 
+// Call with every battery reading (at start and every 60 s). Below 3.40 V on the battery
+// (battery_rules.h) the card logs it, adds a battery log entry, plays two clicks and enters
+// System OFF. Never with USB connected: then it starts normally and charges.
+void checkBattery(uint32_t millivolts, bool usb, bool atStart);
+
 // Call in setup() right after board::init() and before board::sleepRadio(). After a
 // wake-up by the button without USB, the button must still be held at WAKE_HOLD_MS of
 // program time; a shorter press sends the card straight back to System OFF (the radio

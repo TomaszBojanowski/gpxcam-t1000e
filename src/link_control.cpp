@@ -597,6 +597,32 @@ bool active()
     return phase != Phase::Off && phase != Phase::Rejected;
 }
 
+Activity activity()
+{
+    if (!active())
+        return Activity::Off;
+    if (phase == Phase::Connected)
+        return Activity::Connected;
+    switch (mode) {
+    case link_policy::SearchMode::Rare:
+        return Activity::Rare;
+    case link_policy::SearchMode::Standby:
+        return Activity::Standby;
+    case link_policy::SearchMode::LongStandby:
+        return Activity::LongStandby;
+    case link_policy::SearchMode::Normal:
+        break;
+    }
+    return Activity::Normal;
+}
+
+const char *activityName(uint8_t value)
+{
+    static const char *const NAMES[] = {"off", "connected", "looking (normal)", "looking (rare)", "standby",
+                                        "long standby"};
+    return value < sizeof(NAMES) / sizeof(NAMES[0]) ? NAMES[value] : "?";
+}
+
 Indication indication()
 {
     if (phase == Phase::Connected)

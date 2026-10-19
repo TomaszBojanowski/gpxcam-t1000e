@@ -88,6 +88,9 @@ jedno co 4 s. Dźwięki: połączenie – dwa rosnące tony, koniec połączenia
 i sparowany aparat – także tych wartości nie publikować.
 Włączanie: przytrzymanie przycisku ok. 1 s (krótsze naciśnięcie – karta wraca do uśpienia; dioda może mignąć
 od bootloadera) albo podłączenie USB.
+`bat log on` / `bat log off` – dziennik baterii we flashu: na baterii wpis od razu i co 10 min (czas pracy, napięcie,
+stan `link`), do 1024 wpisów; `bat log` – wypisanie, `bat log clear` – skasowanie. Procedura pomiaru prądu:
+`docs/SPRZET.md`. Poniżej 3,40 V na baterii karta sama się wyłącza (dwa kliknięcia); z kablem nigdy.
 Diagnostyka (tylko odczyty): `diag bat` – napięcie baterii przy różnych czasach od włączenia dzielnika (ok. 4 s).
 `diag snd N` – wszystkie dźwięki (klik, start, wyłączenie, parowanie, sparowano, połączenie, rozłączenie)
 z wypełnieniem PWM N% (1–50),

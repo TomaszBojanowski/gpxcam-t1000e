@@ -325,6 +325,31 @@ ok. 1 s – puszczone po 836 ms, karta startuje.
   po powrocie połączenie ok. 11 s od wykrycia (gorący start GPS 9 s). W czuwaniu aparat bywa niewidoczny przez 30 s
   (rzadkie ogłoszenia w czuwaniu i rzadki skan) – tryb zostaje, bo karta pamięta ostatni stan.
 - **DC/DC:** nie włączamy – brak potwierdzenia, że płytka ma cewkę dla REG1, Meshtastic też go nie włącza.
+- **Niskie napięcie:** poniżej 3,40 V na baterii karta zapisuje wpis w dzienniku, gra dwa kliknięcia i przechodzi
+  w System OFF – przy starcie od razu, w pracy po dwóch kolejnych pomiarach co 60 s (krótki spadek pod obciążeniem
+  tego nie wywołuje). Z podłączonym USB nigdy (`battery_rules::powerOffForLowBattery`, test na PC): rozładowana
+  karta po podłączeniu kabla startuje normalnie i się ładuje.
+
+### Pomiar prądu
+
+**Bez miernika – test rozładowania z dziennikiem baterii** (średni prąd w pracy, rzędu mA):
+1. Naładuj kartę do pełna (`p` pokazuje `charged`).
+2. `bat log clear`, potem `bat log on`.
+3. Ustaw jeden scenariusz, np. aparat włączony i połączony; aparat w czuwaniu przez noc; aparat daleko (tryb rzadki).
+4. Odłącz kabel. Pierwszy wpis powstaje od razu, kolejne co 10 min (czas pracy, napięcie, stan `link`), do 1024 wpisów.
+5. Zostaw kartę do wyłączenia przy 3,40 V (ostatni wpis: `low battery, powered off`) albo przerwij podłączeniem
+   kabla – zapis wstrzymuje się przy USB.
+6. Podłącz kabel, `bat log`. Średni prąd ≈ 700 mAh × zużyta część / liczba godzin. Do 3,40 V zużyta jest prawie
+   cała pojemność – to najdokładniejszy wariant; z samego spadku napięcia w krótszym teście wynik jest zgrubny
+   (±20–30 %), bo napięcie ogniwa Li-ion nie jest liniowe względem ładunku.
+
+Spoczynku (System OFF, rzędu µA) tak się nie zmierzy: spadek napięcia to kilka mV na tydzień.
+
+**Ze sprzętem:**
+- Nordic Power Profiler Kit II (PPK2) – zasila kartę zamiast baterii (3,7–4,2 V) i mierzy 200 nA – 1 A z wykresem:
+  spoczynek, skan, GPS i połączenie widać osobno. Wymaga podłączenia w miejsce baterii (otwarcie obudowy).
+- Multimetr z zakresem µA/mA szeregowo z baterią – dobry do spoczynku; w pracy odczyt skacze (radio impulsowo).
+- Tester USB się nie nada – mierzy ładowanie, nie pobór z baterii.
 
 ## Otwarte pytania
 

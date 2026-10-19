@@ -5,6 +5,8 @@
 #include <nrf_soc.h>
 
 #include "battery.h"
+#include "battery_log.h"
+#include "battery_rules.h"
 #include "bluetooth.h"
 #include "board.h"
 #include "gps.h"
@@ -54,6 +56,8 @@ constexpr uint32_t LATCH_RETRY_STEP_MS = 10;
 // 0 = nothing recorded. Written only in handleWakeUp(), before the SoftDevice starts, so directly.
 constexpr uint32_t RELEASE_UNIT_MS = 10;
 constexpr uint32_t RELEASE_MAX_UNITS = 254;
+
+uint8_t lowBatteryReadings = 0;
 
 bool countdown = false;
 uint32_t countdownStart = 0;
@@ -256,6 +260,18 @@ void handleWakeUp()
         return;
     }
     trackWakeRelease = true; // held long enough: log the release time from poll()
+}
+
+void checkBattery(uint32_t millivolts, bool usb, bool atStart)
+{
+    if (!battery_rules::powerOffForLowBattery(millivolts, usb, atStart, &lowBatteryReadings))
+        return;
+    logger::line("power: battery %lu mV, below %lu mV - powering off to protect it", (unsigned long)millivolts,
+                 (unsigned long)battery_rules::LOW_MV);
+    battery_log::addPowerOffEntry(millivolts);
+    sound::playRefuse();
+    waitForSoundEnd();
+    enterSystemOff(); // refuses with USB, then the card simply goes on
 }
 
 void startCountdown()

@@ -7,6 +7,7 @@
 #include <Adafruit_TinyUSB.h>
 
 #include "battery.h"
+#include "battery_log.h"
 #include "bluetooth.h"
 #include "board.h"
 #include "button.h"
@@ -92,10 +93,17 @@ bool ledLit(uint32_t now) // not ledOn(): the core has one
     return now % LED_PERIOD_MS < LED_ON_MS;
 }
 
-void logBattery()
+// At start and every 60 s the reading also goes to the low-battery check (M6); the one of
+// 'p' does not, so it cannot add to the count of low readings.
+enum class BatteryCheck { None, AtStart, Periodic };
+
+void logBattery(BatteryCheck check)
 {
     const battery::Status status = battery::read();
     logger::line("battery: %lu mV, %s", (unsigned long)status.batteryMv, battery::chargerText(status.charger));
+    if (check != BatteryCheck::None)
+        power::checkBattery(status.batteryMv, status.charger != battery::Charger::NoUsb,
+                            check == BatteryCheck::AtStart);
 }
 
 void logHelp()
@@ -110,6 +118,8 @@ void logHelp()
     logger::transient("          link on / link off = work with the paired camera (on after start when paired),");
     logger::transient("          pair = pair with a camera in pairing mode (or click + hold 3 s), pair off = cancel,");
     logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera)");
+    logger::transient("          bat log on / bat log off = battery log in flash every 10 min on the battery,");
+    logger::transient("          bat log = show it, bat log clear = delete it");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
 }
 
@@ -193,7 +203,7 @@ void runCommand(const char *cmd)
         pairing_store::logState();
         pairing::logState();
         link_control::logState();
-        logBattery();
+        logBattery(BatteryCheck::None);
     } else if (strcmp(cmd, "dfu") == 0) {
         rebootToUf2Bootloader();
     } else if (strcmp(cmd, "off") == 0) {
@@ -237,6 +247,14 @@ void runCommand(const char *cmd)
             logger::line("pair: not running");
     } else if (strcmp(cmd, "unpair") == 0) {
         forgetCamera();
+    } else if (strcmp(cmd, "bat log on") == 0) {
+        battery_log::start();
+    } else if (strcmp(cmd, "bat log off") == 0) {
+        battery_log::stop();
+    } else if (strcmp(cmd, "bat log") == 0) {
+        battery_log::dump();
+    } else if (strcmp(cmd, "bat log clear") == 0) {
+        battery_log::clear();
     } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
         runSoundTest(cmd + strlen(SOUND_TEST_COMMAND));
     } else if (strcmp(cmd, "diag bat") == 0) {
@@ -346,11 +364,11 @@ void setup()
     diag::logResetInfo();
     board::logPowerState();
     gps::logState();
+    logBattery(BatteryCheck::AtStart); // a flat battery powers off here, before GPS and radio start
     // After the start logs: the very first start writes flash here.
     if (bleReady && pairing_store::begin())
         pairing_store::logState();
     link_control::begin(); // starts when a camera is paired
-    logBattery();
     logHelp();
 }
 
@@ -368,7 +386,7 @@ void loop()
     }
     if (now - lastBattery >= BATTERY_PERIOD_MS) {
         lastBattery = now;
-        logBattery();
+        logBattery(BatteryCheck::Periodic);
     }
 
     readSerial();
@@ -377,6 +395,7 @@ void loop()
     bluetooth::poll();
     pairing::poll();
     link_control::poll();
+    battery_log::poll();
     handleButton();
     power::poll();
     sound::poll();
