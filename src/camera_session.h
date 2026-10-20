@@ -34,6 +34,11 @@ Result poll();
 // Why the last session failed, e.g. "time: refused (GATT 0x0080)".
 const char *failure();
 
+// True if the last session failed because the connection was not established (HCI 0x3e,
+// seen on the S5II right after it was switched on, and now and then otherwise): a quick
+// second attempt usually works.
+bool notEstablished();
+
 const Discovered &discovered();
 
 // Ends a running session at once: stops connecting or disconnects without waiting.

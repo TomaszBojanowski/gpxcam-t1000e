@@ -19,6 +19,11 @@ namespace {
 
 constexpr uint32_t STEP_MS = 5000; // GPS mode, descriptors, notifications, every location (M4/M5)
 
+// A connection that was not established (HCI 0x3e) is tried again after this pause, once,
+// without counting as a failure; the next one is allowed after a successful connection
+// (v1.0.1: the S5II often refuses the very first connection after it is switched on).
+constexpr uint32_t QUICK_RETRY_MS = 1000;
+
 // Scan timing of the search modes (M6 decisions; link_policy::SearchMode).
 constexpr uint16_t RARE_SCAN_INTERVAL_MS = 2000;
 constexpr uint16_t RARE_SCAN_WINDOW_MS = 100;
@@ -38,6 +43,7 @@ Phase phase = Phase::Off;
 uint32_t phaseStart = 0;
 uint32_t pauseLength = 0;
 uint32_t failuresInARow = 0;
+bool quickRetryUsed = false;
 uint32_t connectedAt = 0;
 char serialText[2 * lumix::SERIAL_LENGTH + 1] = "";
 
@@ -296,6 +302,7 @@ void afterGpsMode()
 
 void onAccepted()
 {
+    quickRetryUsed = false; // the next refused connection may get its quick attempt again
     const camera_session::Discovered &found = camera_session::discovered();
     const uint16_t gpsModeHandle = found.valueHandle[camera_link::GPS_MODE];
     locationHandle = found.valueHandle[camera_link::LOCATION];
@@ -479,7 +486,15 @@ void introducing()
         rejectedByCamera();
         break;
     case camera_session::Result::Failed:
-        connectionFailed(camera_session::failure());
+        if (camera_session::notEstablished() && !quickRetryUsed) {
+            quickRetryUsed = true;
+            pauseLength = QUICK_RETRY_MS;
+            logger::line("link: connection to camera %s not established - trying again in %lu s", serialText,
+                         (unsigned long)(QUICK_RETRY_MS / 1000));
+            enter(Phase::Pausing);
+        } else {
+            connectionFailed(camera_session::failure());
+        }
         break;
     }
 }
@@ -578,6 +593,7 @@ void start()
     }
     lumix::formatSerial(pairing_store::record().serial, serialText, sizeof(serialText));
     failuresInARow = 0;
+    quickRetryUsed = false;
     cameraSeen = false;
     searchStartMs = millis();
     mode = link_policy::SearchMode::Normal;

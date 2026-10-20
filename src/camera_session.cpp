@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <ble_gatt.h>
+#include <ble_hci.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -41,6 +42,7 @@ uint32_t stepLimit = 0;
 bool keepOpen = false;
 bool accepted = false;
 bool rejected = false; // the camera refused the time
+bool establishFailed = false; // HCI 0x3e: the connection was not established
 char failureText[80] = "";
 
 uint8_t cardUuid[lumix::UUID_LENGTH];
@@ -290,8 +292,10 @@ bool handleCommonEvent(const camera_link::Event &event)
 {
     switch (event.type) {
     case camera_link::EventType::Disconnected:
-        if (step != Step::Disconnecting)
+        if (step != Step::Disconnecting) {
             setFailure("%s: the camera disconnected (HCI 0x%02x)", stepName(step), event.status);
+            establishFailed = event.status == BLE_HCI_CONN_FAILED_TO_BE_ESTABLISHED;
+        }
         step = Step::Done;
         return true;
     case camera_link::EventType::GattTimeout:
@@ -400,6 +404,7 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     keepOpen = keepConnection;
     accepted = false;
     rejected = false;
+    establishFailed = false;
     failureText[0] = '\0';
     if (!camera_link::connect(camera)) {
         setFailure("connect: refused by the SoftDevice");
@@ -429,6 +434,11 @@ Result poll()
 const char *failure()
 {
     return failureText;
+}
+
+bool notEstablished()
+{
+    return establishFailed;
 }
 
 const Discovered &discovered()

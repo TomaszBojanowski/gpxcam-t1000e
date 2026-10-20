@@ -324,6 +324,10 @@ ok. 1 s – puszczone po 836 ms, karta startuje.
   2 min – ok. 8 s od włączenia aparatu, lokalizacja 2 s po wykryciu; poza zasięgiem – rozłączenie `HCI 0x08`, po 5 min tryb rzadki;
   po powrocie połączenie ok. 11 s od wykrycia (gorący start GPS 9 s). W czuwaniu aparat bywa niewidoczny przez 30 s
   (rzadkie ogłoszenia w czuwaniu i rzadki skan) – tryb zostaje, bo karta pamięta ostatni stan.
+- **Szybka ponowna próba (1.0.1):** S5II często odrzuca pierwsze połączenie tuż po włączeniu (`HCI 0x3e`, połączenie
+  nie zostało ustanowione; raz także przy aparacie włączonym od dawna). Karta próbuje wtedy ponownie po 1 s, bez
+  wydłużania przerw; kolejna taka próba przysługuje dopiero po udanym połączeniu. W 1.0.0 po takiej porażce
+  połączenie wracało po ok. 17 s.
 - **DC/DC:** nie włączamy – brak potwierdzenia, że płytka ma cewkę dla REG1, Meshtastic też go nie włącza.
 - **Niskie napięcie:** poniżej 3,40 V na baterii karta zapisuje wpis w dzienniku, gra dwa kliknięcia i przechodzi
   w System OFF – przy starcie od razu, w pracy po dwóch kolejnych pomiarach co 60 s (krótki spadek pod obciążeniem
