@@ -29,7 +29,7 @@ void assertDateTime(const utc::DateTime &expected, const utc::DateTime &actual)
 void test_unix_seconds()
 {
     TEST_ASSERT_EQUAL_INT64(0, utc::toUnixSeconds(at(1970, 1, 1, 0, 0, 0)));
-    // the GPS epoch: 315964800 s, as in docs/PROTOKOL.md
+    // the GPS epoch: 315964800 s, as in docs/PROTOCOL.md
     TEST_ASSERT_EQUAL_INT64(315964800, utc::toUnixSeconds(at(1980, 1, 6, 0, 0, 0)));
     // the moment of the LUMIX test vectors
     TEST_ASSERT_EQUAL_INT64(1791930629, utc::toUnixSeconds(at(2026, 10, 13, 22, 30, 29)));

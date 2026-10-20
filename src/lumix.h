@@ -1,4 +1,4 @@
-// LUMIX camera protocol (docs/PROTOKOL.md), without hardware dependencies (tested on the PC):
+// LUMIX camera protocol (docs/PROTOCOL.md), without hardware dependencies (tested on the PC):
 // the camera's advertisement and the data the card writes when it introduces itself.
 // Reference: the gpxcam app, android/.../LumixProtocol.kt.
 #pragma once
@@ -45,7 +45,7 @@ const char *stateName(uint8_t state);
 // Returns its length, or 0 if it does not fit in out together with the terminator.
 size_t formatSerial(const uint8_t serial[SERIAL_LENGTH], char *out, size_t size);
 
-// ---- introducing the card (docs/PROTOKOL.md, "Formaty bajtów") ----------------------
+// ---- introducing the card (docs/PROTOCOL.md, "Byte formats") ----------------------
 
 constexpr size_t KEY_LENGTH = 4;   // read from the camera, different in every connection
 constexpr size_t UUID_LENGTH = 16; // the card's identifier, big-endian as in its text form
@@ -77,7 +77,7 @@ void appName(const char *name, uint8_t out[APP_NAME_LENGTH]);
 void timeData(const utc::DateTime &utcNow, int16_t standardOffsetMinutes, bool summerTime,
               uint8_t out[TIME_LENGTH]);
 
-// ---- location (docs/PROTOKOL.md, "Lokalizacja") ----------------------------------------
+// ---- location (docs/PROTOCOL.md, "Byte formats", location) ----------------------------------------
 
 constexpr size_t LOCATION_LENGTH = 16;
 constexpr int64_t GPS_EPOCH_UNIX_SECONDS = 315964800; // 1980-01-06 00:00:00 UTC
@@ -89,7 +89,7 @@ constexpr int64_t GPS_EPOCH_UNIX_SECONDS = 315964800; // 1980-01-06 00:00:00 UTC
 void locationData(int64_t unixSeconds, int32_t latitudeE7, int32_t longitudeE7, int32_t altitudeDm,
                   uint8_t out[LOCATION_LENGTH]);
 
-// ---- GATT service and characteristics (docs/PROTOKOL.md), big-endian as written ------
+// ---- GATT service and characteristics (docs/PROTOCOL.md), big-endian as written ------
 
 // 1FE71B85-8344-4E6A-BF1A-AC7ACDB3F8AF
 constexpr uint8_t SERVICE_UUID[UUID_LENGTH] = {0x1f, 0xe7, 0x1b, 0x85, 0x83, 0x44, 0x4e, 0x6a,

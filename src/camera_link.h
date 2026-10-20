@@ -14,7 +14,7 @@
 
 namespace camera_link {
 
-// The characteristics the card uses (lumix.h, docs/PROTOKOL.md). The first five are needed
+// The characteristics the card uses (lumix.h, docs/PROTOCOL.md). The first five are needed
 // to introduce the card (pairing), the others for the normal work (M5).
 enum Characteristic : uint8_t {
     KEY,

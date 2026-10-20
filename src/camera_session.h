@@ -1,5 +1,5 @@
 // One connection in which the card introduces itself to the camera, in the order of
-// docs/PROTOKOL.md ("Kolejność po każdym połączeniu"): connect, MTU, service and
+// docs/PROTOCOL.md ("Order after every connection"): connect, MTU, service and
 // characteristics, key, identifier, app name, device name, time. Every step has a time
 // limit and starts only after the previous one succeeded; a refused time means the camera
 // does not know the card. For pairing the connection is closed at the end; for the normal

@@ -19,7 +19,7 @@ constexpr uint32_t UART_SETTLE_MS = 50;
 constexpr uint32_t RTC_WAKE_PULSE_MS = 3;
 constexpr uint32_t WAKE_SETTLE_MS = 50;
 constexpr uint32_t RESET_PULSE_MS = 10;
-constexpr uint32_t NO_DATA_RESET_MS = 1500; // the first byte comes after 100-220 ms (docs/SPRZET.md)
+constexpr uint32_t NO_DATA_RESET_MS = 1500; // the first byte comes after 100-220 ms (docs/HARDWARE.md)
 
 // Power-down as in Seeed's gnss_scan_stop() (ag3335.c): $PAIR382,0 (release the sleep lock
 // set at start-up, gps_setup.cpp) up to 4 times, then $PAIR650,0 (Backup/RTC mode) every

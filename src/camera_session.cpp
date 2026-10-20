@@ -158,7 +158,7 @@ void writeDeviceName()
     startWrite(camera_link::DEVICE_NAME, length, Step::DeviceName);
 }
 
-// The time of this moment, as the camera expects (docs/PROTOKOL.md).
+// The time of this moment, as the camera expects (docs/PROTOCOL.md).
 void writeTime()
 {
     int64_t now = 0;

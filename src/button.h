@@ -23,7 +23,7 @@ constexpr uint32_t LONG_PRESS_MS = 3000;
 constexpr uint32_t CLICK_HOLD_GAP_MS = 500;
 
 // Configures the pin: active high, no resistor on the board, so the internal
-// pull-down is used (as Meshtastic's INPUT_PULLDOWN_SENSE). See docs/SPRZET.md.
+// pull-down is used (as Meshtastic's INPUT_PULLDOWN_SENSE). See docs/HARDWARE.md.
 void begin();
 
 // Call from loop(). Returns at most one event per call: ShortPress on release

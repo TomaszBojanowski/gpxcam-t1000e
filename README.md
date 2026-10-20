@@ -140,7 +140,7 @@ pio device monitor
 **Privacy:** the log shows the camera's serial number and Bluetooth address and the card's id –
 do not publish it. GPS positions are never logged.
 
-Measuring the current with the battery log: `docs/SPRZET.md`, section "Pomiar prądu".
+Measuring the current with the battery log: `docs/HARDWARE.md`, section "Measuring the current".
 
 ## Tests on the PC
 
@@ -150,19 +150,19 @@ pio test -e native
 
 The modules without hardware dependencies – NMEA parser, LUMIX protocol (advertisement, byte
 formats, location), camera list, UTC calendar with the EU summer-time rule, pairing record,
-link and battery rules – are tested with made-up data and the vectors from `docs/PROTOKOL.md`.
+link and battery rules – are tested with made-up data and the vectors from `docs/PROTOCOL.md`.
 
 ## Documentation
 
-- [docs/SPRZET.md](docs/SPRZET.md) – the card: bootloader, SoftDevice, flash map, DFU, pins,
-  measurements, differences from Meshtastic (in Polish; an English version will follow).
-- [docs/PROTOKOL.md](docs/PROTOKOL.md) – the Bluetooth LE protocol of LUMIX cameras and test
-  vectors (in Polish; an English version will follow).
+- [docs/HARDWARE.md](docs/HARDWARE.md) – the card: bootloader, SoftDevice, flash map, DFU, pins,
+  measurements and findings of every milestone, differences from Meshtastic.
+- [docs/PROTOCOL.md](docs/PROTOCOL.md) – the Bluetooth LE protocol of LUMIX cameras and test
+  vectors.
 
 ## Sources
 
 - Pins, board file and linker script: [Meshtastic](https://github.com/meshtastic/firmware)
-  (GPL-3.0), completed from Seeed's T1000-E SDK – details in `docs/SPRZET.md` and in the code.
+  (GPL-3.0), completed from Seeed's T1000-E SDK – details in `docs/HARDWARE.md` and in the code.
 - Arduino core: Meshtastic's fork of the Adafruit nRF52 core, pinned in `platformio.ini`.
 - Protocol: the gpxcam app for Android.
 

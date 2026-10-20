@@ -1,6 +1,6 @@
 // Read-only hardware diagnostics (reset reason, battery divider settling).
 // Nothing here changes flash or enters a sleep mode. The one-off checks of M1
-// step 1 (button, P0.04, P0.05, VDDH) are documented in docs/SPRZET.md.
+// step 1 (button, P0.04, P0.05, VDDH) are documented in docs/HARDWARE.md.
 #pragma once
 
 namespace diag {

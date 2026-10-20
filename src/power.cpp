@@ -47,7 +47,7 @@ constexpr uint32_t SYSTEM_OFF_GRACE_MS = 1000;  // reached only in emulated Syst
 constexpr uint32_t COUNTDOWN_LOG_MS = 5000;
 
 // LATCH clearing is retried this long before powering off is refused: once the button bit
-// would not clear (open question in docs/SPRZET.md); the refusal logs the details.
+// would not clear (open question in docs/HARDWARE.md); the refusal logs the details.
 constexpr uint32_t LATCH_RETRY_MS = 100;
 constexpr uint32_t LATCH_RETRY_STEP_MS = 10;
 
@@ -59,7 +59,7 @@ uint32_t nextCountdownLog = 0;
 
 bool buttonPressed()
 {
-    return digitalRead(BUTTON_PIN) == HIGH; // active high, see docs/SPRZET.md
+    return digitalRead(BUTTON_PIN) == HIGH; // active high, see docs/HARDWARE.md
 }
 
 // True when the button has been released continuously for DEBOUNCE_MS within timeoutMs.
@@ -105,7 +105,7 @@ bool armWakeUp()
 
     // Writing 1 clears a LATCH bit, unless that pin still meets its SENSE condition (PS 6.9.1).
     // Retried for LATCH_RETRY_MS: on one wake-up the button bit would not clear (open question
-    // in docs/SPRZET.md); the values below go to the log to find out why.
+    // in docs/HARDWARE.md); the values below go to the log to find out why.
     const uint32_t latchBefore = NRF_P0->LATCH;
     const uint32_t start = millis();
     uint32_t latchP0 = 0;
@@ -203,7 +203,7 @@ void handleWakeUp()
 
     pinMode(BUTTON_PIN, INPUT_PULLDOWN);
     // millis() counts from the start of the program; the time before it (about 0.5 s, the
-    // 32 kHz crystal start, docs/SPRZET.md) is not counted. A release before WAKE_HOLD_MS
+    // 32 kHz crystal start, docs/HARDWARE.md) is not counted. A release before WAKE_HOLD_MS
     // means a short press: back to System OFF, silently. If that is refused, the start
     // simply continues.
     const uint32_t now = millis();

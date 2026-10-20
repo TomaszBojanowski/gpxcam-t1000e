@@ -15,7 +15,7 @@ namespace power {
 // Hold needed to switch the card on with the button, in program time (millis()). The
 // M1 decision is a hold of about 1 s. millis() starts only when the 32 kHz crystal runs,
 // about 0.5 s after the press (measured in M2: a hold of "1 s" ended at 500 ms of
-// program time; docs/SPRZET.md), so 400 ms of program time is a hold of about 0.9 s.
+// program time; docs/HARDWARE.md), so 400 ms of program time is a hold of about 0.9 s.
 constexpr uint32_t WAKE_HOLD_MS = 400;
 
 // Countdown of the 'off' command, long enough to unplug the cable (M1 step 4 tests).
