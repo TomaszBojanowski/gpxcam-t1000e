@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <ble_gatt.h>
+#include <ble_hci.h>
 #include <string.h>
 
 #include "bluetooth.h"
@@ -330,6 +331,11 @@ void onAccepted()
 void onDisconnected(uint16_t reason)
 {
     const uint32_t lasted = millis() - connectedAt;
+    // The camera closed the connection itself (HCI 0x13): that is how a switch-off ends it,
+    // also seconds after connecting, so it is a normal end, not a failure: the pause is 5 s
+    // (v1.0.1). Other ends (out of range, errors) keep making the pauses longer.
+    if (reason == BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION)
+        failuresInARow = 0;
     char why[logger::LINE_MAX];
     snprintf(why, sizeof(why), "disconnected from camera %s after %lu s (HCI 0x%02x)", serialText,
              (unsigned long)(lasted / 1000), reason);

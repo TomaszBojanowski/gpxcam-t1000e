@@ -328,6 +328,10 @@ ok. 1 s – puszczone po 836 ms, karta startuje.
   nie zostało ustanowione; raz także przy aparacie włączonym od dawna). Karta próbuje wtedy ponownie po 1 s, bez
   wydłużania przerw; kolejna taka próba przysługuje dopiero po udanym połączeniu. W 1.0.0 po takiej porażce
   połączenie wracało po ok. 17 s.
+- **Koniec połączenia przez aparat (1.0.1):** wyłączenie aparatu kończy połączenie kodem `HCI 0x13` – to normalny
+  koniec, nie porażka: zawsze przerwa 5 s, także po krótkim połączeniu. W 1.0.0 krótkie połączenia (aparat szybko
+  wyłączany) wydłużały przerwy 5 → 15 → 60 s i po trzecim cyklu karta łączyła się dopiero po minucie. Utrata zasięgu
+  (`HCI 0x08`) i błędy dalej wydłużają przerwy.
 - **DC/DC:** nie włączamy – brak potwierdzenia, że płytka ma cewkę dla REG1, Meshtastic też go nie włącza.
 - **Niskie napięcie:** poniżej 3,40 V na baterii karta zapisuje wpis w dzienniku, gra dwa kliknięcia i przechodzi
   w System OFF – przy starcie od razu, w pracy po dwóch kolejnych pomiarach co 60 s (krótki spadek pod obciążeniem

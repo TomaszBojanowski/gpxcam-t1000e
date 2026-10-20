@@ -4,8 +4,10 @@
 // GPS has UTC time (the introduction ends with it). Then it switches the camera's GPS mode
 // on, listens for its notifications and sends the location at once and every 25 s (earlier
 // after moving or when the camera asks) - only with a GPS fix; without one the connection
-// stays. No scanning while connected. After a disconnect it pauses (5 s, 15 s, 60 s) and
-// looks again; if the camera refuses the card, it stops until 'link on' or a new pairing.
+// stays. No scanning while connected. After a failure it pauses (5 s, 15 s, 60 s) and looks
+// again; a camera that closes the connection itself (switched off) gives a 5 s pause; a
+// connection that was not established is tried again after 1 s, once. If the camera
+// refuses the card, it stops until 'link on' or a new pairing.
 // (Not named "link": that is a C library function.) Loop task only.
 #pragma once
 
