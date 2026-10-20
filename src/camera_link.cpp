@@ -29,6 +29,7 @@ enum class InfoType : uint8_t {
     CameraRequest,    // the camera asked for other parameters (Bluefruit accepts them)
     ParametersChanged,
     PhyChanged,
+    DataLengthChanged,
 };
 
 struct Info {
@@ -36,9 +37,11 @@ struct Info {
     ble_gap_conn_params_t params;
     uint8_t txPhy;
     uint8_t rxPhy;
+    ble_gap_data_length_params_t dataLength;
 };
 
-constexpr UBaseType_t INFO_QUEUE_LENGTH = 4; // a connection, a request, its result, a PHY change
+// A connection, a request, its result, a PHY and a data length change.
+constexpr UBaseType_t INFO_QUEUE_LENGTH = 5;
 StaticQueue_t infoQueueControl;
 uint8_t infoQueueStorage[INFO_QUEUE_LENGTH * sizeof(Info)];
 QueueHandle_t infoQueue = nullptr;
@@ -47,6 +50,10 @@ QueueHandle_t infoQueue = nullptr;
 ble_gap_conn_params_t currentParams = {};
 uint8_t currentTxPhy = BLE_GAP_PHY_1MBPS; // a connection starts on 1M (ble_gap.h, BLE_GAP_PHYS)
 uint8_t currentRxPhy = BLE_GAP_PHY_1MBPS;
+// A connection starts with 27-byte packets (Bluetooth Core 5.0, Vol 6, Part B, 4.5.10).
+constexpr uint16_t DEFAULT_DATA_LENGTH = 27;
+uint16_t currentTxOctets = DEFAULT_DATA_LENGTH;
+uint16_t currentRxOctets = DEFAULT_DATA_LENGTH;
 
 // Units of ble_gap_conn_params_t (ble_gap.h): the interval in 1.25 ms, the timeout in 10 ms.
 constexpr uint32_t INTERVAL_UNIT_US = 1250;
@@ -76,8 +83,9 @@ bool registerUuid(const uint8_t bigEndian[lumix::UUID_LENGTH], ble_uuid_t *out)
     return true;
 }
 
-void queueEvent(const camera_link::Event &event)
+void queueEvent(camera_link::Event event)
 {
+    event.atMs = millis();
     if (xQueueSend(eventQueue, &event, 0) != pdTRUE)
         lost++;
 }
@@ -233,6 +241,13 @@ void onBleEvent(const ble_evt_t *event)
         queueInfo(info);
         return;
     }
+    case BLE_GAP_EVT_DATA_LENGTH_UPDATE: {
+        Info info = {};
+        info.type = InfoType::DataLengthChanged;
+        info.dataLength = event->evt.gap_evt.params.data_length_update.effective_params;
+        queueInfo(info);
+        return;
+    }
     default:
         break;
     }
@@ -266,12 +281,14 @@ void onBleEvent(const ble_evt_t *event)
             sd_ble_gattc_hv_confirm(connHandle, gattc.params.hvx.handle);
         out.type = EventType::Notified;
         out.read.handle = gattc.params.hvx.handle;
+        out.read.fullLength = gattc.params.hvx.len;
         out.read.length = (uint8_t)min((uint16_t)MAX_READ_LENGTH, gattc.params.hvx.len);
         memcpy(out.read.data, gattc.params.hvx.data, out.read.length);
         break;
     case BLE_GATTC_EVT_READ_RSP:
         out.type = EventType::ReadDone;
         out.read.handle = gattc.params.read_rsp.handle;
+        out.read.fullLength = gattc.params.read_rsp.len;
         out.read.length = (uint8_t)min((uint16_t)MAX_READ_LENGTH, gattc.params.read_rsp.len);
         memcpy(out.read.data, gattc.params.read_rsp.data, out.read.length);
         break;
@@ -373,6 +390,7 @@ void poll()
         case InfoType::Connected:
             currentParams = info.params;
             currentTxPhy = currentRxPhy = BLE_GAP_PHY_1MBPS;
+            currentTxOctets = currentRxOctets = DEFAULT_DATA_LENGTH;
             formatParams(info.params, text, sizeof(text));
             logger::transient("camera: connection %s", text);
             break;
@@ -390,6 +408,13 @@ void poll()
             currentRxPhy = info.rxPhy;
             logger::line("camera: PHY changed to tx %s, rx %s", phyName(info.txPhy), phyName(info.rxPhy));
             break;
+        case InfoType::DataLengthChanged:
+            currentTxOctets = info.dataLength.max_tx_octets;
+            currentRxOctets = info.dataLength.max_rx_octets;
+            logger::line("camera: data length changed to tx %u B / %u us, rx %u B / %u us",
+                         info.dataLength.max_tx_octets, info.dataLength.max_tx_time_us,
+                         info.dataLength.max_rx_octets, info.dataLength.max_rx_time_us);
+            break;
         }
     }
 }
@@ -402,9 +427,11 @@ void logState()
     formatParams(currentParams, text, sizeof(text));
     int8_t dbm = 0;
     if (rssi(&dbm))
-        logger::transient("camera: %s, PHY %s/%s, %d dBm", text, phyName(currentTxPhy), phyName(currentRxPhy), dbm);
+        logger::transient("camera: %s, PHY %s/%s, data %u/%u B, %d dBm", text, phyName(currentTxPhy),
+                          phyName(currentRxPhy), currentTxOctets, currentRxOctets, dbm);
     else
-        logger::transient("camera: %s, PHY %s/%s", text, phyName(currentTxPhy), phyName(currentRxPhy));
+        logger::transient("camera: %s, PHY %s/%s, data %u/%u B", text, phyName(currentTxPhy), phyName(currentRxPhy),
+                          currentTxOctets, currentRxOctets);
 }
 
 bool rssi(int8_t *dbm)
