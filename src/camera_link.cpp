@@ -2,8 +2,10 @@
 
 #include <Arduino.h>
 #include <bluefruit.h>
+#include <stdio.h>
 #include <string.h>
 
+#include "log.h"
 #include "lumix.h"
 
 // Sources: S140 7.3.0 API (ble.h, ble_gap.h, ble_gattc.h), Bluefruit52Lib 0.21.0
@@ -19,6 +21,36 @@ QueueHandle_t eventQueue = nullptr;
 
 volatile uint16_t connHandle = BLE_CONN_HANDLE_INVALID; // written by the BLE task
 volatile uint32_t lost = 0;
+
+// Connection details travel from the BLE task to poll() through their own queue, so the
+// GATT steps of camera_session and link_control never see them.
+enum class InfoType : uint8_t {
+    Connected,        // the parameters the connection started with
+    CameraRequest,    // the camera asked for other parameters (Bluefruit accepts them)
+    ParametersChanged,
+    PhyChanged,
+};
+
+struct Info {
+    InfoType type;
+    ble_gap_conn_params_t params;
+    uint8_t txPhy;
+    uint8_t rxPhy;
+};
+
+constexpr UBaseType_t INFO_QUEUE_LENGTH = 4; // a connection, a request, its result, a PHY change
+StaticQueue_t infoQueueControl;
+uint8_t infoQueueStorage[INFO_QUEUE_LENGTH * sizeof(Info)];
+QueueHandle_t infoQueue = nullptr;
+
+// The current details, kept by poll() in the loop task.
+ble_gap_conn_params_t currentParams = {};
+uint8_t currentTxPhy = BLE_GAP_PHY_1MBPS; // a connection starts on 1M (ble_gap.h, BLE_GAP_PHYS)
+uint8_t currentRxPhy = BLE_GAP_PHY_1MBPS;
+
+// Units of ble_gap_conn_params_t (ble_gap.h): the interval in 1.25 ms, the timeout in 10 ms.
+constexpr uint32_t INTERVAL_UNIT_US = 1250;
+constexpr uint32_t TIMEOUT_UNIT_MS = 10;
 
 constexpr uint16_t FIRST_HANDLE = 0x0001;
 
@@ -89,6 +121,44 @@ void addDescriptors(const ble_gattc_evt_desc_disc_rsp_t &response, camera_link::
     }
 }
 
+void queueInfo(const Info &info)
+{
+    if (xQueueSend(infoQueue, &info, 0) != pdTRUE)
+        lost++;
+}
+
+const char *phyName(uint8_t phy)
+{
+    switch (phy) {
+    case BLE_GAP_PHY_1MBPS:
+        return "1M";
+    case BLE_GAP_PHY_2MBPS:
+        return "2M";
+    case BLE_GAP_PHY_CODED:
+        return "coded";
+    default:
+        return "?";
+    }
+}
+
+constexpr size_t PARAMS_TEXT_MAX = 80;
+
+// "interval 20.00 ms, latency 0, supervision timeout 2000 ms"; an interval range when the
+// minimum and maximum differ (a camera request).
+void formatParams(const ble_gap_conn_params_t &params, char *out, size_t size)
+{
+    const uint32_t minUs = params.min_conn_interval * INTERVAL_UNIT_US;
+    const uint32_t maxUs = params.max_conn_interval * INTERVAL_UNIT_US;
+    int length = snprintf(out, size, "interval %lu.%02lu", (unsigned long)(minUs / 1000),
+                          (unsigned long)(minUs % 1000 / 10));
+    if (maxUs != minUs && length > 0 && (size_t)length < size)
+        length += snprintf(out + length, size - length, "-%lu.%02lu", (unsigned long)(maxUs / 1000),
+                           (unsigned long)(maxUs % 1000 / 10));
+    if (length > 0 && (size_t)length < size)
+        snprintf(out + length, size - length, " ms, latency %u, supervision timeout %lu ms", params.slave_latency,
+                 (unsigned long)(params.conn_sup_timeout * TIMEOUT_UNIT_MS));
+}
+
 } // namespace
 
 namespace camera_link {
@@ -96,6 +166,7 @@ namespace camera_link {
 bool begin()
 {
     eventQueue = xQueueCreateStatic(QUEUE_LENGTH, sizeof(Event), queueStorage, &queueControl);
+    infoQueue = xQueueCreateStatic(INFO_QUEUE_LENGTH, sizeof(Info), infoQueueStorage, &infoQueueControl);
     if (!registerUuid(lumix::SERVICE_UUID, &serviceUuid))
         return false;
     for (size_t i = 0; i < CHARACTERISTIC_COUNT; i++) {
@@ -118,6 +189,12 @@ void onBleEvent(const ble_evt_t *event)
         connHandle = eventConn;
         out.type = EventType::Connected;
         queueEvent(out);
+        Info info = {};
+        info.type = InfoType::Connected;
+        info.params = event->evt.gap_evt.params.connected.conn_params;
+        queueInfo(info);
+        // Signal strength on every received packet, read with sd_ble_gap_rssi_get(); no events.
+        sd_ble_gap_rssi_start(eventConn, BLE_GAP_RSSI_THRESHOLD_INVALID, 0);
         return;
     }
     if (connHandle == BLE_CONN_HANDLE_INVALID || eventConn != connHandle)
@@ -134,6 +211,28 @@ void onBleEvent(const ble_evt_t *event)
         out.type = EventType::SecurityRequest;
         queueEvent(out);
         return;
+    case BLE_GAP_EVT_CONN_PARAM_UPDATE_REQUEST: {
+        Info info = {};
+        info.type = InfoType::CameraRequest;
+        info.params = event->evt.gap_evt.params.conn_param_update_request.conn_params;
+        queueInfo(info);
+        return;
+    }
+    case BLE_GAP_EVT_CONN_PARAM_UPDATE: {
+        Info info = {};
+        info.type = InfoType::ParametersChanged;
+        info.params = event->evt.gap_evt.params.conn_param_update.conn_params;
+        queueInfo(info);
+        return;
+    }
+    case BLE_GAP_EVT_PHY_UPDATE: {
+        Info info = {};
+        info.type = InfoType::PhyChanged;
+        info.txPhy = event->evt.gap_evt.params.phy_update.tx_phy;
+        info.rxPhy = event->evt.gap_evt.params.phy_update.rx_phy;
+        queueInfo(info);
+        return;
+    }
     default:
         break;
     }
@@ -261,6 +360,58 @@ bool disconnect()
 uint32_t lostEvents()
 {
     return lost;
+}
+
+void poll()
+{
+    if (infoQueue == nullptr)
+        return;
+    Info info;
+    char text[PARAMS_TEXT_MAX];
+    while (xQueueReceive(infoQueue, &info, 0) == pdTRUE) {
+        switch (info.type) {
+        case InfoType::Connected:
+            currentParams = info.params;
+            currentTxPhy = currentRxPhy = BLE_GAP_PHY_1MBPS;
+            formatParams(info.params, text, sizeof(text));
+            logger::transient("camera: connection %s", text);
+            break;
+        case InfoType::CameraRequest:
+            formatParams(info.params, text, sizeof(text));
+            logger::line("camera: asks for %s", text);
+            break;
+        case InfoType::ParametersChanged:
+            currentParams = info.params;
+            formatParams(info.params, text, sizeof(text));
+            logger::line("camera: connection changed to %s", text);
+            break;
+        case InfoType::PhyChanged:
+            currentTxPhy = info.txPhy;
+            currentRxPhy = info.rxPhy;
+            logger::line("camera: PHY changed to tx %s, rx %s", phyName(info.txPhy), phyName(info.rxPhy));
+            break;
+        }
+    }
+}
+
+void logState()
+{
+    if (!connected())
+        return;
+    char text[PARAMS_TEXT_MAX];
+    formatParams(currentParams, text, sizeof(text));
+    int8_t dbm = 0;
+    if (rssi(&dbm))
+        logger::transient("camera: %s, PHY %s/%s, %d dBm", text, phyName(currentTxPhy), phyName(currentRxPhy), dbm);
+    else
+        logger::transient("camera: %s, PHY %s/%s", text, phyName(currentTxPhy), phyName(currentRxPhy));
+}
+
+bool rssi(int8_t *dbm)
+{
+    const uint16_t handle = connHandle;
+    uint8_t channel = 0;
+    return handle != BLE_CONN_HANDLE_INVALID && sd_ble_gap_rssi_get(handle, dbm, &channel) == NRF_SUCCESS;
 }
 
 } // namespace camera_link

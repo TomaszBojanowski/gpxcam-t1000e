@@ -366,6 +366,17 @@ bool handleConnectionEvent(const camera_link::Event &event)
     }
 }
 
+// With the signal strength, to see how the link was doing before a drop.
+void logLocationSent()
+{
+    int8_t dbm = 0;
+    if (camera_link::rssi(&dbm))
+        logger::transient("link: location %lu sent (%s), %d dBm", (unsigned long)sentCount, reasonText(pendingReason),
+                          dbm);
+    else
+        logger::transient("link: location %lu sent (%s)", (unsigned long)sentCount, reasonText(pendingReason));
+}
+
 void onLocationWritten(const camera_link::Event &event)
 {
     writePending = false;
@@ -378,7 +389,7 @@ void onLocationWritten(const camera_link::Event &event)
     if (!sentBefore)
         logger::line("link: first location sent to camera %s", serialText);
     else
-        logger::transient("link: location %lu sent (%s)", (unsigned long)sentCount, reasonText(pendingReason));
+        logLocationSent();
     sentBefore = true;
     everSent = true;
     lastSentMs = writeStartMs;

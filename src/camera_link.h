@@ -117,4 +117,17 @@ bool disconnect();
 // Events lost because the queue was full, since start.
 uint32_t lostEvents();
 
+// Connection details, for diagnosing dropped links: interval, latency and supervision
+// timeout (the card asks for Bluefruit's defaults; Bluefruit accepts what the camera asks
+// for, BLECentral.cpp), the PHY and the signal strength. Call from loop(): logs the values
+// of a new connection and every change.
+void poll();
+
+// Logs the current connection details, for the 'p' command. Nothing when not connected.
+void logState();
+
+// The signal strength of the connection, measured by the SoftDevice on received packets.
+// False when not connected or not measured yet.
+bool rssi(int8_t *dbm);
+
 } // namespace camera_link

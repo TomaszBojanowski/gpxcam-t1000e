@@ -12,6 +12,7 @@
 #include "bluetooth.h"
 #include "board.h"
 #include "button.h"
+#include "camera_link.h"
 #include "diag.h"
 #include "gps.h"
 #include "link_control.h"
@@ -195,6 +196,7 @@ void runCommand(const char *cmd)
         pairing_store::logState();
         pairing::logState();
         link_control::logState();
+        camera_link::logState();
         logBattery(BatteryCheck::None);
     } else if (strcmp(cmd, "dfu") == 0) {
         rebootToUf2Bootloader();
@@ -363,6 +365,7 @@ void loop()
     readSerial();
     gps::poll();
     bluetooth::poll();
+    camera_link::poll();
     pairing::poll();
     link_control::poll();
     battery_log::poll();
