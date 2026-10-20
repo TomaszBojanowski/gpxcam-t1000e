@@ -7,7 +7,7 @@ Import("env")  # noqa: F821 (provided by PlatformIO/SCons)
 def git_revision():
     try:
         return subprocess.run(
-            ["git", "describe", "--always", "--dirty", "--abbrev=7"],
+            ["git", "describe", "--always", "--dirty", "--abbrev=7", "--exclude=*"],  # a hash, also on a tag
             cwd=env.subst("$PROJECT_DIR"),  # noqa: F821
             capture_output=True,
             text=True,
