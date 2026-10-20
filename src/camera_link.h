@@ -100,8 +100,9 @@ void onBleEvent(const ble_evt_t *event);
 // by connect().
 bool nextEvent(Event *event);
 
-// Starts connecting to the camera of the report (its address and type). Scanning must be
-// off. False if the SoftDevice refused.
+// Starts connecting to the camera of the report (its address and type), with the phone's
+// connection parameters (camera_link.cpp). Scanning must be off. False if the SoftDevice
+// refused.
 bool connect(const camera_list::Report &camera);
 void cancelConnect();
 bool connected();
@@ -120,8 +121,8 @@ bool disconnect();
 uint32_t lostEvents();
 
 // Connection details, for diagnosing dropped links: interval, latency and supervision
-// timeout (the card asks for Bluefruit's defaults; Bluefruit accepts what the camera asks
-// for, BLECentral.cpp), the PHY, the data length and the signal strength. Call from loop(): logs the values
+// timeout (the card asks for what the phone uses, camera_link.cpp; Bluefruit accepts what
+// the camera asks for, BLECentral.cpp), the PHY, the data length and the signal strength. Call from loop(): logs the values
 // of a new connection and every change.
 void poll();
 

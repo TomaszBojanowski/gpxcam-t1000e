@@ -10,7 +10,8 @@
 
 // Sources: S140 7.3.0 API (ble.h, ble_gap.h, ble_gattc.h), Bluefruit52Lib 0.21.0
 // (BLECentral.cpp: connect() uses the scanner's parameters and the central link
-// configuration set in Bluefruit.begin()).
+// configuration set in Bluefruit.begin(); it cannot set the supervision timeout, so the
+// card connects with sd_ble_gap_connect() itself).
 
 namespace {
 
@@ -30,6 +31,7 @@ enum class InfoType : uint8_t {
     ParametersChanged,
     PhyChanged,
     DataLengthChanged,
+    DataLengthRefused, // the SoftDevice did not start the data length request
 };
 
 struct Info {
@@ -38,6 +40,7 @@ struct Info {
     uint8_t txPhy;
     uint8_t rxPhy;
     ble_gap_data_length_params_t dataLength;
+    uint32_t error; // DataLengthRefused: the SoftDevice's error code
 };
 
 // A connection, a request, its result, a PHY and a data length change.
@@ -58,6 +61,15 @@ uint16_t currentRxOctets = DEFAULT_DATA_LENGTH;
 // Units of ble_gap_conn_params_t (ble_gap.h): the interval in 1.25 ms, the timeout in 10 ms.
 constexpr uint32_t INTERVAL_UNIT_US = 1250;
 constexpr uint32_t TIMEOUT_UNIT_MS = 10;
+
+// The connection as Android 15 (gpxcam app) sets it up with the S5II, read from the phone's
+// HCI log on 2026-10-20: interval 48.75 ms, latency 0, supervision timeout 5 s, and packets
+// of 61 bytes (the camera's MTU 57 plus the 4-byte L2CAP header). With Bluefruit's defaults
+// (20 ms, 2 s, 27-byte packets) the camera's Bluetooth dropped or hung after hours.
+constexpr uint16_t CONN_INTERVAL = 39;        // in 1.25 ms: 48.75 ms
+constexpr uint16_t SLAVE_LATENCY = 0;
+constexpr uint16_t SUPERVISION_TIMEOUT = 500; // in 10 ms: 5 s
+constexpr uint16_t DATA_LENGTH = 61;          // bytes per packet, both ways
 
 constexpr uint16_t FIRST_HANDLE = 0x0001;
 
@@ -203,6 +215,17 @@ void onBleEvent(const ble_evt_t *event)
         queueInfo(info);
         // Signal strength on every received packet, read with sd_ble_gap_rssi_get(); no events.
         sd_ble_gap_rssi_start(eventConn, BLE_GAP_RSSI_THRESHOLD_INVALID, 0);
+        // Longer packets, as the phone asks for them right after connecting; the times are
+        // left to the SoftDevice (ble_gap.h, BLE_GAP_DATA_LENGTH_AUTO).
+        const ble_gap_data_length_params_t dataLength = {DATA_LENGTH, DATA_LENGTH, BLE_GAP_DATA_LENGTH_AUTO,
+                                                         BLE_GAP_DATA_LENGTH_AUTO};
+        const uint32_t result = sd_ble_gap_data_length_update(eventConn, &dataLength, nullptr);
+        if (result != NRF_SUCCESS) {
+            Info refused = {};
+            refused.type = InfoType::DataLengthRefused;
+            refused.error = result;
+            queueInfo(refused);
+        }
         return;
     }
     if (connHandle == BLE_CONN_HANDLE_INVALID || eventConn != connHandle)
@@ -317,7 +340,8 @@ bool connect(const camera_list::Report &camera)
     ble_gap_addr_t address = {};
     address.addr_type = camera.addressType;
     memcpy(address.addr, camera.address, camera_list::ADDRESS_LENGTH);
-    return Bluefruit.Central.connect(&address);
+    const ble_gap_conn_params_t params = {CONN_INTERVAL, CONN_INTERVAL, SLAVE_LATENCY, SUPERVISION_TIMEOUT};
+    return sd_ble_gap_connect(&address, Bluefruit.Scanner.getParams(), &params, CONN_CFG_CENTRAL) == NRF_SUCCESS;
 }
 
 void cancelConnect()
@@ -414,6 +438,9 @@ void poll()
             logger::line("camera: data length changed to tx %u B / %u us, rx %u B / %u us",
                          info.dataLength.max_tx_octets, info.dataLength.max_tx_time_us,
                          info.dataLength.max_rx_octets, info.dataLength.max_rx_time_us);
+            break;
+        case InfoType::DataLengthRefused:
+            logger::line("camera: data length request refused by the SoftDevice (0x%lx)", (unsigned long)info.error);
             break;
         }
     }
