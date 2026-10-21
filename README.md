@@ -125,7 +125,7 @@ pio device monitor
 | Command | What it does |
 |---|---|
 | `v` | version (with the git commit) and the reason of the last reset |
-| `p` | state: radio, GPS, Bluetooth, pairing (card id, camera), link, connection to the camera (interval, latency, supervision timeout, PHY, data length, signal), battery |
+| `p` | state: radio, GPS, Bluetooth, pairing (card id, camera), link, battery |
 | `log` | the last 32 events, also from times without USB |
 | `off` | power off after a 15 s countdown (refused with USB; a short press cancels) |
 | `dfu` | restart into the UF2 bootloader for flashing |

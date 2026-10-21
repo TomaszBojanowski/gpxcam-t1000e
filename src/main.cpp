@@ -196,7 +196,6 @@ void runCommand(const char *cmd)
         pairing_store::logState();
         pairing::logState();
         link_control::logState();
-        camera_link::logState();
         logBattery(BatteryCheck::None);
     } else if (strcmp(cmd, "dfu") == 0) {
         rebootToUf2Bootloader();

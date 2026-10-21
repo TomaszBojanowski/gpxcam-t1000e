@@ -11,7 +11,7 @@
 // Sources: S140 7.3.0 API (ble.h, ble_gap.h, ble_gattc.h), Bluefruit52Lib 0.21.0
 // (BLECentral.cpp: connect() uses the scanner's parameters and the central link
 // configuration set in Bluefruit.begin(); it cannot set the supervision timeout, so the
-// card connects with sd_ble_gap_connect() itself).
+// card connects with sd_ble_gap_connect() itself, with the same scan parameters).
 
 namespace {
 
@@ -23,53 +23,37 @@ QueueHandle_t eventQueue = nullptr;
 volatile uint16_t connHandle = BLE_CONN_HANDLE_INVALID; // written by the BLE task
 volatile uint32_t lost = 0;
 
-// Connection details travel from the BLE task to poll() through their own queue, so the
-// GATT steps of camera_session and link_control never see them.
-enum class InfoType : uint8_t {
-    Connected,        // the parameters the connection started with
-    CameraRequest,    // the camera asked for other parameters (Bluefruit accepts them)
-    ParametersChanged,
-    PhyChanged,
-    DataLengthChanged,
-    DataLengthRefused, // the SoftDevice did not start the data length request
-};
-
-struct Info {
-    InfoType type;
-    ble_gap_conn_params_t params;
-    uint8_t txPhy;
-    uint8_t rxPhy;
-    ble_gap_data_length_params_t dataLength;
-    uint32_t error; // DataLengthRefused: the SoftDevice's error code
-};
-
-// A connection, a request, its result, a PHY and a data length change.
-constexpr UBaseType_t INFO_QUEUE_LENGTH = 5;
-StaticQueue_t infoQueueControl;
-uint8_t infoQueueStorage[INFO_QUEUE_LENGTH * sizeof(Info)];
-QueueHandle_t infoQueue = nullptr;
-
-// The current details, kept by poll() in the loop task.
-ble_gap_conn_params_t currentParams = {};
-uint8_t currentTxPhy = BLE_GAP_PHY_1MBPS; // a connection starts on 1M (ble_gap.h, BLE_GAP_PHYS)
-uint8_t currentRxPhy = BLE_GAP_PHY_1MBPS;
-// A connection starts with 27-byte packets (Bluetooth Core 5.0, Vol 6, Part B, 4.5.10).
-constexpr uint16_t DEFAULT_DATA_LENGTH = 27;
-uint16_t currentTxOctets = DEFAULT_DATA_LENGTH;
-uint16_t currentRxOctets = DEFAULT_DATA_LENGTH;
-
-// Units of ble_gap_conn_params_t (ble_gap.h): the interval in 1.25 ms, the timeout in 10 ms.
-constexpr uint32_t INTERVAL_UNIT_US = 1250;
-constexpr uint32_t TIMEOUT_UNIT_MS = 10;
-
 // The connection as Android 15 (gpxcam app) sets it up with the S5II, read from the phone's
-// HCI log on 2026-10-20: interval 48.75 ms, latency 0, supervision timeout 5 s, and packets
-// of 61 bytes (the camera's MTU 57 plus the 4-byte L2CAP header). With Bluefruit's defaults
-// (20 ms, 2 s, 27-byte packets) the camera's Bluetooth dropped or hung after hours.
+// HCI log (docs/PROTOCOL.md): interval 48.75 ms, latency 0, supervision timeout 5 s, and
+// packets of 61 bytes (the camera's MTU 57 plus the 4-byte L2CAP header). With Bluefruit's
+// defaults (20 ms, 2 s, 27-byte packets) the camera's Bluetooth dropped or hung after hours.
 constexpr uint16_t CONN_INTERVAL = 39;        // in 1.25 ms: 48.75 ms
 constexpr uint16_t SLAVE_LATENCY = 0;
 constexpr uint16_t SUPERVISION_TIMEOUT = 500; // in 10 ms: 5 s
 constexpr uint16_t DATA_LENGTH = 61;          // bytes per packet, both ways
+
+// Connection parameters travel from the BLE task to poll() through their own queue, so the
+// GATT steps of camera_session and link_control never see them.
+enum class ParamsEvent : uint8_t {
+    Connected,     // the parameters the connection started with
+    CameraRequest, // the camera asked for others (Bluefruit accepts them, BLECentral.cpp)
+    Changed,
+};
+
+struct ParamsInfo {
+    ParamsEvent type;
+    ble_gap_conn_params_t params;
+};
+
+constexpr UBaseType_t PARAMS_QUEUE_LENGTH = 4;
+StaticQueue_t paramsQueueControl;
+uint8_t paramsQueueStorage[PARAMS_QUEUE_LENGTH * sizeof(ParamsInfo)];
+QueueHandle_t paramsQueue = nullptr;
+
+// Units of ble_gap_conn_params_t (ble_gap.h): the interval in 1.25 ms, the timeout in 10 ms.
+constexpr uint32_t INTERVAL_UNIT_US = 1250;
+constexpr uint32_t TIMEOUT_UNIT_MS = 10;
+constexpr size_t PARAMS_TEXT_MAX = 80;
 
 constexpr uint16_t FIRST_HANDLE = 0x0001;
 
@@ -95,9 +79,8 @@ bool registerUuid(const uint8_t bigEndian[lumix::UUID_LENGTH], ble_uuid_t *out)
     return true;
 }
 
-void queueEvent(camera_link::Event event)
+void queueEvent(const camera_link::Event &event)
 {
-    event.atMs = millis();
     if (xQueueSend(eventQueue, &event, 0) != pdTRUE)
         lost++;
 }
@@ -141,29 +124,14 @@ void addDescriptors(const ble_gattc_evt_desc_disc_rsp_t &response, camera_link::
     }
 }
 
-void queueInfo(const Info &info)
+void queueParams(ParamsEvent type, const ble_gap_conn_params_t &params)
 {
-    if (xQueueSend(infoQueue, &info, 0) != pdTRUE)
+    const ParamsInfo info = {type, params};
+    if (xQueueSend(paramsQueue, &info, 0) != pdTRUE)
         lost++;
 }
 
-const char *phyName(uint8_t phy)
-{
-    switch (phy) {
-    case BLE_GAP_PHY_1MBPS:
-        return "1M";
-    case BLE_GAP_PHY_2MBPS:
-        return "2M";
-    case BLE_GAP_PHY_CODED:
-        return "coded";
-    default:
-        return "?";
-    }
-}
-
-constexpr size_t PARAMS_TEXT_MAX = 80;
-
-// "interval 20.00 ms, latency 0, supervision timeout 2000 ms"; an interval range when the
+// "interval 48.75 ms, latency 0, supervision timeout 5000 ms"; an interval range when the
 // minimum and maximum differ (a camera request).
 void formatParams(const ble_gap_conn_params_t &params, char *out, size_t size)
 {
@@ -186,7 +154,7 @@ namespace camera_link {
 bool begin()
 {
     eventQueue = xQueueCreateStatic(QUEUE_LENGTH, sizeof(Event), queueStorage, &queueControl);
-    infoQueue = xQueueCreateStatic(INFO_QUEUE_LENGTH, sizeof(Info), infoQueueStorage, &infoQueueControl);
+    paramsQueue = xQueueCreateStatic(PARAMS_QUEUE_LENGTH, sizeof(ParamsInfo), paramsQueueStorage, &paramsQueueControl);
     if (!registerUuid(lumix::SERVICE_UUID, &serviceUuid))
         return false;
     for (size_t i = 0; i < CHARACTERISTIC_COUNT; i++) {
@@ -209,23 +177,12 @@ void onBleEvent(const ble_evt_t *event)
         connHandle = eventConn;
         out.type = EventType::Connected;
         queueEvent(out);
-        Info info = {};
-        info.type = InfoType::Connected;
-        info.params = event->evt.gap_evt.params.connected.conn_params;
-        queueInfo(info);
-        // Signal strength on every received packet, read with sd_ble_gap_rssi_get(); no events.
-        sd_ble_gap_rssi_start(eventConn, BLE_GAP_RSSI_THRESHOLD_INVALID, 0);
-        // Longer packets, as the phone asks for them right after connecting; the times are
-        // left to the SoftDevice (ble_gap.h, BLE_GAP_DATA_LENGTH_AUTO).
+        queueParams(ParamsEvent::Connected, event->evt.gap_evt.params.connected.conn_params);
+        // Longer packets, as the phone asks for them; the times are left to the SoftDevice
+        // (ble_gap.h, BLE_GAP_DATA_LENGTH_AUTO). If it refuses, the link works with 27 bytes.
         const ble_gap_data_length_params_t dataLength = {DATA_LENGTH, DATA_LENGTH, BLE_GAP_DATA_LENGTH_AUTO,
                                                          BLE_GAP_DATA_LENGTH_AUTO};
-        const uint32_t result = sd_ble_gap_data_length_update(eventConn, &dataLength, nullptr);
-        if (result != NRF_SUCCESS) {
-            Info refused = {};
-            refused.type = InfoType::DataLengthRefused;
-            refused.error = result;
-            queueInfo(refused);
-        }
+        sd_ble_gap_data_length_update(eventConn, &dataLength, nullptr);
         return;
     }
     if (connHandle == BLE_CONN_HANDLE_INVALID || eventConn != connHandle)
@@ -242,35 +199,12 @@ void onBleEvent(const ble_evt_t *event)
         out.type = EventType::SecurityRequest;
         queueEvent(out);
         return;
-    case BLE_GAP_EVT_CONN_PARAM_UPDATE_REQUEST: {
-        Info info = {};
-        info.type = InfoType::CameraRequest;
-        info.params = event->evt.gap_evt.params.conn_param_update_request.conn_params;
-        queueInfo(info);
+    case BLE_GAP_EVT_CONN_PARAM_UPDATE_REQUEST:
+        queueParams(ParamsEvent::CameraRequest, event->evt.gap_evt.params.conn_param_update_request.conn_params);
         return;
-    }
-    case BLE_GAP_EVT_CONN_PARAM_UPDATE: {
-        Info info = {};
-        info.type = InfoType::ParametersChanged;
-        info.params = event->evt.gap_evt.params.conn_param_update.conn_params;
-        queueInfo(info);
+    case BLE_GAP_EVT_CONN_PARAM_UPDATE:
+        queueParams(ParamsEvent::Changed, event->evt.gap_evt.params.conn_param_update.conn_params);
         return;
-    }
-    case BLE_GAP_EVT_PHY_UPDATE: {
-        Info info = {};
-        info.type = InfoType::PhyChanged;
-        info.txPhy = event->evt.gap_evt.params.phy_update.tx_phy;
-        info.rxPhy = event->evt.gap_evt.params.phy_update.rx_phy;
-        queueInfo(info);
-        return;
-    }
-    case BLE_GAP_EVT_DATA_LENGTH_UPDATE: {
-        Info info = {};
-        info.type = InfoType::DataLengthChanged;
-        info.dataLength = event->evt.gap_evt.params.data_length_update.effective_params;
-        queueInfo(info);
-        return;
-    }
     default:
         break;
     }
@@ -304,14 +238,12 @@ void onBleEvent(const ble_evt_t *event)
             sd_ble_gattc_hv_confirm(connHandle, gattc.params.hvx.handle);
         out.type = EventType::Notified;
         out.read.handle = gattc.params.hvx.handle;
-        out.read.fullLength = gattc.params.hvx.len;
         out.read.length = (uint8_t)min((uint16_t)MAX_READ_LENGTH, gattc.params.hvx.len);
         memcpy(out.read.data, gattc.params.hvx.data, out.read.length);
         break;
     case BLE_GATTC_EVT_READ_RSP:
         out.type = EventType::ReadDone;
         out.read.handle = gattc.params.read_rsp.handle;
-        out.read.fullLength = gattc.params.read_rsp.len;
         out.read.length = (uint8_t)min((uint16_t)MAX_READ_LENGTH, gattc.params.read_rsp.len);
         memcpy(out.read.data, gattc.params.read_rsp.data, out.read.length);
         break;
@@ -405,67 +337,24 @@ uint32_t lostEvents()
 
 void poll()
 {
-    if (infoQueue == nullptr)
+    if (paramsQueue == nullptr)
         return;
-    Info info;
+    ParamsInfo info;
     char text[PARAMS_TEXT_MAX];
-    while (xQueueReceive(infoQueue, &info, 0) == pdTRUE) {
+    while (xQueueReceive(paramsQueue, &info, 0) == pdTRUE) {
+        formatParams(info.params, text, sizeof(text));
         switch (info.type) {
-        case InfoType::Connected:
-            currentParams = info.params;
-            currentTxPhy = currentRxPhy = BLE_GAP_PHY_1MBPS;
-            currentTxOctets = currentRxOctets = DEFAULT_DATA_LENGTH;
-            formatParams(info.params, text, sizeof(text));
-            logger::transient("camera: connection %s", text);
+        case ParamsEvent::Connected:
+            logger::line("camera: connection %s", text);
             break;
-        case InfoType::CameraRequest:
-            formatParams(info.params, text, sizeof(text));
+        case ParamsEvent::CameraRequest:
             logger::line("camera: asks for %s", text);
             break;
-        case InfoType::ParametersChanged:
-            currentParams = info.params;
-            formatParams(info.params, text, sizeof(text));
+        case ParamsEvent::Changed:
             logger::line("camera: connection changed to %s", text);
-            break;
-        case InfoType::PhyChanged:
-            currentTxPhy = info.txPhy;
-            currentRxPhy = info.rxPhy;
-            logger::line("camera: PHY changed to tx %s, rx %s", phyName(info.txPhy), phyName(info.rxPhy));
-            break;
-        case InfoType::DataLengthChanged:
-            currentTxOctets = info.dataLength.max_tx_octets;
-            currentRxOctets = info.dataLength.max_rx_octets;
-            logger::line("camera: data length changed to tx %u B / %u us, rx %u B / %u us",
-                         info.dataLength.max_tx_octets, info.dataLength.max_tx_time_us,
-                         info.dataLength.max_rx_octets, info.dataLength.max_rx_time_us);
-            break;
-        case InfoType::DataLengthRefused:
-            logger::line("camera: data length request refused by the SoftDevice (0x%lx)", (unsigned long)info.error);
             break;
         }
     }
-}
-
-void logState()
-{
-    if (!connected())
-        return;
-    char text[PARAMS_TEXT_MAX];
-    formatParams(currentParams, text, sizeof(text));
-    int8_t dbm = 0;
-    if (rssi(&dbm))
-        logger::transient("camera: %s, PHY %s/%s, data %u/%u B, %d dBm", text, phyName(currentTxPhy),
-                          phyName(currentRxPhy), currentTxOctets, currentRxOctets, dbm);
-    else
-        logger::transient("camera: %s, PHY %s/%s, data %u/%u B", text, phyName(currentTxPhy), phyName(currentRxPhy),
-                          currentTxOctets, currentRxOctets);
-}
-
-bool rssi(int8_t *dbm)
-{
-    const uint16_t handle = connHandle;
-    uint8_t channel = 0;
-    return handle != BLE_CONN_HANDLE_INVALID && sd_ble_gap_rssi_get(handle, dbm, &channel) == NRF_SUCCESS;
 }
 
 } // namespace camera_link

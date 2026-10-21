@@ -61,7 +61,6 @@ int32_t lastLongitudeE7 = 0;
 bool cameraAsked = false;
 bool writePending = false;
 uint32_t writeStartMs = 0;
-uint32_t lastAnswerMs = 0; // the last event from the camera, for the log when the link ends
 int32_t pendingLatitudeE7 = 0;
 int32_t pendingLongitudeE7 = 0;
 link_policy::Send pendingReason = link_policy::Send::No;
@@ -221,30 +220,6 @@ bool connectionOpen()
            phase == Phase::Connected;
 }
 
-// How the link ended, for diagnosing drops: when the camera last answered, and how long a
-// location was waiting for its answer.
-void logLastAnswer()
-{
-    const uint32_t now = millis();
-    const uint32_t sinceAnswer = now - lastAnswerMs;
-    if (writePending)
-        logger::line("link: the camera last answered %lu.%lu s before; a location waited %lu.%lu s",
-                     (unsigned long)(sinceAnswer / 1000), (unsigned long)(sinceAnswer % 1000 / 100),
-                     (unsigned long)((now - writeStartMs) / 1000), (unsigned long)((now - writeStartMs) % 1000 / 100));
-    else
-        logger::line("link: the camera last answered %lu.%lu s before", (unsigned long)(sinceAnswer / 1000),
-                     (unsigned long)(sinceAnswer % 1000 / 100));
-}
-
-// "01 02 03" from the bytes of a notification.
-void hexText(const uint8_t *data, uint8_t length, char *out, size_t size)
-{
-    size_t used = 0;
-    out[0] = '\0';
-    for (uint8_t i = 0; i < length && used + 4 <= size; i++)
-        used += snprintf(out + used, size - used, i ? " %02x" : "%02x", data[i]);
-}
-
 void pause(const char *why)
 {
     if (connectionOpen()) {
@@ -256,14 +231,11 @@ void pause(const char *why)
     // A connection that lasted starts the pauses again from 5 s, however it ended.
     if (connectionOpen() && millis() - connectedAt >= link_policy::STABLE_CONNECTION_MS)
         failuresInARow = 0;
-    const bool wasOpen = connectionOpen();
     if (camera_link::connected())
         camera_link::disconnect(); // the Disconnected event is dropped by the next connect
     failuresInARow++;
     pauseLength = link_policy::pauseMs(failuresInARow);
     logger::line("link: looking again in %lu s - %s", (unsigned long)(pauseLength / 1000), why);
-    if (wasOpen)
-        logLastAnswer();
     enter(Phase::Pausing);
 }
 
@@ -347,7 +319,6 @@ void onAccepted()
         return;
     }
     connectedAt = millis();
-    lastAnswerMs = connectedAt; // the camera has just accepted the time
     logger::line("link: connected to camera %s (MTU %u)", serialText, found.mtu);
     sound::playConnected();
     const uint8_t gpsOn[] = {lumix::GPS_MODE_ON};
@@ -374,8 +345,6 @@ void onDisconnected(uint16_t reason)
 // Events of an open connection, in any phase after the introduction. True if handled.
 bool handleConnectionEvent(const camera_link::Event &event)
 {
-    if (event.type != camera_link::EventType::Disconnected && event.type != camera_link::EventType::GattTimeout)
-        lastAnswerMs = event.atMs;
     switch (event.type) {
     case camera_link::EventType::Disconnected:
         onDisconnected(event.status);
@@ -386,40 +355,20 @@ bool handleConnectionEvent(const camera_link::Event &event)
     case camera_link::EventType::SecurityRequest:
         logger::line("camera: asked for encryption - not answered (as the gpxcam app)");
         return true;
-    case camera_link::EventType::Notified: {
-        char bytes[3 * camera_link::MAX_READ_LENGTH + 1];
-        hexText(event.read.data, event.read.length, bytes, sizeof(bytes));
+    case camera_link::EventType::Notified:
         if (event.read.handle == notifyHandle) {
             cameraAsked = true;
-            logger::transient("link: the camera asks for a location (%u B: %s)", event.read.fullLength, bytes);
-        } else {
-            logger::transient("camera: notification on handle 0x%04x (%u B: %s)", event.read.handle,
-                              event.read.fullLength, bytes);
+            logger::transient("link: the camera asks for a location");
         }
         return true;
-    }
     default:
         return false;
     }
 }
 
-// With the time the camera took to answer and the signal strength, to see how the link was
-// doing before a drop.
-void logLocationSent(uint32_t answerMs)
-{
-    int8_t dbm = 0;
-    if (camera_link::rssi(&dbm))
-        logger::transient("link: location %lu sent (%s), answer in %lu ms, %d dBm", (unsigned long)sentCount,
-                          reasonText(pendingReason), (unsigned long)answerMs, dbm);
-    else
-        logger::transient("link: location %lu sent (%s), answer in %lu ms", (unsigned long)sentCount,
-                          reasonText(pendingReason), (unsigned long)answerMs);
-}
-
 void onLocationWritten(const camera_link::Event &event)
 {
     writePending = false;
-    const uint32_t answerMs = event.atMs - writeStartMs;
     if (event.status != BLE_GATT_STATUS_SUCCESS) {
         failedCount++;
         logger::transient("link: location refused (GATT 0x%04x)", event.status);
@@ -427,9 +376,9 @@ void onLocationWritten(const camera_link::Event &event)
     }
     sentCount++;
     if (!sentBefore)
-        logger::line("link: first location sent to camera %s, answer in %lu ms", serialText, (unsigned long)answerMs);
+        logger::line("link: first location sent to camera %s", serialText);
     else
-        logLocationSent(answerMs);
+        logger::transient("link: location %lu sent (%s)", (unsigned long)sentCount, reasonText(pendingReason));
     sentBefore = true;
     everSent = true;
     lastSentMs = writeStartMs;

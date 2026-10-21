@@ -62,7 +62,6 @@ constexpr uint8_t PROPERTY_INDICATE = 0x08;
 
 struct Event {
     EventType type;
-    uint32_t atMs;   // millis() when the SoftDevice reported it
     uint16_t status; // GATT status (0 = success); for Disconnected the HCI reason
     uint16_t mtu;    // MtuExchanged: the camera's receive MTU
     struct {
@@ -82,8 +81,7 @@ struct Event {
     } descriptors;
     struct {
         uint16_t handle;
-        uint8_t length;      // what fits in data
-        uint16_t fullLength; // what the camera sent
+        uint8_t length;
         uint8_t data[MAX_READ_LENGTH];
     } read; // also the data of Notified
 };
@@ -120,17 +118,8 @@ bool disconnect();
 // Events lost because the queue was full, since start.
 uint32_t lostEvents();
 
-// Connection details, for diagnosing dropped links: interval, latency and supervision
-// timeout (the card asks for what the phone uses, camera_link.cpp; Bluefruit accepts what
-// the camera asks for, BLECentral.cpp), the PHY, the data length and the signal strength. Call from loop(): logs the values
-// of a new connection and every change.
+// Call from loop(): logs the parameters of each connection (interval, latency, supervision
+// timeout) and every change of them.
 void poll();
-
-// Logs the current connection details, for the 'p' command. Nothing when not connected.
-void logState();
-
-// The signal strength of the connection, measured by the SoftDevice on received packets.
-// False when not connected or not measured yet.
-bool rssi(int8_t *dbm);
 
 } // namespace camera_link
