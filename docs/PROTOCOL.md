@@ -26,9 +26,40 @@ It was worked out and tested on the S5II with the gpxcam app for Android (reposi
 - Normal work with the S5II (M5): switching the camera off ends the connection (`HCI 0x13`). The EXIF data of a
   photo holds the position and the GPS time of the last location (the time of sending), status `A`, no
   altitude – the same with the Lumix Lab app. The notification characteristic has no CCCD, yet the camera
-  sends a notification (e.g. just before it is switched off).
+  sends a notification: `02` just before it is switched off (seen 2026-10-21).
 - The first connection right after the camera is switched on is often not established (`HCI 0x3e`); a second
   attempt a second later works (1.0.1).
+
+## Connection parameters
+
+The device that connects (the card or the phone) sets the connection parameters. The S5II never asks for
+others – neither from the card nor from the phone – it takes what it gets.
+
+- **Android 15 with the gpxcam app** (read from the phone's HCI log, 2026-10-20): it connects asking for an
+  interval of 30–50 ms, latency 0 and a supervision timeout of 5 s; the phone's controller takes 48.75 ms.
+  Right after connecting it switches to 7.5 ms for about 2.5 s (service discovery), then back to 48.75 ms,
+  and asks for 61-byte packets (data length; the camera's MTU 57 plus the 4-byte L2CAP header). The PHY
+  stays 1M.
+- **The card since 1.0.2** connects with the same 48.75 ms, latency 0 and 5 s and asks for 61-byte packets
+  right after connecting (`src/camera_link.cpp`). It does not switch to 7.5 ms for the introduction: tried
+  with the card (also with the packets asked for only after it), the camera stopped answering the
+  characteristic discovery at 7.5 ms every time. The introduction therefore takes about 4 s (about 1.5 s
+  at 20 ms up to 1.0.1).
+- **The card up to 1.0.1** used the Bluefruit library's defaults: 20 ms, latency 0, 2 s and 27-byte packets.
+  The camera's Bluetooth then failed after hours in two ways:
+  - short drops: the camera fell silent for more than 2 s (`HCI 0x08`) and advertised again within
+    seconds – 4 in a night;
+  - hangs, after about 2 and 4 hours: the camera suddenly stopped answering a location write (no ATT
+    response, while the link itself stayed up), and after the card ended the connection it did not
+    advertise at all for hours, also in standby and in pairing mode. Until the last second the signal
+    (about −45 dBm), the answer times and the parameters were normal.
+
+  With the phone's parameters: no failure in a 7-hour test. The cause is a fault in the camera; the
+  phone's parameters avoid it. Which of the three differences matters was not tested (most likely the
+  interval).
+
+While connected, the camera sends a notification `01` on handle 0x0046 every 30 s (also to the gpxcam app
+and to Lumix Lab), and `01` on handle 0x0094 once right after connecting. The card does not need them.
 
 ## Service and characteristics
 
