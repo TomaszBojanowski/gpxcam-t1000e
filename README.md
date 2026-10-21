@@ -5,6 +5,10 @@ the position from the card's own GPS over Bluetooth LE – no phone needed. The 
 position into the EXIF data of every photo. It speaks the same protocol as the gpxcam app for
 Android, which this firmware replaces.
 
+![SenseCAP T1000-E next to a LUMIX S5II](docs/images/t1000e-s5ii.jpg)
+
+*SenseCAP T1000-E next to a LUMIX S5II. The white GPS icon on the camera screen comes from the card, no phone involved.*
+
 Status: all milestones done (M0–M6) – pairing, normal work with the camera and power saving
 are tested on the card with an S5II.
 
