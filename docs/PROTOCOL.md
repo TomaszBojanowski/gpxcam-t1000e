@@ -21,8 +21,8 @@ It was worked out and tested on the S5II with the gpxcam app for Android (reposi
   address: `00` → `03` and `03` → `00` – a new RPA, `00` → `06` – the public address, `06` → `00` – a new RPA
   again. In standby (`06`) the camera keeps advertising.
 - Pairing the card with the S5II (M4): the camera grants an MTU of 57 (the card asks for 185, like gpxcam) and
-  does not ask for encryption; from the connection to the accepted time takes about 1.2 s. No pairing at the
-  Bluetooth level, like gpxcam.
+  does not ask for encryption; from the connection to the accepted time takes about 1.2 s (at 20 ms; about
+  3.5 s at 48.75 ms since 1.0.2). No pairing at the Bluetooth level, like gpxcam.
 - Normal work with the S5II (M5): switching the camera off ends the connection (`HCI 0x13`). The EXIF data of a
   photo holds the position and the GPS time of the last location (the time of sending), status `A`, no
   altitude – the same with the Lumix Lab app. The notification characteristic has no CCCD, yet the camera

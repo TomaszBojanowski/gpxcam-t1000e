@@ -333,6 +333,12 @@ about 1 s – released after 836 ms, the card starts.
   end, not a failure: always a 5 s pause, also after a short connection. In 1.0.0 short connections (camera switched off
   quickly) lengthened the pauses 5 → 15 → 60 s, and after the third cycle the card connected only after a minute. Loss of range
   (`HCI 0x08`) and errors still lengthen the pauses.
+- **Connection parameters (1.0.2):** the card connects with `sd_ble_gap_connect()` itself, because Bluefruit's `BLECentral`
+  sets only the interval, not the supervision timeout. It uses what Android uses with the S5II: 48.75 ms, latency 0, 5 s,
+  and asks for 61-byte packets right after connecting. With Bluefruit's defaults (20 ms, 2 s, 27 bytes) the camera's
+  Bluetooth dropped the link or hung after hours; with the new parameters: no failure in a 7-hour test. Android's 7.5 ms
+  interval for the introduction made the camera stop answering the characteristic discovery when the card tried it, so the
+  card does not use it: the introduction takes about 3.5 s instead of 1.2 s. Details: `docs/PROTOCOL.md`.
 - **DC/DC:** we do not enable it – no confirmation that the board has the inductor for REG1; Meshtastic does not enable it either.
 - **Low voltage:** below 3.40 V on the battery the card writes an entry to the battery log, plays two clicks and enters
   System OFF – at start-up at once, during work after two consecutive measurements 60 s apart (a short drop under load
@@ -351,6 +357,12 @@ about 1 s – released after 836 ms, the card starts.
 6. Plug in the cable, `bat log`. Average current ≈ 700 mAh × used fraction / number of hours. Down to 3.40 V almost
    the whole capacity is used – this is the most accurate variant; from the voltage drop alone in a shorter test the result is rough
    (±20–30 %), because the voltage of a Li-ion cell is not linear in its charge.
+
+**Result during work (1.0.1, 2026-10-20):** the camera on and connected all the time (GPS on, a location every 25 s,
+the old 20 ms interval): 4179 → 4070 mV in 6.7 h. With the T1000-E discharge curve from Meshtastic (`OCV_ARRAY` in its
+`variant.h`) that is about 7 % of the capacity, so about 7–8 mA on average – about 3.5–4 days of continuous work from a
+full battery to 3.40 V. Rough: near full charge the voltage says little about the charge (with a generic Li-ion curve
+the same drop would mean up to 14 mA).
 
 The idle current (System OFF, in the µA range) cannot be measured this way: the voltage drop is a few mV per week.
 
@@ -373,5 +385,5 @@ The idle current (System OFF, in the µA range) cannot be measured this way: the
 
 ## Still to do
 
-- Measure the current during work (the discharge test above) and at rest in System OFF (it needs a meter).
-  The LR1110 in sleep should draw less than 1 µA.
+- Measure the current in standby and with 1.0.2 (the discharge test above; during work with 1.0.1 about 7–8 mA,
+  rough), and at rest in System OFF (it needs a meter). The LR1110 in sleep should draw less than 1 µA.

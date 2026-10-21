@@ -88,10 +88,10 @@ position at once and then every 25 s – earlier when it moves more than 20 m. W
 the connection stays, but no position is sent.
 
 When the camera is switched off, the card notices it (two falling beeps) and waits:
-- for the first 10 minutes it keeps the GPS ready, so the camera gets a position about 8 s
+- for the first 10 minutes it keeps the GPS ready, so the camera gets a position about 10 s
   after it is switched on again;
 - after that, and when the camera is out of sight for 5 minutes, the card saves power: it scans
-  less often and the GPS sleeps. The camera then gets a position about 10–25 s after it
+  less often and the GPS sleeps. The camera then gets a position about 15–30 s after it
   appears again.
 
 The card never wakes a camera that is switched off.
@@ -156,8 +156,8 @@ link and battery rules – are tested with made-up data and the vectors from `do
 
 - [docs/HARDWARE.md](docs/HARDWARE.md) – the card: bootloader, SoftDevice, flash map, DFU, pins,
   measurements and findings of every milestone, differences from Meshtastic.
-- [docs/PROTOCOL.md](docs/PROTOCOL.md) – the Bluetooth LE protocol of LUMIX cameras and test
-  vectors.
+- [docs/PROTOCOL.md](docs/PROTOCOL.md) – the Bluetooth LE protocol of LUMIX cameras, the
+  connection parameters the S5II works with, and test vectors.
 
 ## Sources
 
