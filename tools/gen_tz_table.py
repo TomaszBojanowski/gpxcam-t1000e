@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Generates the time zone table of the 'tz' command, src/tz_table_data.inc, and the test
-vectors of src/posix_tz.cpp, test/test_posix_tz/zone_vectors.inc, from the tz database of IANA
-in a pinned version: the same version gives the same files on any computer and any day.
+"""Generates, from the tz database of IANA in a pinned version (the same version gives the same
+files on any computer and any day):
+- src/tz_table_data.inc: the time zone table of the 'tz' command;
+- test/test_posix_tz/zone_vectors.inc: the test vectors of src/posix_tz.cpp;
+- the zone data of the time zone page, docs/timezone/index.html, between its TZ_DATA markers.
 
 Source: the release archives tzdata<version>.tar.gz and tzcode<version>.tar.gz from
 https://data.iana.org/time-zones/releases/, downloaded once into ~/.cache/gpxcam-t1000e and
@@ -22,7 +24,12 @@ The test vectors give, for one zone of every rule, the UTC offset from the full 
 second before and at every change of 2026-2031 (for a rule without summer time: on
 2027-07-01).
 
-Usage: python3 tools/gen_tz_table.py
+The page data: every zone of the card with the countries it covers and IANA's comment
+(zone1970.tab), the aliases, and for every country its name (iso3166.tab) and its zones as
+named for it (zone.tab: Denmark - Europe/Copenhagen, an alias of Europe/Berlin).
+
+Usage: python3 tools/gen_tz_table.py [--check]
+--check writes nothing and fails if a generated file is not up to date.
 Needs Python 3.9+, a C compiler (cc) and make; the network on the first run.
 
 A new version of the tz database:
@@ -35,9 +42,11 @@ A new version of the tz database:
 import calendar
 import datetime
 import hashlib
+import json
 import os
 import re
 import subprocess
+import sys
 import tarfile
 import tempfile
 import time
@@ -60,6 +69,9 @@ DATA_FILES = ["africa", "antarctica", "asia", "australasia", "europe", "northame
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 OUTPUT = os.path.join(ROOT, "src", "tz_table_data.inc")
 VECTORS = os.path.join(ROOT, "test", "test_posix_tz", "zone_vectors.inc")
+PAGE = os.path.join(ROOT, "docs", "timezone", "index.html")
+PAGE_BEGIN = "// BEGIN TZ_DATA"
+PAGE_END = "// END TZ_DATA"
 VECTOR_YEARS = range(2026, 2032)
 FIXED_OFFSET_MOMENT = calendar.timegm((2027, 7, 1, 0, 0, 0))
 CHECK_STEP_S = 6 * 3600
@@ -194,10 +206,10 @@ def changes(tz, years):
     return found
 
 
-def write_vectors(tzdir, zones, rules, version):
+def vectors_text(tzdir, zones, rules, version):
     vectors = []
     for rule in sorted(set(rules[z] for z in zones)):
-        zone = min((z for z in zones if rules[z] == rule), key=lambda n: (n.lower(), n))
+        zone = min((z for z in zones if rules[z] == rule), key=sort_key)
         tz = full_database(tzdir, zone)
         if "," in rule:
             moments = [m + d for m in changes(tz, VECTOR_YEARS) for d in (-1, 0)]
@@ -219,24 +231,20 @@ def write_vectors(tzdir, zones, rules, version):
         "",
         "const ZoneVector ZONE_VECTORS[] = {",
     ] + vectors + ["};"]
-    with open(VECTORS, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
-    return len(vectors)
+    print(f"{os.path.relpath(VECTORS)}: {len(vectors)} test vectors")
+    return "\n".join(lines) + "\n"
+
+
+def sort_key(name):
+    return (name.lower(), name)
 
 
 def c_string(text):
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '\\0"'
 
 
-def main():
-    with tempfile.TemporaryDirectory() as build:
-        tzdir = compile_database(build)
-        zones, aliases = zones_and_aliases(build)
-        write_files(tzdir, zones, aliases, TZDB_VERSION, release_date(build))
-
-
-def write_files(tzdir, zones, aliases, version, released):
-    zones = [z for z in zones if z not in SKIPPED]
+def table_rules(tzdir, zones, aliases):
+    """{name: POSIX rule} for every zone and alias, checked for what the card accepts."""
     rules = {z: posix_rule(tzdir, z) for z in zones}
     for alias, target in aliases.items():
         if target in rules and alias not in SKIPPED:
@@ -244,20 +252,17 @@ def write_files(tzdir, zones, aliases, version, released):
     for name, rule in rules.items():
         if not NAME.match(name) or not RULE.match(rule):
             raise SystemExit(f"unexpected characters: {name!r} {rule!r}")
-
-    names = sorted(rules, key=lambda n: (n.lower(), n))
-    if len({n.lower() for n in names}) != len(names):
+    if len({n.lower() for n in rules}) != len(rules):
         raise SystemExit("names that differ only in case: the card looks names up ignoring case")
+    return rules
+
+
+def table_text(zones, rules, version, checked, differing):
+    names = sorted(rules, key=sort_key)
     unique_rules = sorted(set(rules.values()))
     rule_index = {r: i for i, r in enumerate(unique_rules)}
     if len(unique_rules) > 255:
         raise SystemExit("more than 255 rules: the index needs 16 bits")
-
-    checked = f"from the release of {version} ({utc_text(released)[:10]}) to {VECTOR_YEARS.stop - 1}"
-    differing = check_rules(tzdir, {z: rules[z] for z in zones}, released)
-    for zone in differing:
-        print(f"warning: {zone}: the rule '{rules[zone]}' differs from the full database {checked}")
-
     out = [
         "// Generated by tools/gen_tz_table.py from the tz database " + version + " - do not edit.",
         f"// {len(zones)} zones and {len(names) - len(zones)} aliases, {len(unique_rules)} distinct POSIX rules.",
@@ -279,13 +284,99 @@ def write_files(tzdir, zones, aliases, version, released):
     out += ["};", "", "// POSIX TZ rules, each ended by a NUL.", "constexpr char RULES[] ="]
     out += [f"    {c_string(r)}" for r in unique_rules]
     out[-1] += ";"
-    with open(OUTPUT, "w", encoding="utf-8") as f:
-        f.write("\n".join(out) + "\n")
     print(f"{os.path.relpath(OUTPUT)}: tz database {version}, {len(zones)} zones, "
           f"{len(names) - len(zones)} aliases, {len(unique_rules)} rules, "
           f"{sum(len(n) + 2 for n in names) + sum(len(r) + 1 for r in unique_rules)} bytes of data")
-    count = write_vectors(tzdir, zones, rules, version)
-    print(f"{os.path.relpath(VECTORS)}: {count} test vectors")
+    return "\n".join(out) + "\n"
+
+
+def read_tab(build, name):
+    """The rows of a .tab file of the tz database as lists of fields, without comment lines."""
+    with open(os.path.join(build, name), encoding="utf-8") as f:
+        return [line.rstrip("\n").split("\t") for line in f if line.strip() and not line.startswith("#")]
+
+
+def page_data_text(build, rules, zones, aliases, version):
+    """The TZ_DATA block of the page: a JavaScript constant, one entry per line."""
+    covered = {}  # zone: [country codes, comment]
+    for codes, _, zone, *comment in read_tab(build, "zone1970.tab"):
+        covered[zone] = [codes.split(","), comment[0] if comment else ""]
+    country_names = {code: name for code, name in read_tab(build, "iso3166.tab")}
+    country_zones = {}  # code: [[zone as named for the country, comment], ...]
+    for code, _, zone, *comment in read_tab(build, "zone.tab"):
+        country_zones.setdefault(code, []).append([zone, comment[0] if comment else ""])
+    named = list(covered) + [zone for entries in country_zones.values() for zone, _ in entries]
+    if any(zone not in rules for zone in named):
+        raise SystemExit(f"zone1970.tab or zone.tab names zones the card does not know: "
+                         f"{sorted(z for z in named if z not in rules)}")
+    lines = [
+        f"{PAGE_BEGIN} - generated by tools/gen_tz_table.py from the tz database {version}, do not edit.",
+        "// zones: [name, country codes, comment] for every zone of the card (zone1970.tab; none for Etc/...);",
+        "// aliases: alias: zone; countries: code: [name (iso3166.tab), [[zone as named for the country,",
+        "// comment], ...] (zone.tab)].",
+        "const TZ_DATA = {",
+        f'"version": {json.dumps(version)},',
+        '"zones": [',
+    ]
+    lines += [json.dumps([z] + covered.get(z, [[], ""]), ensure_ascii=False) + "," for z in sorted(zones, key=sort_key)]
+    lines += ["],", '"aliases": {']
+    lines += [f"{json.dumps(a)}: {json.dumps(aliases[a])}," for a in sorted(aliases, key=sort_key) if a in rules]
+    lines += ["},", '"countries": {']
+    lines += [f"{json.dumps(code)}: {json.dumps([country_names[code], country_zones[code]], ensure_ascii=False)},"
+              for code in sorted(country_zones)]
+    lines += ["},", "};", PAGE_END]
+    print(f"{os.path.relpath(PAGE)}: {len(zones)} zones, {len(country_zones)} countries")
+    return "\n".join(lines)
+
+
+def page_text(block):
+    """The page with its TZ_DATA block replaced."""
+    with open(PAGE, encoding="utf-8") as f:
+        text = f.read()
+    start, end = text.find(PAGE_BEGIN), text.find(PAGE_END)
+    if start < 0 or end < start:
+        raise SystemExit(f"{PAGE}: no {PAGE_BEGIN} ... {PAGE_END} block")
+    return text[:start] + block + text[end + len(PAGE_END):]
+
+
+def up_to_date(path, text, check):
+    """True if path already holds text; otherwise writes it, unless only checking."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            if f.read() == text:
+                return True
+    except FileNotFoundError:
+        pass
+    if not check:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+    return False
+
+
+def main():
+    if sys.argv[1:] not in ([], ["--check"]):
+        raise SystemExit("usage: python3 tools/gen_tz_table.py [--check]")
+    check = sys.argv[1:] == ["--check"]
+    with tempfile.TemporaryDirectory() as build:
+        tzdir = compile_database(build)
+        zones, aliases = zones_and_aliases(build)
+        zones = [z for z in zones if z not in SKIPPED]
+        rules = table_rules(tzdir, zones, aliases)
+        released = release_date(build)
+        checked = f"from the release of {TZDB_VERSION} ({utc_text(released)[:10]}) to {VECTOR_YEARS.stop - 1}"
+        differing = check_rules(tzdir, {z: rules[z] for z in zones}, released)
+        for zone in differing:
+            print(f"warning: {zone}: the rule '{rules[zone]}' differs from the full database {checked}")
+        outputs = {
+            OUTPUT: table_text(zones, rules, TZDB_VERSION, checked, differing),
+            VECTORS: vectors_text(tzdir, zones, rules, TZDB_VERSION),
+            PAGE: page_text(page_data_text(build, rules, zones, aliases, TZDB_VERSION)),
+        }
+    stale = [path for path, text in outputs.items() if not up_to_date(path, text, check)]
+    for path in stale:
+        print(f"{os.path.relpath(path)}: {'not up to date' if check else 'written'}")
+    if check and stale:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
