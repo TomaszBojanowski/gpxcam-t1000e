@@ -26,9 +26,12 @@ LUMIX S5II. The latest version is on the
 
 ## Known limitations
 
-- The card sets the camera's clock to Central European Time (EU DST rules) on every connection.
-  Outside that time zone the camera's local time will be off, while the GPS position and GPS time
-  in EXIF stay correct. A time zone setting is planned for the next version.
+- The camera gets a new time zone only when the card connects to it: after changing the time zone,
+  switch the camera off and on (see [Set the time zone](#set-the-time-zone)).
+- Where summer time is not one hour ahead (Australia/Lord_Howe, Antarctica/Troll), the camera shows
+  the right local time, but no summer-time mark.
+- The time zone rules are built into the firmware (tz database 2026e in 1.2.0). When a country
+  changes its rules later, the card needs a newer firmware for them.
 
 ## Install the release (Windows, macOS, Linux)
 
@@ -48,6 +51,50 @@ No tools needed: the card takes the firmware as a file copied to a USB drive.
 
 The file holds only the application: the bootloader and the SoftDevice stay as they are.
 
+## Set the time zone
+
+The card sets the camera's clock every time it connects: the time from the GPS and the time zone.
+Without a setting the time zone is Europe/Warsaw (Central European Time), as up to version 1.1.
+The time zone changes only the camera's local time; the position and the GPS time in EXIF do not
+depend on it. The card keeps the setting through restarts and firmware updates and switches summer
+time by itself, with the rules of the tz database (IANA).
+
+A new time zone reaches the camera at the next connection: **switch the camera off and on** after
+changing it.
+
+### With the web page (Chrome or Edge on a computer)
+
+1. Plug the card into the computer with a USB cable. Close serial monitors that use it.
+2. Open [the time zone page](https://tomaszbojanowski.github.io/gpxcam-t1000e/timezone/) in Chrome
+   or Edge on Windows, macOS or Linux. Firefox, Safari and phones cannot talk to the card.
+3. Click **Connect** and choose **T1000-E gpxcam**. The page shows the card's time zone.
+4. Find the time zone by country, city or zone name (the computer's own is selected already) and
+   click **Save**.
+5. Switch the camera off and on.
+
+The page runs only in the browser and sends nothing over the internet. It sends the card only `v`
+(version), `tz` and `tz` with the chosen zone.
+
+On Linux, if the page says "Reading from the card failed" after a serial monitor (for example
+`pio device monitor`) used the card: unplug the card and plug it in again. Such programs leave the
+port with a setting that Chrome does not handle, and plugging in again resets it.
+
+### With a serial terminal
+
+Any terminal at **115200 baud** (never 1200: that rate restarts the card into its bootloader):
+- Windows: the Serial Monitor of the Arduino IDE (any line ending except "No line ending"), or
+  PuTTY (connection type Serial, the COM port of the card from the Device Manager, speed 115200);
+- macOS: `screen /dev/cu.usbmodem* 115200` (leave it with Ctrl+A, then K and Y);
+- Linux: `pio device monitor` in this repository, or `screen /dev/ttyACM0 115200`.
+
+The card does not show what you type: type the command and press Enter.
+
+| Command | What it does |
+|---|---|
+| `tz` | shows the time zone, its rule and, with a GPS fix, what the camera gets now |
+| `tz Europe/Warsaw` | sets a time zone by its name in the tz database (any case; old names such as `Poland` work too) |
+| `tz <+0545>-5:45` | sets a POSIX TZ rule directly (summer-time dates in the `Mm.w.d` form) |
+
 ## Build from source (Linux)
 
 Linux with:
@@ -64,6 +111,15 @@ pio run
 The result is `.pio/build/t1000e/firmware.uf2`. After every build `tools/uf2check.py` checks it:
 UF2 family 0xADA52840, first block at 0x27000, all blocks inside 0x27000–0xEA000. A file that
 fails the check is deleted.
+
+The time zone table (`src/tz_table_data.inc`), its test vectors and the zone list of the time zone
+page are generated from the tz database of IANA in a pinned version (archives checked by their
+SHA-256). After a new tz database release, update the version in the script (its first lines say
+how) and run it; it needs Python 3.9+, `cc`, `make` and the network on the first run:
+
+```
+python3 tools/gen_tz_table.py            # --check: only tells whether the files are up to date
+```
 
 Flash (UF2 only):
 
@@ -127,9 +183,9 @@ Switch the card on and keep it near the camera. The card connects to the camera 
 has a position fix: the camera needs the exact time from it. After you switch the card on, the
 first fix takes about 1–3 minutes outdoors or near a window; deep indoors it may not come at all.
 
-When the camera is on, the card connects by itself (two rising beeps) and the camera shows its
-Bluetooth and GPS icons. The card sends the position at once and then every 25 s – earlier when
-it moves more than 20 m. If the GPS loses its fix later, the connection stays, but no position is
+When the camera is on, the card connects by itself (two rising beeps), sets the camera's clock
+(see [Set the time zone](#set-the-time-zone)) and the camera shows its Bluetooth and GPS icons.
+The card sends the position at once and then every 25 s – earlier when it moves more than 20 m. If the GPS loses its fix later, the connection stays, but no position is
 sent until the fix is back.
 
 When the camera is switched off, the card notices it (two falling beeps) and waits:
@@ -178,6 +234,7 @@ pio device monitor
 | `dfu` | restart into the UF2 bootloader for flashing |
 | `pair` / `pair off` | start / cancel pairing (as click + hold) |
 | `unpair` | forget the paired camera (the card id stays) |
+| `tz` / `tz NAME` / `tz RULE` | show / set the time zone, see [Set the time zone](#set-the-time-zone) |
 | `link on` / `link off` | work with the paired camera; on by itself after start when a camera is paired |
 | `bat log on` / `bat log off` | battery log in flash: an entry every 10 min on the battery, up to 1024 |
 | `bat log` / `bat log clear` | show / delete the battery log |
@@ -193,19 +250,24 @@ Measuring the current with the battery log: `docs/HARDWARE.md`, section "Measuri
 
 ```
 pio test -e native
+node --test test/web/timezone_page.test.mjs
 ```
 
 The modules without hardware dependencies – NMEA parser, LUMIX protocol (advertisement, byte
-formats, location), camera list, UTC calendar with the EU summer-time rule, pairing record,
-the camera handles kept between connections, link and battery rules – are tested with made-up
-data and the vectors from `docs/PROTOCOL.md`.
+formats, location), camera list, UTC calendar, time zone table, POSIX time zone rules (against the
+full tz database at every change of 2026–2031), time zone file, pairing record, the camera handles
+kept between connections, link and battery rules – are tested with made-up data and the vectors
+from `docs/PROTOCOL.md`. The second command (Node.js, tested with version 22) tests the time zone
+page with a simulated card.
 
 ## Documentation
 
 - [docs/HARDWARE.md](docs/HARDWARE.md) – the card: bootloader, SoftDevice, flash map, DFU, pins,
   measurements and findings of every milestone, differences from Meshtastic.
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) – the Bluetooth LE protocol of LUMIX cameras, the
-  connection parameters the S5II works with, and test vectors.
+  connection parameters the S5II works with, how the camera takes the time zone, and test vectors.
+- [The time zone page](https://tomaszbojanowski.github.io/gpxcam-t1000e/timezone/) – sets the
+  card's time zone from Chrome or Edge (source: `docs/timezone/index.html`).
 
 ## Sources
 
