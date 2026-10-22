@@ -42,10 +42,10 @@ bool notEstablished();
 const Discovered &discovered();
 
 // The handles of the last camera are kept in RAM after an introduction it accepted, and the
-// next session with the same camera skips the service and characteristic discovery. They are
-// forgotten after an error in a session that had a connection, for another camera, and by
-// this function (errors in the link's later steps); after a restart the card always looks
-// them up. why: for the log.
+// next session with the same camera skips the service and characteristic discovery
+// (handle_cache). They are forgotten after an error in a session that had a connection, for
+// another camera, and by this function (errors in the link's later steps); after a restart
+// the card always looks them up. why: for the log.
 void forgetHandles(const char *why);
 
 // Ends a running session at once: stops connecting or disconnects without waiting.
