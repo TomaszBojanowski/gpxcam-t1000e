@@ -27,7 +27,7 @@ bool shouldConnect(const pairing_record::Record &pairing, const camera_list::Ent
 //   Normal      - scan 50 ms of every 100 ms, GPS on;
 //   Rare        - the camera not seen for RARE_AFTER_MS: scan 100 ms every 2 s, GPS in Backup;
 //   Standby     - the first LONG_STANDBY_AFTER_MS of standby (a break between photos):
-//                 scan 100 ms every 5 s, the GPS stays on, so the location is there at once;
+//                 scan 100 ms every 1 s, the GPS stays on, so the location is there at once;
 //   LongStandby - after that: scan 100 ms every 10 s, GPS in Backup.
 enum class SearchMode { Normal, Rare, Standby, LongStandby };
 constexpr uint32_t RARE_AFTER_MS = 5 * MS_PER_MINUTE;

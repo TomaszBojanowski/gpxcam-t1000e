@@ -28,7 +28,9 @@ constexpr uint32_t QUICK_RETRY_MS = 1000;
 // Scan timing of the search modes (M6 decisions; link_policy::SearchMode).
 constexpr uint16_t RARE_SCAN_INTERVAL_MS = 2000;
 constexpr uint16_t RARE_SCAN_WINDOW_MS = 100;
-constexpr uint16_t STANDBY_SCAN_INTERVAL_MS = 5000;
+// Standby: every 1 s (was 5 s), so the camera is found sooner after a break between
+// photos; the GPS is on in this mode anyway, the scan adds little to the current.
+constexpr uint16_t STANDBY_SCAN_INTERVAL_MS = 1000;
 constexpr uint16_t STANDBY_SCAN_WINDOW_MS = 100;
 constexpr uint16_t LONG_STANDBY_SCAN_INTERVAL_MS = 10000;
 constexpr uint16_t LONG_STANDBY_SCAN_WINDOW_MS = 100;
