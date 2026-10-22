@@ -14,6 +14,7 @@ constexpr int64_t SECONDS_PER_DAY = 86400;
 constexpr int DAYS_PER_WEEK = 7;
 constexpr int MIN_NAME_LENGTH = 3;                                   // POSIX
 constexpr int MAX_OFFSET_HOURS = 24;                                 // POSIX
+constexpr int32_t MAX_UTC_OFFSET_SECONDS = 15 * SECONDS_PER_HOUR;    // real zones: -12 h .. +14 h
 constexpr int MAX_TRANSITION_HOURS = 167;                            // RFC 8536, 3.3.1
 constexpr int MAX_NUMBER_DIGITS = 3;                                 // enough for 167
 constexpr int LAST_WEEK = 5;                                         // "the last" in Mm.w.d
@@ -136,6 +137,11 @@ bool inSummerTime(const Rule &rule, int64_t unixSeconds)
     return summer;
 }
 
+bool withinUtcOffsetLimit(int32_t seconds)
+{
+    return seconds >= -MAX_UTC_OFFSET_SECONDS && seconds <= MAX_UTC_OFFSET_SECONDS;
+}
+
 int16_t toMinutes(int32_t seconds)
 {
     return (int16_t)(seconds / SECONDS_PER_MINUTE);
@@ -160,6 +166,9 @@ bool parse(const char *text, Rule *rule)
             !parseTransition(&p, &parsed.summerEnd) || *p != '\0')
             return false;
     }
+    if (!withinUtcOffsetLimit(parsed.standardOffsetSeconds) ||
+        (parsed.hasSummerTime && !withinUtcOffsetLimit(parsed.summerOffsetSeconds)))
+        return false;
     *rule = parsed;
     return true;
 }

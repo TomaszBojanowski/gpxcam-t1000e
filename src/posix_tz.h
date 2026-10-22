@@ -4,7 +4,9 @@
 //
 // Supported: names of letters or in <>, offsets in whole minutes (as the camera takes them) and
 // summer-time transitions in the Mm.w.d form, which all rules of the tz database use. Refused:
-// the Jn and n forms of a transition date, and summer time without its transitions.
+// the Jn and n forms of a transition date, summer time without its transitions, and offsets from
+// UTC beyond 15 h either way (real zones are within -12 h .. +14 h; what the camera does with
+// more is not known).
 #pragma once
 
 #include <stdint.h>

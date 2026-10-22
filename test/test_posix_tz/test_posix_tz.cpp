@@ -72,6 +72,8 @@ void test_parse_fixed_offsets()
         {"<-05>5", -5 * HOUR},
         {"<+14>-14", 14 * HOUR},
         {"<-0930>+9:30", -(9 * HOUR + 30 * MINUTE)},
+        {"<+15>-15", 15 * HOUR}, // the limits
+        {"<-15>15", -15 * HOUR},
     };
     for (const auto &c : cases) {
         const Rule rule = parsed(c.text);
@@ -123,6 +125,11 @@ void test_parse_refuses()
         "<+05-5",                         // no closing >
         "<+0>-5",                         // name in <> shorter than 3
         "CET-25",                         // offset over 24 h
+        "<+1501>-15:01",                  // offset beyond 15 h east of UTC
+        "<-16>16",                        // offset beyond 15 h west of UTC
+        "<+24>-24:59",                    // the largest POSIX offset
+        "<+15>-15<+16>,M3.5.0,M10.5.0",   // summer time (one hour more by default) beyond 15 h
+        "<-14>14<-1530>15:30,M3.5.0,M10.5.0", // summer time given beyond 15 h
         "CET-1:30:15",                    // not whole minutes
         "CET-1:60",                       // minutes over 59
         "CET-1 ",                         // trailing space

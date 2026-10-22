@@ -93,7 +93,7 @@ The card does not show what you type: type the command and press Enter.
 |---|---|
 | `tz` | shows the time zone, its rule and, with a GPS fix, what the camera gets now |
 | `tz Europe/Warsaw` | sets a time zone by its name in the tz database (any case; old names such as `Poland` work too) |
-| `tz <+0545>-5:45` | sets a POSIX TZ rule directly (summer-time dates in the `Mm.w.d` form) |
+| `tz <+0545>-5:45` | sets a POSIX TZ rule directly (summer-time dates in the `Mm.w.d` form, offsets within ±15 h) |
 
 ## Build from source (Linux)
 
