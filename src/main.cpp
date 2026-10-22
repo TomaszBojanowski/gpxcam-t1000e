@@ -6,6 +6,7 @@
 // PlatformIO's library finder link the Adafruit TinyUSB library; it does not follow
 // includes inside core headers.
 #include <Adafruit_TinyUSB.h>
+#include <strings.h>
 
 #include "battery.h"
 #include "battery_log.h"
@@ -21,6 +22,8 @@
 #include "pairing_store.h"
 #include "power.h"
 #include "sound.h"
+#include "tz_record.h"
+#include "tz_store.h"
 #include "version.h"
 
 namespace {
@@ -41,7 +44,11 @@ constexpr uint32_t DFU_MESSAGE_DELAY_MS = 200; // let the last log line leave be
 constexpr uint32_t LOOP_DELAY_MS = 10;        // loop period; the CPU sleeps in between
                                               // (FreeRTOS tickless idle, configUSE_TICKLESS_IDLE in the core)
 
-constexpr size_t COMMAND_MAX = 16; // longest accepted command, longer input is rejected
+// Longest accepted command, longer input is rejected: "tz", a space and a POSIX rule as long
+// as the time zone file holds (63 characters).
+constexpr char TZ_COMMAND[] = "tz";
+constexpr size_t COMMAND_MAX = (sizeof(TZ_COMMAND) - 1) + 1 + (tz_record::RULE_SIZE - 1);
+static_assert(COMMAND_MAX == 66, "tz with the longest rule");
 
 // Terminal editing keys. PlatformIO's send_on_enter filter sends the typed line as is,
 // including these, so a corrected typo arrives as text + 0x7F + text.
@@ -113,14 +120,17 @@ void logBattery(BatteryCheck check)
 
 void logHelp()
 {
-    logger::transient("commands: v = version and reset reason, p = state of GPS, BLE, pairing, link and battery,");
+    logger::transient("commands: v = version and reset reason,");
+    logger::transient("          p = state of GPS, BLE, pairing, time zone, link and battery,");
     logger::transient("          dfu = UF2 bootloader (for flashing),");
     logger::transient("          off = System OFF after a 15 s countdown (refused with USB connected),");
     logger::transient("          log = last %lu log lines, also those from times without USB,",
                       (unsigned long)logger::HISTORY_LINES);
     logger::transient("          link on / link off = work with the paired camera (on after start when paired),");
     logger::transient("          pair = pair with a camera in pairing mode (or click + hold 3 s), pair off = cancel,");
-    logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera)");
+    logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera),");
+    logger::transient("          tz = time zone of the camera's clock: tz NAME (e.g. tz America/New_York),");
+    logger::transient("          tz POSIX-RULE (e.g. tz <+0545>-5:45), tz alone shows it");
     logger::transient("          bat log on / bat log off = battery log in flash every 10 min on the battery,");
     logger::transient("          bat log = show it, bat log clear = delete it");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
@@ -167,6 +177,47 @@ void forgetCamera()
         logger::line("pair: could not write the pairing file");
 }
 
+// "tz" alone or followed by a space, in any case; *argument is the rest, "" for "tz" alone.
+bool isTimeZoneCommand(const char *cmd, const char **argument)
+{
+    const size_t length = strlen(TZ_COMMAND);
+    if (strncasecmp(cmd, TZ_COMMAND, length) != 0 || (cmd[length] != '\0' && cmd[length] != ' '))
+        return false;
+    *argument = cmd + length;
+    while (**argument == ' ')
+        (*argument)++;
+    return true;
+}
+
+// The camera gets the time zone with the time, once per connection.
+void setTimeZone(const char *argument)
+{
+    if (argument[0] != '\0') {
+        switch (tz_store::set(argument)) {
+        case tz_store::SetResult::Saved:
+            logger::line("tz: saved - the camera gets it at the next connection");
+            break;
+        case tz_store::SetResult::Unchanged:
+            logger::line("tz: already set");
+            break;
+        case tz_store::SetResult::Unknown:
+            logger::line("tz: unknown time zone or rule '%s'", argument);
+            logger::transient("tz: e.g. tz Europe/Warsaw, tz America/New_York, tz Asia/Kolkata");
+            return;
+        case tz_store::SetResult::NotSaved:
+            logger::line("tz: could not write the time zone file");
+            return;
+        }
+    }
+    tz_store::logState();
+}
+
+void toLowerCase(char *text)
+{
+    for (; *text != '\0'; text++)
+        *text = (char)tolower((unsigned char)*text);
+}
+
 void handleButton()
 {
     const button::Event event = button::poll();
@@ -184,8 +235,16 @@ void handleButton()
     }
 }
 
-void runCommand(const char *cmd)
+// Commands are matched in lower case, except the argument of 'tz': POSIX rules need their
+// case ("M3.5.0").
+void runCommand(char *cmd)
 {
+    const char *timeZone = nullptr;
+    if (isTimeZoneCommand(cmd, &timeZone)) {
+        setTimeZone(timeZone);
+        return;
+    }
+    toLowerCase(cmd);
     if (strcmp(cmd, "v") == 0) {
         logVersion(true);
         diag::logResetInfo();
@@ -194,6 +253,7 @@ void runCommand(const char *cmd)
         gps::logState();
         bluetooth::logState();
         pairing_store::logState();
+        tz_store::logState();
         pairing::logState();
         link_control::logState();
         logBattery(BatteryCheck::None);
@@ -294,7 +354,7 @@ void handleChar(int c)
             commandLen--;
     } else if (c >= FIRST_PRINTABLE && c <= LAST_PRINTABLE) {
         if (commandLen < COMMAND_MAX)
-            command[commandLen++] = (char)tolower(c);
+            command[commandLen++] = (char)c;
         else
             commandTooLong = true;
     }
@@ -340,6 +400,8 @@ void setup()
     // After the start logs: the very first start writes flash here.
     if (bleReady && pairing_store::begin())
         pairing_store::logState();
+    tz_store::begin(bleReady);
+    tz_store::logState();
     link_control::begin(); // starts when a camera is paired
     logHelp();
 }

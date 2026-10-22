@@ -1,5 +1,4 @@
-// Calendar arithmetic in UTC and the EU summer-time rule. No hardware dependencies
-// (tested on the PC).
+// Calendar arithmetic in UTC. No hardware dependencies (tested on the PC).
 #pragma once
 
 #include <stdint.h>
@@ -31,9 +30,5 @@ int daysInMonth(int year, int month);
 
 // Day of the week of a day counted from 1970-01-01: 0 = Sunday .. 6 = Saturday.
 int weekday(int64_t days);
-
-// EU rule (Directive 2000/84/EC): summer time from 01:00 UTC on the last Sunday of
-// March until 01:00 UTC on the last Sunday of October.
-bool euSummerTime(int64_t unixSeconds);
 
 } // namespace utc

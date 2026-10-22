@@ -64,29 +64,11 @@ void test_valid_dates()
     TEST_ASSERT_FALSE(utc::isValid(at(2026, 1, 1, 0, 0, 60))); // no leap seconds
 }
 
-void test_eu_summer_time()
-{
-    // 2026: last Sundays are 29 March and 25 October; the change is at 01:00 UTC.
-    TEST_ASSERT_FALSE(utc::euSummerTime(utc::toUnixSeconds(at(2026, 3, 29, 0, 59, 59))));
-    TEST_ASSERT_TRUE(utc::euSummerTime(utc::toUnixSeconds(at(2026, 3, 29, 1, 0, 0))));
-    TEST_ASSERT_TRUE(utc::euSummerTime(utc::toUnixSeconds(at(2026, 10, 13, 22, 30, 29)))); // vector moment
-    TEST_ASSERT_TRUE(utc::euSummerTime(utc::toUnixSeconds(at(2026, 10, 25, 0, 59, 59))));
-    TEST_ASSERT_FALSE(utc::euSummerTime(utc::toUnixSeconds(at(2026, 10, 25, 1, 0, 0))));
-    TEST_ASSERT_FALSE(utc::euSummerTime(utc::toUnixSeconds(at(2026, 1, 15, 12, 0, 0))));
-    TEST_ASSERT_FALSE(utc::euSummerTime(utc::toUnixSeconds(at(2026, 12, 31, 23, 59, 59))));
-    // 2027: 28 March and 31 October (the last day of the month is a Sunday)
-    TEST_ASSERT_FALSE(utc::euSummerTime(utc::toUnixSeconds(at(2027, 3, 28, 0, 59, 59))));
-    TEST_ASSERT_TRUE(utc::euSummerTime(utc::toUnixSeconds(at(2027, 3, 28, 1, 0, 0))));
-    TEST_ASSERT_TRUE(utc::euSummerTime(utc::toUnixSeconds(at(2027, 10, 31, 0, 59, 59))));
-    TEST_ASSERT_FALSE(utc::euSummerTime(utc::toUnixSeconds(at(2027, 10, 31, 1, 0, 0))));
-}
-
 int main(int, char **)
 {
     UNITY_BEGIN();
     RUN_TEST(test_unix_seconds);
     RUN_TEST(test_round_trip_and_rollover);
     RUN_TEST(test_valid_dates);
-    RUN_TEST(test_eu_summer_time);
     return UNITY_END();
 }

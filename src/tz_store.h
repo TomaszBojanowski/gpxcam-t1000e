@@ -9,9 +9,11 @@
 namespace tz_store {
 
 // Loads the zone; a missing file means the default zone, and so (logged) does a damaged
-// one or one whose rule cannot be used. Call once in setup() after bluetooth::begin(): the
-// file system is mounted by Bluefruit.
-void begin();
+// one or one whose rule cannot be used. Call once in setup() after bluetooth::begin(), with
+// its result: Bluefruit mounts the file system. Without it the default zone is used and the
+// file is not touched (InternalFS.begin() of the core would erase the data area when it
+// cannot mount it).
+void begin(bool fileSystemMounted);
 
 // The zone in effect, valid after begin().
 const tz_record::Record &record();
@@ -26,5 +28,9 @@ enum class SetResult {
 
 // Sets the zone from a name from the tz table (any case) or a POSIX TZ rule, and saves it.
 SetResult set(const char *text);
+
+// Logs the zone and its rule and, with GPS time, the offset now and what the camera gets;
+// for 'p' and 'tz'.
+void logState();
 
 } // namespace tz_store

@@ -6,12 +6,8 @@ namespace {
 
 constexpr int64_t SECONDS_PER_DAY = 86400;
 constexpr int64_t SECONDS_PER_HOUR = 3600;
-constexpr int SUNDAY = 0;
 constexpr int THURSDAY = 4; // 1970-01-01
 constexpr int DAYS_PER_WEEK = 7;
-constexpr uint8_t MARCH = 3;
-constexpr uint8_t OCTOBER = 10;
-constexpr int64_t SUMMER_TIME_CHANGE_HOUR = 1; // 01:00 UTC
 
 bool isLeapYear(int year)
 {
@@ -30,12 +26,6 @@ void civilFromDays(int64_t days, int *year, int *month, int *day)
     *day = (int)(dayOfYear - (153 * monthIndex + 2) / 5 + 1);
     *month = (int)(monthIndex < 10 ? monthIndex + 3 : monthIndex - 9);
     *year = (int)(yearOfEra + era * 400 + (*month <= 2));
-}
-
-int64_t lastSunday(int year, int month) // in days since 1970-01-01
-{
-    const int64_t lastDay = daysFromCivil(year, month, daysInMonth(year, month));
-    return lastDay - (weekday(lastDay) - SUNDAY);
 }
 
 } // namespace
@@ -95,14 +85,6 @@ DateTime fromUnixSeconds(int64_t seconds)
     t.minute = (uint8_t)(rest % SECONDS_PER_HOUR / 60);
     t.second = (uint8_t)(rest % 60);
     return t;
-}
-
-bool euSummerTime(int64_t unixSeconds)
-{
-    const int year = fromUnixSeconds(unixSeconds).year;
-    const int64_t start = lastSunday(year, MARCH) * SECONDS_PER_DAY + SUMMER_TIME_CHANGE_HOUR * SECONDS_PER_HOUR;
-    const int64_t end = lastSunday(year, OCTOBER) * SECONDS_PER_DAY + SUMMER_TIME_CHANGE_HOUR * SECONDS_PER_HOUR;
-    return unixSeconds >= start && unixSeconds < end;
 }
 
 } // namespace utc

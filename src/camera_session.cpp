@@ -11,6 +11,8 @@
 #include "gps.h"
 #include "handle_cache.h"
 #include "log.h"
+#include "posix_tz.h"
+#include "tz_store.h"
 #include "utc.h"
 #include "version.h"
 
@@ -29,10 +31,9 @@ constexpr uint16_t MTU_REQUEST = camera_link::MAX_MTU;
 constexpr uint16_t ATT_WRITE_HEADER = 3;
 constexpr uint16_t MTU_NEEDED = lumix::APP_NAME_LENGTH + ATT_WRITE_HEADER;
 
-// M4 decisions: names shown by the camera, time zone Europe/Warsaw with the EU rule.
+// M4 decisions: names shown by the camera.
 constexpr const char *DEVICE_NAME = "T1000-E";
 constexpr const char *APP_NAME = "gpxcam T1000-E " FW_VERSION;
-constexpr int16_t STANDARD_OFFSET_MINUTES = 60;
 
 enum class Step { Idle, Connecting, Mtu, Service, Characteristics, Key, DeviceId, AppName, DeviceName, Time,
                   Disconnecting, Done };
@@ -178,7 +179,8 @@ void writeDeviceName()
     startWrite(camera_link::DEVICE_NAME, length, Step::DeviceName);
 }
 
-// The time of this moment, as the camera expects (docs/PROTOCOL.md).
+// The time of this moment with the time zone set by 'tz' (tz_store), as the camera expects
+// (docs/PROTOCOL.md).
 void writeTime()
 {
     int64_t now = 0;
@@ -187,7 +189,9 @@ void writeTime()
         fail();
         return;
     }
-    lumix::timeData(utc::fromUnixSeconds(now), STANDARD_OFFSET_MINUTES, utc::euSummerTime(now), txData);
+    const posix_tz::CameraZone zone = posix_tz::cameraZone(tz_store::rule(), now);
+    logger::transient("camera: time zone %d min%s", zone.standardOffsetMinutes, zone.summerTime ? " + summer time" : "");
+    lumix::timeData(utc::fromUnixSeconds(now), zone.standardOffsetMinutes, zone.summerTime, txData);
     startWrite(camera_link::TIME, lumix::TIME_LENGTH, Step::Time);
 }
 

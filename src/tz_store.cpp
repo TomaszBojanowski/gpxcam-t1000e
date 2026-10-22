@@ -3,7 +3,9 @@
 #include <InternalFileSystem.h>
 #include <string.h>
 
+#include "gps.h"
 #include "log.h"
+#include "tz_table.h"
 
 // Written like the pairing file (pairing_store.cpp): a temporary file renamed over the
 // record, which littlefs 1.7 does atomically, also on power loss, then read back, because
@@ -17,8 +19,12 @@ constexpr const char *DIRECTORY = "/gpxcam";
 constexpr const char *PATH = "/gpxcam/timezone.bin";
 constexpr const char *TEMP_PATH = "/gpxcam/timezone.tmp";
 
+constexpr int32_t SECONDS_PER_MINUTE = 60;
+constexpr int32_t MINUTES_PER_HOUR = 60;
+
 tz_record::Record current = {};
 posix_tz::Rule currentRule = {};
+bool fileSystemReady = false;
 bool savedInFile = false; // current comes from the file (its rule maybe from a newer tz table)
 
 void useDefault()
@@ -70,10 +76,11 @@ bool writeFile(const tz_record::Record &record)
 
 namespace tz_store {
 
-void begin()
+void begin(bool fileSystemMounted)
 {
     useDefault();
-    if (!InternalFS.begin()) { // already mounted by Bluefruit: returns true at once
+    fileSystemReady = fileSystemMounted && InternalFS.begin(); // mounted by Bluefruit: true at once
+    if (!fileSystemReady) {
         logger::line("tz: file system not available - using %s", current.name);
         return;
     }
@@ -114,12 +121,30 @@ SetResult set(const char *text)
         return SetResult::Unknown;
     if (savedInFile && sameZone(wanted, current))
         return SetResult::Unchanged;
-    if (!writeFile(wanted))
+    if (!fileSystemReady || !writeFile(wanted))
         return SetResult::NotSaved;
     current = wanted;
     currentRule = parsed;
     savedInFile = true;
     return SetResult::Saved;
+}
+
+void logState()
+{
+    if (current.name[0] != '\0')
+        logger::transient("tz: %s%s, rule %s (tz database %s)", current.name, savedInFile ? "" : " (default)",
+                          current.rule, tz_table::tzdataVersion());
+    else
+        logger::transient("tz: rule %s, given directly", current.rule);
+    int64_t now = 0;
+    if (!gps::utcNow(&now))
+        return;
+    const int32_t offset = posix_tz::utcOffsetSeconds(currentRule, now);
+    const int32_t minutes = (offset < 0 ? -offset : offset) / SECONDS_PER_MINUTE;
+    const posix_tz::CameraZone camera = posix_tz::cameraZone(currentRule, now);
+    logger::transient("tz: now UTC%c%02ld:%02ld, the camera gets %d min%s", offset < 0 ? '-' : '+',
+                      (long)(minutes / MINUTES_PER_HOUR), (long)(minutes % MINUTES_PER_HOUR),
+                      camera.standardOffsetMinutes, camera.summerTime ? " + summer time" : "");
 }
 
 } // namespace tz_store

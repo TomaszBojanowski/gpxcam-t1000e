@@ -176,6 +176,35 @@ void test_changes_across_the_new_year()
     TEST_ASSERT_EQUAL_INT32(0, posix_tz::utcOffsetSeconds(rule, at(2027, 12, 27, 23)));
 }
 
+// The default zone gives the camera what versions up to 1.1 sent with their fixed EU rule
+// (60 min, summer time from 01:00 UTC on the last Sunday of March until 01:00 UTC on the
+// last Sunday of October): the cases of that rule's former tests.
+void test_warsaw_as_before()
+{
+    struct {
+        int64_t moment;
+        bool summerTime;
+    } const cases[] = {
+        {at(2026, 3, 29, 0, 59, 59), false}, // 2026: 29 March and 25 October
+        {at(2026, 3, 29, 1), true},
+        {at(2026, 10, 13, 22, 30, 29), true}, // the moment of the time vector in docs/PROTOCOL.md
+        {at(2026, 10, 25, 0, 59, 59), true},
+        {at(2026, 10, 25, 1), false},
+        {at(2026, 1, 15, 12), false},
+        {at(2026, 12, 31, 23, 59, 59), false},
+        {at(2027, 3, 28, 0, 59, 59), false}, // 2027: 28 March and 31 October, the last day of the month
+        {at(2027, 3, 28, 1), true},
+        {at(2027, 10, 31, 0, 59, 59), true},
+        {at(2027, 10, 31, 1), false},
+    };
+    const Rule warsaw = zoneRule("Europe/Warsaw");
+    for (const auto &c : cases) {
+        const CameraZone camera = posix_tz::cameraZone(warsaw, c.moment);
+        TEST_ASSERT_EQUAL_INT16(60, camera.standardOffsetMinutes);
+        TEST_ASSERT_EQUAL(c.summerTime, camera.summerTime);
+    }
+}
+
 // What the camera gets: the standard offset in minutes and the flag that adds one hour.
 void test_camera_zone()
 {
@@ -210,6 +239,7 @@ int main(int, char **)
     RUN_TEST(test_parse_refuses);
     RUN_TEST(test_every_table_rule_matches_the_database);
     RUN_TEST(test_changes_across_the_new_year);
+    RUN_TEST(test_warsaw_as_before);
     RUN_TEST(test_camera_zone);
     return UNITY_END();
 }
