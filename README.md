@@ -9,8 +9,9 @@ that sends the phone's position to the camera; the gpxcam app and its repository
 
 *SenseCAP T1000-E next to a LUMIX S5II. The card is the camera's only GPS source, no phone involved.*
 
-Status: all milestones done (M0–M6) – pairing, normal work with the camera and power saving
-are tested on the card with an S5II.
+Status: pairing, everyday use with the camera and power saving all work and are tested with a
+LUMIX S5II. The latest version is on the
+[Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases) page.
 
 ## What you need
 
@@ -128,14 +129,17 @@ first fix takes about 1–3 minutes outdoors or near a window; deep indoors it m
 
 When the camera is on, the card connects by itself (two rising beeps) and the camera shows its
 Bluetooth and GPS icons. The card sends the position at once and then every 25 s – earlier when
-it moves more than 20 m. Without a GPS fix the connection stays, but no position is sent.
+it moves more than 20 m. If the GPS loses its fix later, the connection stays, but no position is
+sent until the fix is back.
 
 When the camera is switched off, the card notices it (two falling beeps) and waits:
-- for the first 10 minutes it keeps the GPS ready, so the camera gets a position about 10 s
-  after it is switched on again;
-- after that, and when the camera is out of sight for 5 minutes, the card saves power: it scans
-  less often and the GPS sleeps. The camera then gets a position about 15–30 s after it
-  appears again.
+- for the first 20 minutes it keeps the GPS ready and looks for the camera every second, so the
+  camera gets a position about 10 s after it is switched on again (most of that time the camera
+  itself is starting up);
+- after that, and when the camera is out of sight for 5 minutes, the card saves power: it looks
+  for the camera less often and the GPS sleeps. The camera then gets a position about 25–35 s
+  after it is switched on or comes back; after many hours the GPS needs longer, up to about
+  1–2 minutes.
 
 The card never wakes a camera that is switched off.
 
@@ -193,7 +197,8 @@ pio test -e native
 
 The modules without hardware dependencies – NMEA parser, LUMIX protocol (advertisement, byte
 formats, location), camera list, UTC calendar with the EU summer-time rule, pairing record,
-link and battery rules – are tested with made-up data and the vectors from `docs/PROTOCOL.md`.
+the camera handles kept between connections, link and battery rules – are tested with made-up
+data and the vectors from `docs/PROTOCOL.md`.
 
 ## Documentation
 
