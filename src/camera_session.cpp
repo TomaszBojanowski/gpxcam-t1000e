@@ -181,27 +181,50 @@ void writeDeviceName()
     startWrite(camera_link::DEVICE_NAME, length, Step::DeviceName);
 }
 
-// The time of this moment with the time zone set by 'tz' (tz_store), as the camera expects
-// (docs/PROTOCOL.md).
-void writeTimeAs(Step next)
+// Puts the time of this moment with the time zone set by 'tz' (tz_store) into txData, as the
+// camera expects (docs/PROTOCOL.md). False without GPS time.
+bool makeTimePacket(posix_tz::CameraZone *zone)
 {
     int64_t now = 0;
-    if (!gps::utcNow(&now)) {
-        setFailure("%s: no GPS time any more", stepName(next));
-        fail();
-        return;
-    }
-    const posix_tz::CameraZone zone = posix_tz::cameraZone(tz_store::rule(), now);
-    if (next == Step::Time)
-        logger::transient("camera: time zone %d min%s", zone.standardOffsetMinutes,
-                          zone.summerTime ? " + summer time" : "");
-    lumix::timeData(utc::fromUnixSeconds(now), zone.standardOffsetMinutes, zone.summerTime, txData);
-    startWrite(camera_link::TIME, lumix::TIME_LENGTH, next);
+    if (!gps::utcNow(&now))
+        return false;
+    *zone = posix_tz::cameraZone(tz_store::rule(), now);
+    lumix::timeData(utc::fromUnixSeconds(now), zone->standardOffsetMinutes, zone->summerTime, txData);
+    return true;
 }
 
 void writeTime()
 {
-    writeTimeAs(Step::Time);
+    posix_tz::CameraZone zone;
+    if (!makeTimePacket(&zone)) {
+        setFailure("time: no GPS time any more");
+        fail();
+        return;
+    }
+    logger::transient("camera: time zone %d min%s", zone.standardOffsetMinutes,
+                      zone.summerTime ? " + summer time" : "");
+    startWrite(camera_link::TIME, lumix::TIME_LENGTH, Step::Time);
+}
+
+// The second time write only makes the zone of the first count (onTimeAccepted()): when it
+// cannot be sent or is refused, the link goes on and the zone counts from the next connection.
+void endTimeAgain(const char *what)
+{
+    logger::line("camera: time again %s - the time zone counts from the next connection", what);
+    step = Step::Done; // the link goes on with the open connection
+}
+
+// No answer in time still ends the session (handleTimeout()): the write stays pending in the
+// SoftDevice, which then refuses the link's next write.
+void writeTimeAgain()
+{
+    posix_tz::CameraZone zone;
+    if (!makeTimePacket(&zone))
+        endTimeAgain("not sent: no GPS time any more");
+    else if (!camera_link::write(info.valueHandle[camera_link::TIME], txData, lumix::TIME_LENGTH))
+        endTimeAgain("not sent: write refused by the SoftDevice");
+    else
+        enter(Step::TimeAgain, STEP_MS);
 }
 
 void readKey()
@@ -273,19 +296,20 @@ void onTimeAccepted()
     if (!usingKept)
         keepHandles();
     if (keepOpen)
-        writeTimeAs(Step::TimeAgain);
+        writeTimeAgain();
     else
         closeLink();
 }
 
-// A refused second time only delays the zone to the next connection: the link goes on.
 void onTimeAgainWritten(const camera_link::Event &event)
 {
-    if (event.status == BLE_GATT_STATUS_SUCCESS)
-        logger::transient("camera: time again accepted");
-    else
-        logger::line("camera: time again refused (GATT 0x%04x) - the time zone counts from the next connection",
-                     event.status);
+    if (event.status != BLE_GATT_STATUS_SUCCESS) {
+        char what[32];
+        snprintf(what, sizeof(what), "refused (GATT 0x%04x)", event.status);
+        endTimeAgain(what);
+        return;
+    }
+    logger::transient("camera: time again accepted");
     step = Step::Done; // the link goes on with the open connection
 }
 

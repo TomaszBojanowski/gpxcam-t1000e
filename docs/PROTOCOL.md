@@ -146,7 +146,9 @@ Tested on the S5II on 2026-10-22 with the card writing different time zones (pho
 - So since 1.2.0 the card writes the time **twice** in every connection that stays open: the second packet makes
   the zone of the first count. With it, New York, Kolkata and Warsaw were right in the photos after one connection
   each. Pairing writes the time once (as up to 1.1); the connection right after it writes it twice.
-- A refused second write is logged and ends nothing: the zone then counts from the next connection.
+- A second write that cannot be sent (no GPS time any more, refused by the SoftDevice) or that the camera
+  refuses is logged and ends nothing: the zone then counts from the next connection. No answer to it within 5 s
+  ends the connection like any other step: the write stays pending, so the card could not write anything else.
 - The phone apps (gpxcam, Lumix Lab) write the time once per connection, so after a change of the phone's time
   zone the camera most likely shows the old one until the next connection (not checked).
 
