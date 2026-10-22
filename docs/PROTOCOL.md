@@ -1,9 +1,10 @@
 # Bluetooth LE protocol of LUMIX cameras
 
 The protocol the card uses to give a Panasonic LUMIX S5II (DC-S5M2) its position and the time.
-It was worked out and tested on the S5II with the gpxcam app for Android (repository
+It was worked out and tested on the S5II with gpxcam, the author's Android app (repository
 `TomaszBojanowski/gpxcam`, `android/app/src/main/java/me/bojanowski/gpxcam/LumixProtocol.kt` and
-`PROTOKOL.md`) – that code is the reference.
+`PROTOKOL.md`) – that code is the reference. The gpxcam app and its repository are private, so this
+document is the public description of the protocol.
 
 ## The camera's advertisement
 
@@ -19,10 +20,11 @@ It was worked out and tested on the S5II with the gpxcam app for Android (reposi
 - Seen on the S5II (M3, active scan 50 ms of every 100 ms): the manufacturer data is only in the
   advertisement, never in the scan response; about 3 reports per second. Every change of state changes the
   address: `00` → `03` and `03` → `00` – a new RPA, `00` → `06` – the public address, `06` → `00` – a new RPA
-  again. In standby (`06`) the camera keeps advertising.
+  again. In standby (`06`) the camera keeps advertising, but only for a while – about 20 minutes after
+  it was switched off, seen twice on 2026-10-21/22 – and then falls silent until it is switched on.
 - Pairing the card with the S5II (M4): the camera grants an MTU of 57 (the card asks for 185, like gpxcam) and
-  does not ask for encryption; from the connection to the accepted time takes about 1.2 s (at 20 ms; about
-  3.5 s at 48.75 ms since 1.0.2). No pairing at the Bluetooth level, like gpxcam.
+  does not ask for encryption; from the connection to the accepted time took about 1.2 s (at 20 ms; the
+  times since 1.0.2 are under "Connection parameters"). No pairing at the Bluetooth level, like gpxcam.
 - Normal work with the S5II (M5): switching the camera off ends the connection (`HCI 0x13`). The EXIF data of a
   photo holds the position and the GPS time of the last location (the time of sending), status `A`, no
   altitude – the same with the Lumix Lab app. The notification characteristic has no CCCD, yet the camera
@@ -43,8 +45,12 @@ others – neither from the card nor from the phone – it takes what it gets.
 - **The card since 1.0.2** connects with the same 48.75 ms, latency 0 and 5 s and asks for 61-byte packets
   right after connecting (`src/camera_link.cpp`). It does not switch to 7.5 ms for the introduction: tried
   with the card (also with the packets asked for only after it), the camera stopped answering the
-  characteristic discovery at 7.5 ms every time. The introduction therefore takes about 4 s (about 1.5 s
-  at 20 ms up to 1.0.1).
+  characteristic discovery at 7.5 ms every time. So the introduction is slower (table below).
+- **Kept handles (1.1.0):** the handles of one camera do not change between connections, so after an
+  introduction the camera accepted the card keeps them in RAM and skips the service and characteristic
+  discovery the next time; the camera accepts the introduction without it. The card looks the handles up
+  again after a restart, for another camera, and after any error once connected (not after `HCI 0x3e`,
+  when no connection was made) – `src/handle_cache.cpp`.
 - **The card up to 1.0.1** used the Bluefruit library's defaults: 20 ms, latency 0, 2 s and 27-byte packets.
   The camera's Bluetooth then failed after hours in two ways:
   - short drops: the camera fell silent for more than 2 s (`HCI 0x08`) and advertised again within
@@ -57,6 +63,16 @@ others – neither from the card nor from the phone – it takes what it gets.
   With the phone's parameters: no failure in a 7-hour test. The cause is a fault in the camera; the
   phone's parameters avoid it. Which of the three differences matters was not tested (most likely the
   interval).
+
+From the connection to the first location (1.5 s measured on 2026-10-20/21, the rest on 2026-10-22;
+at 48.75 ms the service and characteristic discovery takes about 2.6 s of it):
+
+| Card | Interval | Time |
+|---|---|---|
+| up to 1.0.1 | 20 ms | about 1.5 s |
+| 1.0.2 | 48.75 ms | about 3.7 s |
+| 1.1.0, first connection after the card starts | 48.75 ms | about 3.7 s |
+| 1.1.0, kept handles | 48.75 ms | about 1.1 s |
 
 While connected, the camera sends a notification `01` on handle 0x0046 every 30 s (also to the gpxcam app
 and to Lumix Lab), and `01` on handle 0x0094 once right after connecting. The card does not need them.

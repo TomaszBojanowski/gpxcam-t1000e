@@ -315,8 +315,9 @@ about 1 s – released after 836 ms, the card starts.
 - **Search modes** (`link_policy::searchMode`), only while the card is not connected:
   - normal – scan 50 ms every 100 ms, GPS on;
   - rare – the camera not seen for 5 min: scan 100 ms every 2 s, GPS in Backup;
-  - standby – the camera's last report is `06`, the card only waits for `00`: for the first 10 min (a break between
-    photos) scan 100 ms every 5 s and the GPS stays on with a fix; after that scan 100 ms every 10 s, GPS in Backup.
+  - standby – the camera's last report is `06`, the card only waits for `00`: for the first 20 min (a break between
+    photos) scan 100 ms every 1 s and the GPS stays on with a fix; after that scan 100 ms every 10 s, GPS in Backup.
+    Up to 1.0.2: 10 min and every 5 s.
 
   A report in state `00` restores normal mode at once (the GPS is switched on only in this mode). A connection attempt only at
   −85 dBm or more.
@@ -338,7 +339,16 @@ about 1 s – released after 836 ms, the card starts.
   and asks for 61-byte packets right after connecting. With Bluefruit's defaults (20 ms, 2 s, 27 bytes) the camera's
   Bluetooth dropped the link or hung after hours; with the new parameters: no failure in a 7-hour test. Android's 7.5 ms
   interval for the introduction made the camera stop answering the characteristic discovery when the card tried it, so the
-  card does not use it: the introduction takes about 3.5 s instead of 1.2 s. Details: `docs/PROTOCOL.md`.
+  card does not use it: from the connection to the first location takes about 3.7 s instead of 1.5 s. Details:
+  `docs/PROTOCOL.md`.
+- **Faster reconnection (1.1.0):** the first standby stage lasts 20 min with a scan every 1 s (above), and the card
+  keeps the camera's handles in RAM (`src/handle_cache.cpp`, `docs/PROTOCOL.md`): from the connection to the first
+  location about 1.1 s instead of 3.7 s. Measured on 2026-10-22, 3 cycles each, short breaks (under 20 min),
+  from switching the camera on to the first location: 13.7 s (1.0.2) → 12.8 s (scan every 1 s) → 10.4 s (and kept
+  handles). About 8–9 s of it is the camera itself: it starts advertising only then; from the card seeing it to the
+  connection takes about 0.3 s. After a longer break the GPS has to wake up from Backup first: about 18 s after
+  6.5 min in Backup, 39 s after 5.5 h, 87 s after 6.5 h. The longer first stage costs, as an estimate (not
+  measured), about +6–8 mA (GPS on, scan every 1 s) for up to 10 more minutes per break: about 1–1.3 mAh.
 - **DC/DC:** we do not enable it – no confirmation that the board has the inductor for REG1; Meshtastic does not enable it either.
 - **Low voltage:** below 3.40 V on the battery the card writes an entry to the battery log, plays two clicks and enters
   System OFF – at start-up at once, during work after two consecutive measurements 60 s apart (a short drop under load
@@ -379,11 +389,15 @@ The idle current (System OFF, in the µA range) cannot be measured this way: the
   the problem did not occur; the firmware retries the clearing for 100 ms and logs the details if it comes back.
 - **P0.05:** analog reading 2.73 V, but digital 0, also with a pull-up – contradictory, unexplained.
   To detect USB power we use the VBUS register in the nRF; P0.05 is not needed.
+- **Standby after the camera falls silent:** the camera advertises its standby only for about 20 minutes
+  (`docs/PROTOCOL.md`). Then the card no longer sees it and after 5 min switches from long standby (scan every 10 s)
+  to rare mode (every 2 s) – more scanning for the rest of the night. To be decided after the standby current is
+  measured.
 - **Manual DFU (button + cable twice):** works, but neither plugging in the cable alone nor pressing the button alone
   resets the processor, so the mechanism is different. The bootloader enters DFU after a double reset on the
   RESET pin (P0.18), and the pin is enabled – probably something on the board causes this reset. We do not investigate as long as it works.
 
 ## Still to do
 
-- Measure the current in standby and with 1.0.2 (the discharge test above; during work with 1.0.1 about 7–8 mA,
+- Measure the current in standby and with 1.1.0 (the discharge test above; during work with 1.0.1 about 7–8 mA,
   rough), and at rest in System OFF (it needs a meter). The LR1110 in sleep should draw less than 1 µA.
