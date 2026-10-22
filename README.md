@@ -45,8 +45,10 @@ No tools needed: the card takes the firmware as a file copied to a USB drive.
    LED lights green and a USB drive named **T1000-E** appears.
 4. Open `INFO_UF2.TXT` on that drive. It must show `Board-ID: nRF52840-T1000-E-v1` and
    `SoftDevice: S140 7.3.0`. If it shows something else, stop: this firmware is not for that card.
-5. Copy the `.uf2` file onto the drive. The card restarts with gpxcam and the drive disappears
-   (your computer may warn that the drive was removed – that is normal).
+5. Copy the `.uf2` file onto the drive. The card restarts with gpxcam and the drive disappears.
+   There is no need to eject the drive. Your computer may warn that the drive was not ejected
+   properly, or even report a copy error at the end – this is normal, the card restarts as soon as
+   it has the whole file.
 6. Pair the card with the camera, see [Pairing](#pairing-once).
 
 The file holds only the application: the bootloader and the SoftDevice stay as they are.
