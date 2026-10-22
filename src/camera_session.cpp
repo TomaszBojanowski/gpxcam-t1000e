@@ -47,6 +47,20 @@ char failureText[80] = "";
 
 uint8_t cardUuid[lumix::UUID_LENGTH];
 camera_session::Discovered info = {}; // MTU, service end, handles and properties
+
+// The handles of the last camera, see camera_session::forgetHandles(). RAM only. The
+// service and characteristic discovery takes about 3 s of the 3.7 s introduction at the
+// 48.75 ms interval (1.0.2 measurement); the handles of one camera do not change.
+struct KeptHandles {
+    bool valid;
+    uint8_t serial[lumix::SERIAL_LENGTH];
+    uint16_t serviceEnd;
+    uint16_t valueHandle[camera_link::CHARACTERISTIC_COUNT];
+    uint8_t properties[camera_link::CHARACTERISTIC_COUNT];
+};
+KeptHandles kept = {};
+uint8_t sessionSerial[lumix::SERIAL_LENGTH]; // the camera of this session
+bool usingKept = false;                       // this session skipped the discovery
 uint8_t key[lumix::KEY_LENGTH];
 
 // The data of the write in progress; the SoftDevice may read it until WriteDone.
@@ -110,8 +124,22 @@ void closeLink()
         step = Step::Done;
 }
 
+// After a full discovery the camera accepted: the handles serve the next session.
+void keepHandles()
+{
+    kept.valid = true;
+    memcpy(kept.serial, sessionSerial, sizeof(kept.serial));
+    kept.serviceEnd = info.serviceEnd;
+    memcpy(kept.valueHandle, info.valueHandle, sizeof(kept.valueHandle));
+    memcpy(kept.properties, info.properties, sizeof(kept.properties));
+    logger::transient("camera: handles kept for the next connection");
+}
+
 void fail()
 {
+    // An error once connected may come from a wrong handle; before that it cannot.
+    if (step != Step::Connecting)
+        camera_session::forgetHandles(failureText);
     accepted = false;
     closeLink();
 }
@@ -190,8 +218,9 @@ void readKey()
     unsigned count = 0;
     for (uint16_t handle : info.valueHandle)
         count += handle != 0;
-    logger::transient("camera: service and %u of %u characteristics found", count,
-                      (unsigned)camera_link::CHARACTERISTIC_COUNT);
+    logger::transient(usingKept ? "camera: %u of %u characteristics from the last connection"
+                                : "camera: service and %u of %u characteristics found",
+                      count, (unsigned)camera_link::CHARACTERISTIC_COUNT);
     if (!camera_link::read(info.valueHandle[camera_link::KEY])) {
         setFailure("key: read refused by the SoftDevice");
         fail();
@@ -231,6 +260,8 @@ void onWritten(const camera_link::Event &event, void (*next)())
 void onTimeAccepted()
 {
     accepted = true;
+    if (!usingKept)
+        keepHandles();
     if (keepOpen)
         step = Step::Done; // the link goes on with the open connection
     else
@@ -244,6 +275,11 @@ void onMtu(const camera_link::Event &event)
     if (info.mtu < MTU_NEEDED) {
         setFailure("MTU: %u, writes of 32 bytes need %u", info.mtu, MTU_NEEDED);
         fail();
+    } else if (usingKept) {
+        info.serviceEnd = kept.serviceEnd;
+        memcpy(info.valueHandle, kept.valueHandle, sizeof(info.valueHandle));
+        memcpy(info.properties, kept.properties, sizeof(info.properties));
+        readKey();
     } else if (!camera_link::findService()) {
         setFailure("service: request refused");
         fail();
@@ -295,6 +331,8 @@ bool handleCommonEvent(const camera_link::Event &event)
         if (step != Step::Disconnecting) {
             setFailure("%s: the camera disconnected (HCI 0x%02x)", stepName(step), event.status);
             establishFailed = event.status == BLE_HCI_CONN_FAILED_TO_BE_ESTABLISHED;
+            if (!establishFailed && !accepted) // HCI 0x3e: no connection, so no handle was used
+                camera_session::forgetHandles(failureText);
         }
         step = Step::Done;
         return true;
@@ -399,6 +437,10 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
         return false;
     }
     memcpy(cardUuid, uuid, sizeof(cardUuid));
+    memcpy(sessionSerial, camera.camera.serial, sizeof(sessionSerial));
+    if (kept.valid && memcmp(kept.serial, sessionSerial, sizeof(sessionSerial)) != 0)
+        forgetHandles("another camera");
+    usingKept = kept.valid;
     info = {};
     info.mtu = BLE_GATT_ATT_MTU_DEFAULT;
     keepOpen = keepConnection;
@@ -444,6 +486,14 @@ bool notEstablished()
 const Discovered &discovered()
 {
     return info;
+}
+
+void forgetHandles(const char *why)
+{
+    if (!kept.valid)
+        return;
+    kept = {};
+    logger::transient("camera: handles forgotten - %s", why);
 }
 
 void cancel()

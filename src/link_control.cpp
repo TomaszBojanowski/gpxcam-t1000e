@@ -243,6 +243,9 @@ void pause(const char *why)
 
 void connectionFailed(const char *reason)
 {
+    // After the introduction the link uses the session's handles; an error may mean a wrong one.
+    if (connectionOpen())
+        camera_session::forgetHandles(reason);
     char why[logger::LINE_MAX];
     snprintf(why, sizeof(why), "connection to camera %s failed (%s)", serialText, reason);
     pause(why);
@@ -338,6 +341,8 @@ void onDisconnected(uint16_t reason)
     // (v1.0.1). Other ends (out of range, errors) keep making the pauses longer.
     if (reason == BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION)
         failuresInARow = 0;
+    if (phase != Phase::Connected) // ended while the link was being set up
+        camera_session::forgetHandles("disconnected during the setup");
     char why[logger::LINE_MAX];
     snprintf(why, sizeof(why), "disconnected from camera %s after %lu s (HCI 0x%02x)", serialText,
              (unsigned long)(lasted / 1000), reason);
@@ -374,6 +379,7 @@ void onLocationWritten(const camera_link::Event &event)
     if (event.status != BLE_GATT_STATUS_SUCCESS) {
         failedCount++;
         logger::transient("link: location refused (GATT 0x%04x)", event.status);
+        camera_session::forgetHandles("location refused");
         return;
     }
     sentCount++;
@@ -453,8 +459,10 @@ void settingUp(uint32_t now)
         if (handleConnectionEvent(event))
             continue;
         if (phase == Phase::GpsMode && event.type == camera_link::EventType::WriteDone) {
-            if (event.status != BLE_GATT_STATUS_SUCCESS)
+            if (event.status != BLE_GATT_STATUS_SUCCESS) {
                 logger::line("link: GPS mode refused (GATT 0x%04x) - going on", event.status);
+                camera_session::forgetHandles("GPS mode refused");
+            }
             afterGpsMode();
         } else if (phase == Phase::FindingCccd && event.type == camera_link::EventType::DescriptorsFound) {
             const uint16_t last = event.descriptors.lastHandle;
@@ -472,9 +480,11 @@ void settingUp(uint32_t now)
                 enterConnected();
             }
         } else if (phase == Phase::EnablingNotifications && event.type == camera_link::EventType::WriteDone) {
-            if (event.status != BLE_GATT_STATUS_SUCCESS)
+            if (event.status != BLE_GATT_STATUS_SUCCESS) {
                 logger::line("link: notifications refused (GATT 0x%04x) - sending every %lu s only", event.status,
                              (unsigned long)(link_policy::PERIOD_MS / 1000));
+                camera_session::forgetHandles("notifications refused");
+            }
             enterConnected();
         }
     }
