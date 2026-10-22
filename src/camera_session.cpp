@@ -36,7 +36,7 @@ constexpr const char *DEVICE_NAME = "T1000-E";
 constexpr const char *APP_NAME = "gpxcam T1000-E " FW_VERSION;
 
 enum class Step { Idle, Connecting, Mtu, Service, Characteristics, Key, DeviceId, AppName, DeviceName, Time,
-                  Disconnecting, Done };
+                  TimeAgain, Disconnecting, Done };
 
 Step step = Step::Idle;
 uint32_t stepStart = 0;
@@ -84,6 +84,8 @@ const char *stepName(Step s)
         return "device name";
     case Step::Time:
         return "time";
+    case Step::TimeAgain:
+        return "time again";
     case Step::Disconnecting:
         return "disconnect";
     case Step::Idle:
@@ -181,18 +183,25 @@ void writeDeviceName()
 
 // The time of this moment with the time zone set by 'tz' (tz_store), as the camera expects
 // (docs/PROTOCOL.md).
-void writeTime()
+void writeTimeAs(Step next)
 {
     int64_t now = 0;
     if (!gps::utcNow(&now)) {
-        setFailure("time: no GPS time any more");
+        setFailure("%s: no GPS time any more", stepName(next));
         fail();
         return;
     }
     const posix_tz::CameraZone zone = posix_tz::cameraZone(tz_store::rule(), now);
-    logger::transient("camera: time zone %d min%s", zone.standardOffsetMinutes, zone.summerTime ? " + summer time" : "");
+    if (next == Step::Time)
+        logger::transient("camera: time zone %d min%s", zone.standardOffsetMinutes,
+                          zone.summerTime ? " + summer time" : "");
     lumix::timeData(utc::fromUnixSeconds(now), zone.standardOffsetMinutes, zone.summerTime, txData);
-    startWrite(camera_link::TIME, lumix::TIME_LENGTH, Step::Time);
+    startWrite(camera_link::TIME, lumix::TIME_LENGTH, next);
+}
+
+void writeTime()
+{
+    writeTimeAs(Step::Time);
 }
 
 void readKey()
@@ -253,15 +262,31 @@ void onWritten(const camera_link::Event &event, void (*next)())
     next();
 }
 
+// The camera knows the card. A connection that stays open writes the time once more: the
+// camera takes the time zone offset from the time packet before the last one (only the
+// summer-time flag from the last), so the second packet makes the zone of the first count
+// (tested on the S5II, docs/PROTOCOL.md). Pairing writes it once, as up to 1.1; the
+// connection after it writes it twice.
 void onTimeAccepted()
 {
     accepted = true;
     if (!usingKept)
         keepHandles();
     if (keepOpen)
-        step = Step::Done; // the link goes on with the open connection
+        writeTimeAs(Step::TimeAgain);
     else
         closeLink();
+}
+
+// A refused second time only delays the zone to the next connection: the link goes on.
+void onTimeAgainWritten(const camera_link::Event &event)
+{
+    if (event.status == BLE_GATT_STATUS_SUCCESS)
+        logger::transient("camera: time again accepted");
+    else
+        logger::line("camera: time again refused (GATT 0x%04x) - the time zone counts from the next connection",
+                     event.status);
+    step = Step::Done; // the link goes on with the open connection
 }
 
 void onMtu(const camera_link::Event &event)
@@ -329,6 +354,7 @@ bool handleCommonEvent(const camera_link::Event &event)
             establishFailed = event.status == BLE_HCI_CONN_FAILED_TO_BE_ESTABLISHED;
             if (!accepted && handle_cache::forgetAfterFailure(true, establishFailed))
                 camera_session::forgetHandles(failureText);
+            accepted = false; // the link is gone, also after an accepted time
         }
         step = Step::Done;
         return true;
@@ -385,6 +411,10 @@ void handleEvent(const camera_link::Event &event)
     case Step::Time:
         if (event.type == EventType::WriteDone)
             onWritten(event, onTimeAccepted);
+        break;
+    case Step::TimeAgain:
+        if (event.type == EventType::WriteDone)
+            onTimeAgainWritten(event);
         break;
     case Step::Disconnecting:
     case Step::Idle:
