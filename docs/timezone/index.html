@@ -4,9 +4,130 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>gpxcam time zone</title>
+<style>
+:root {
+  --text: #1d1d1f;
+  --muted: #5f6368;
+  --background: #ffffff;
+  --panel: #f4f5f7;
+  --border: #d0d4da;
+  --accent: #0b57d0;
+  --accent-text: #ffffff;
+  --good: #146c2e;
+  --bad: #b3261e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #e8eaed;
+    --muted: #a8adb4;
+    --background: #16181b;
+    --panel: #22252a;
+    --border: #3c4048;
+    --accent: #8ab4f8;
+    --accent-text: #0f1a2e;
+    --good: #81c995;
+    --bad: #f28b82;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 24px 16px 48px;
+  background: var(--background);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 42rem; margin: 0 auto; }
+h1 { font-size: 1.6rem; margin: 0 0 4px; }
+h2 { font-size: 1.15rem; margin: 28px 0 8px; }
+p { margin: 8px 0; }
+.lead, .note, small { color: var(--muted); }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.hidden { display: none; }
+button {
+  font: inherit;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+button.secondary { background: transparent; color: var(--accent); }
+button:disabled { opacity: 0.45; cursor: default; }
+input[type="search"] {
+  width: 100%;
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--text);
+}
+#results { list-style: none; margin: 8px 0 0; padding: 0; max-height: 22rem; overflow-y: auto; }
+#results li { border-bottom: 1px solid var(--border); }
+#results label { display: flex; gap: 10px; align-items: baseline; padding: 6px 4px; cursor: pointer; }
+#results .name { font-weight: 600; overflow-wrap: anywhere; }
+#results .detail { color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
+#results .offset { margin-left: auto; color: var(--muted); font-size: 0.9rem; white-space: nowrap; }
+.card-lines { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85rem; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; }
+.good { color: var(--good); }
+.bad { color: var(--bad); }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+</style>
 </head>
 <body>
-<p>This page will set the time zone of a gpxcam card. It is not finished yet.</p>
+<main>
+  <h1>gpxcam time zone</h1>
+  <p class="lead">Set the time zone that a SenseCAP T1000-E card with gpxcam gives your LUMIX camera.</p>
+
+  <div id="unsupported" class="panel hidden">
+    <p class="bad"><strong>This browser cannot talk to the card.</strong></p>
+    <p>Open this page in Chrome or Edge on a computer (Windows, macOS or Linux).
+       Firefox, Safari and phones do not support Web Serial.</p>
+    <p>You can also set the time zone with a serial terminal, see the
+       <a href="https://github.com/TomaszBojanowski/gpxcam-t1000e#set-the-time-zone">README</a>.</p>
+  </div>
+
+  <div id="app">
+    <h2>1. Connect the card</h2>
+    <p>Plug the card into this computer with a USB cable, click <em>Connect</em> and choose
+       <em>T1000-E gpxcam</em>. Close other programs that use the card first (a serial monitor).</p>
+    <div class="row">
+      <button id="connect" type="button">Connect</button>
+      <button id="disconnect" type="button" class="secondary" disabled>Disconnect</button>
+    </div>
+    <div id="card" class="panel" style="margin-top: 12px">
+      <p id="card-status">Not connected.</p>
+      <div id="card-lines" class="card-lines"></div>
+    </div>
+
+    <h2>2. Choose the time zone</h2>
+    <label for="search">Search by country, city or zone name</label>
+    <input id="search" type="search" placeholder="e.g. Poland, New York, Kolkata" autocomplete="off">
+    <p id="selected">No time zone selected.</p>
+    <ul id="results"></ul>
+
+    <h2>3. Save it on the card</h2>
+    <div class="row">
+      <button id="save" type="button" disabled>Save</button>
+    </div>
+    <div id="save-answer" class="panel hidden" style="margin-top: 12px">
+      <p id="save-status"></p>
+      <div id="save-lines" class="card-lines"></div>
+      <p class="note">The camera gets the new time zone the next time the card connects to it:
+         switch the camera off and on. The card connects only when its GPS has a fix.</p>
+    </div>
+  </div>
+
+  <h2>About this page</h2>
+  <p class="note">The page runs only in your browser and sends nothing over the internet. It talks to the card
+     over USB at 115200 baud and sends it only these commands: <code>v</code> (version), <code>tz</code> (show the
+     time zone) and <code>tz</code> with the zone you chose. Offsets shown in the list come from your browser and are
+     only a guide; the card uses its own copy of the tz database.</p>
+  <p class="note"><a href="https://github.com/TomaszBojanowski/gpxcam-t1000e">gpxcam-t1000e on GitHub</a></p>
+</main>
+
 <script>
 // BEGIN TZ_DATA - generated by tools/gen_tz_table.py from the tz database 2026e, do not edit.
 // zones: [name, country codes, comment] for every zone of the card (zone1970.tab; none for Etc/...);
@@ -866,6 +987,442 @@ const TZ_DATA = {
 },
 };
 // END TZ_DATA
+</script>
+<script>
+"use strict";
+
+// The card's serial console (src/main.cpp). Every value is fixed: the page has no setting for it.
+const BAUD_RATE = 115200; // any rate works over USB; only the bootloader's reset rate must never be used
+const CARD_USB = { usbVendorId: 0x2886, usbProductId: 0x8057 }; // Seeed, T1000-E running gpxcam (boards/t1000-e.json)
+const VERSION_TIMEOUT_MS = 3000;
+const TZ_TIMEOUT_MS = 6000; // saving writes flash: about 1 s, more the first time
+const ANSWER_QUIET_MS = 400; // an answer is complete after this long without another of its lines
+const MAX_RESULTS = 60;
+
+// ---- Zones (pure functions, tested with node --test test/web) ----
+
+const ZONES = new Map(TZ_DATA.zones.map(([name, countries, comment]) => [name, { countries, comment }]));
+const NAMES_LOWER = new Map(); // lower-case name: name as the card's table spells it
+for (const name of ZONES.keys()) NAMES_LOWER.set(name.toLowerCase(), name);
+for (const alias of Object.keys(TZ_DATA.aliases)) NAMES_LOWER.set(alias.toLowerCase(), alias);
+const COUNTRY_OF_NAME = new Map(); // a zone name as named for a country (zone.tab): "Denmark", "United States, Eastern ..."
+for (const [country, zones] of Object.values(TZ_DATA.countries)) {
+  for (const [name, comment] of zones) {
+    if (!COUNTRY_OF_NAME.has(name)) COUNTRY_OF_NAME.set(name, comment ? `${country}, ${comment}` : country);
+  }
+}
+
+// A name the card knows, in any case: { name (as the table spells it), zone (the zone it stands for) }.
+function findZone(text) {
+  const name = NAMES_LOWER.get(String(text).trim().toLowerCase());
+  if (!name) return null;
+  return { name, zone: TZ_DATA.aliases[name] || name };
+}
+
+function countryName(code) {
+  const country = TZ_DATA.countries[code];
+  return country ? country[0] : code;
+}
+
+function searchable(text) {
+  return text.toLowerCase().replace(/_/g, " ");
+}
+
+// "Germany, Denmark, ..." for a zone, from zone1970.tab.
+function zoneCountries(zone) {
+  const entry = ZONES.get(zone);
+  return entry ? entry.countries.map(countryName).join(", ") : "";
+}
+
+// Search results, best first: the zones of countries whose name (or two-letter code) matches,
+// as named for the country (zone.tab: Denmark gives Europe/Copenhagen); then zones and aliases
+// whose name or comment matches. Each name appears once.
+function searchZones(query) {
+  const q = searchable(String(query).trim());
+  if (!q) return [];
+  const results = [];
+  const seen = new Set();
+  const add = (name, detail) => {
+    if (seen.has(name) || results.length >= MAX_RESULTS) return;
+    seen.add(name);
+    results.push({ name, zone: TZ_DATA.aliases[name] || name, detail });
+  };
+  for (const [code, [country, zones]] of Object.entries(TZ_DATA.countries)) {
+    if (searchable(country).includes(q) || code.toLowerCase() === q) {
+      for (const [name, comment] of zones) add(name, comment ? `${country}, ${comment}` : country);
+    }
+  }
+  for (const [name, { comment }] of ZONES) {
+    if (searchable(name).includes(q) || searchable(comment).includes(q)) {
+      const countries = zoneCountries(name);
+      add(name, [countries, comment].filter(Boolean).join(" - "));
+    }
+  }
+  for (const [alias, zone] of Object.entries(TZ_DATA.aliases)) {
+    if (!searchable(alias).includes(q)) continue;
+    const country = COUNTRY_OF_NAME.get(alias);
+    add(alias, country ? `${country} (same as ${zone})` : `same as ${zone}`);
+  }
+  return results;
+}
+
+// "UTC+05:30" now, from the browser's own time zone data; "" if the browser does not know the zone.
+function utcOffsetText(zone, date = new Date()) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: zone, timeZoneName: "longOffset" }).formatToParts(date);
+    const offset = parts.find((part) => part.type === "timeZoneName").value; // "GMT+05:30" or "GMT"
+    return offset === "GMT" ? "UTC+00:00" : offset.replace("GMT", "UTC");
+  } catch (error) {
+    return "";
+  }
+}
+
+// The name to offer for a zone the browser reports: browsers often give old aliases
+// (Asia/Calcutta, Europe/Kiev); those become their zone, but a country's own name stays
+// (Europe/Copenhagen, from zone.tab).
+function preferredZone(text) {
+  const found = findZone(text);
+  if (found && found.name !== found.zone && !COUNTRY_OF_NAME.has(found.name)) return findZone(found.zone);
+  return found;
+}
+
+// The computer's time zone, if the card knows it.
+function computerZone() {
+  try {
+    return preferredZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  } catch (error) {
+    return null;
+  }
+}
+
+// ---- The card's console (pure functions) ----
+
+// The only commands the page may send: v, tz, and tz with a name exactly as the table spells it.
+function allowedCommand(command) {
+  if (command === "v" || command === "tz") return true;
+  const match = /^tz ([A-Za-z0-9/_+-]{1,40})$/.exec(command);
+  return match !== null && findZone(match[1]) !== null && findZone(match[1]).name === match[1];
+}
+
+function tzCommand(text) {
+  const found = findZone(text);
+  return found ? `tz ${found.name}` : null;
+}
+
+// "1.2.0" from the card's version line: "gpxcam-t1000e 1.2.0 (git 1234567), uptime ...".
+function parseVersion(line) {
+  const match = /^gpxcam-t1000e (\d+\.\d+\.\d+)/.exec(line);
+  return match ? match[1] : null;
+}
+
+function isTzAnswer(line) {
+  return line.startsWith("tz: ") || line.startsWith("command: ");
+}
+
+// What the card answered to 'tz' or 'tz NAME' (src/main.cpp setTimeZone(), tz_store::logState()).
+function classifyTzAnswer(lines) {
+  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
+  if (lines.length === 0) return "none";
+  if (has("command: unknown")) return "no-tz"; // firmware before 1.2.0
+  if (has("command: too long")) return "unknown";
+  if (has("tz: saved")) return "saved";
+  if (has("tz: already set")) return "unchanged";
+  if (has("tz: unknown")) return "unknown";
+  if (has("tz: could not write")) return "not-saved";
+  return "state";
+}
+
+// Splits the card's output into lines; a line may come in several pieces.
+class LineSplitter {
+  constructor() {
+    this.rest = "";
+  }
+  push(text) {
+    const parts = (this.rest + text).split("\n");
+    this.rest = parts.pop();
+    return parts.map((line) => line.replace(/\r$/, ""));
+  }
+}
+
+// ---- The connection to the card ----
+
+class Card {
+  constructor(port) {
+    this.port = port;
+    this.splitter = new LineSplitter();
+    this.waiters = new Set();
+    this.reader = null;
+    this.onClosed = null; // called once when reading ends (unplugged, closed)
+  }
+
+  async open() {
+    await this.port.open({ baudRate: BAUD_RATE });
+    await this.port.setSignals({ dataTerminalReady: true }); // the card writes its console only with DTR
+    this.readLoop();
+  }
+
+  async readLoop() {
+    const decoder = new TextDecoder();
+    try {
+      this.reader = this.port.readable.getReader();
+      for (;;) {
+        const { value, done } = await this.reader.read();
+        if (done) break;
+        for (const line of this.splitter.push(decoder.decode(value, { stream: true }))) this.deliver(line);
+      }
+    } catch (error) {
+      // unplugged or closed: reading simply ends
+    } finally {
+      if (this.reader) this.reader.releaseLock();
+      this.reader = null;
+      if (this.onClosed) this.onClosed();
+    }
+  }
+
+  deliver(line) {
+    for (const waiter of this.waiters) waiter(line);
+  }
+
+  async send(command) {
+    if (!allowedCommand(command)) throw new Error(`not sent: ${command}`);
+    const writer = this.port.writable.getWriter();
+    try {
+      await writer.write(new TextEncoder().encode(command + "\n"));
+    } finally {
+      writer.releaseLock();
+    }
+  }
+
+  // Sends a command and collects the lines that belong to its answer: until done(lines) says
+  // so, ANSWER_QUIET_MS after the last such line, or timeoutMs without any.
+  ask(command, belongs, timeoutMs, done = () => false) {
+    return new Promise((resolve, reject) => {
+      const lines = [];
+      let quiet = null;
+      const finish = () => {
+        clearTimeout(timeout);
+        clearTimeout(quiet);
+        this.waiters.delete(waiter);
+        resolve(lines);
+      };
+      const waiter = (line) => {
+        if (!belongs(line)) return;
+        lines.push(line);
+        clearTimeout(quiet);
+        if (done(lines)) finish();
+        else quiet = setTimeout(finish, ANSWER_QUIET_MS);
+      };
+      const timeout = setTimeout(finish, timeoutMs);
+      this.waiters.add(waiter);
+      this.send(command).catch((error) => {
+        clearTimeout(timeout);
+        this.waiters.delete(waiter);
+        reject(error);
+      });
+    });
+  }
+
+  async version() {
+    const lines = await this.ask("v", (line) => parseVersion(line) !== null, VERSION_TIMEOUT_MS, () => true);
+    return lines.length ? parseVersion(lines[0]) : null;
+  }
+
+  timeZone(name) {
+    const command = name ? tzCommand(name) : "tz";
+    if (!command) return Promise.reject(new Error(`unknown time zone: ${name}`));
+    return this.ask(command, isTzAnswer, TZ_TIMEOUT_MS);
+  }
+
+  async close() {
+    try {
+      if (this.reader) await this.reader.cancel();
+    } catch (error) {
+      // already gone
+    }
+    try {
+      await this.port.close();
+    } catch (error) {
+      // already closed or unplugged
+    }
+  }
+}
+
+// ---- The page ----
+
+function startPage() {
+  const element = (id) => document.getElementById(id);
+  const ui = {
+    connect: element("connect"),
+    disconnect: element("disconnect"),
+    cardStatus: element("card-status"),
+    cardLines: element("card-lines"),
+    search: element("search"),
+    selected: element("selected"),
+    results: element("results"),
+    save: element("save"),
+    saveAnswer: element("save-answer"),
+    saveStatus: element("save-status"),
+    saveLines: element("save-lines"),
+  };
+  let card = null;
+  let selected = computerZone();
+  let busy = false;
+
+  if (!("serial" in navigator) || !window.isSecureContext) {
+    element("unsupported").classList.remove("hidden");
+    ui.connect.disabled = true;
+  }
+
+  const setStatus = (target, text, kind) => {
+    target.textContent = text;
+    target.className = kind || "";
+  };
+
+  const refreshButtons = () => {
+    ui.connect.disabled = card !== null || busy || !("serial" in navigator);
+    ui.disconnect.disabled = card === null || busy;
+    ui.save.disabled = card === null || busy || selected === null;
+  };
+
+  const showSelected = () => {
+    if (!selected) {
+      ui.selected.textContent = "No time zone selected.";
+      return;
+    }
+    const offset = utcOffsetText(selected.zone);
+    const same = selected.name !== selected.zone ? ` (same as ${selected.zone})` : "";
+    ui.selected.textContent = `Selected: ${selected.name}${same}${offset ? `, now ${offset}` : ""}`;
+  };
+
+  const showResults = () => {
+    ui.results.replaceChildren();
+    for (const result of searchZones(ui.search.value)) {
+      const item = document.createElement("li");
+      const label = document.createElement("label");
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "zone";
+      radio.value = result.name;
+      radio.checked = selected !== null && selected.name === result.name;
+      radio.addEventListener("change", () => {
+        selected = findZone(result.name);
+        showSelected();
+        refreshButtons();
+      });
+      const text = document.createElement("span");
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = result.name;
+      const detail = document.createElement("div");
+      detail.className = "detail";
+      detail.textContent = result.detail;
+      text.append(name, detail);
+      const offset = document.createElement("span");
+      offset.className = "offset";
+      offset.textContent = utcOffsetText(result.zone);
+      label.append(radio, text, offset);
+      item.append(label);
+      ui.results.append(item);
+    }
+  };
+
+  const disconnected = (message, kind) => {
+    card = null;
+    busy = false;
+    setStatus(ui.cardStatus, message, kind);
+    refreshButtons();
+  };
+
+  const connect = async () => {
+    let port;
+    try {
+      port = await navigator.serial.requestPort({ filters: [CARD_USB] });
+    } catch (error) {
+      return; // no card chosen
+    }
+    busy = true;
+    refreshButtons();
+    const opened = new Card(port);
+    try {
+      setStatus(ui.cardStatus, "Connecting...");
+      await opened.open();
+    } catch (error) {
+      disconnected("Could not open the card. Close other programs that use it (a serial monitor) and try again.", "bad");
+      return;
+    }
+    const version = await opened.version().catch(() => null);
+    if (!version) {
+      await opened.close();
+      disconnected("No answer from the card. Is it a T1000-E with gpxcam? Unplug it, plug it in again and retry.", "bad");
+      return;
+    }
+    const lines = await opened.timeZone().catch(() => []);
+    const answer = classifyTzAnswer(lines);
+    if (answer === "no-tz" || answer === "none") {
+      await opened.close();
+      disconnected(`gpxcam ${version} cannot set the time zone. Install gpxcam 1.2.0 or newer first.`, "bad");
+      return;
+    }
+    card = opened;
+    card.onClosed = () => {
+      if (card === opened) disconnected("The card was disconnected.");
+    };
+    busy = false;
+    setStatus(ui.cardStatus, `Connected: gpxcam ${version}. Its time zone now:`, "good");
+    ui.cardLines.textContent = lines.join("\n");
+    refreshButtons();
+  };
+
+  const disconnect = async () => {
+    const closing = card;
+    card = null;
+    await closing.close();
+    disconnected("Not connected.");
+    ui.cardLines.textContent = "";
+  };
+
+  const save = async () => {
+    busy = true;
+    refreshButtons();
+    ui.saveAnswer.classList.remove("hidden");
+    setStatus(ui.saveStatus, `Saving ${selected.name}...`);
+    ui.saveLines.textContent = "";
+    let lines = [];
+    try {
+      lines = await card.timeZone(selected.name);
+    } catch (error) {
+      lines = [];
+    }
+    const messages = {
+      saved: [`Saved: ${selected.name}.`, "good"],
+      unchanged: [`${selected.name} was already set on the card.`, "good"],
+      unknown: ["The card does not know this time zone. Is its firmware older than this page?", "bad"],
+      "not-saved": ["The card could not save the time zone. Try again.", "bad"],
+      none: ["No answer from the card.", "bad"],
+    };
+    const [text, kind] = messages[classifyTzAnswer(lines)] || ["The card answered:", ""];
+    setStatus(ui.saveStatus, text, kind);
+    ui.saveLines.textContent = lines.join("\n");
+    busy = false;
+    refreshButtons();
+  };
+
+  ui.connect.addEventListener("click", connect);
+  ui.disconnect.addEventListener("click", disconnect);
+  ui.save.addEventListener("click", save);
+  ui.search.addEventListener("input", showResults);
+  if ("serial" in navigator) {
+    navigator.serial.addEventListener("disconnect", (event) => {
+      if (card && event.target === card.port) card.close();
+    });
+  }
+  if (selected) ui.search.value = selected.name;
+  showSelected();
+  showResults();
+  refreshButtons();
+}
+
+if (typeof document !== "undefined") startPage();
 </script>
 </body>
 </html>
