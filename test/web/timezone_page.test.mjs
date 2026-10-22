@@ -114,6 +114,20 @@ test("the computer's zone is offered under the name people know", () => {
   assert.equal(page.preferredZone("Mars/Olympus_Mons"), null);
 });
 
+test("what starts with the text comes before what only contains it", () => {
+  const names = (query) => page.searchZones(query).map((result) => result.name);
+  const pol = names("pol");
+  assert.equal(pol[0], "Europe/Warsaw"); // Poland
+  assert.equal(page.searchZones("pol")[0].detail, "Poland");
+  for (const containing of ["Pacific/Tahiti", "Africa/Tripoli", "America/Indiana/Indianapolis"]) {
+    assert.ok(pol.indexOf(containing) > pol.indexOf("Europe/Warsaw"), containing); // French Polynesia, Tripoli
+  }
+  assert.equal(names("kol")[0], "Asia/Kolkata"); // a city at the start
+  // Countries, then cities that start with the text; then those that only contain it (Austria).
+  assert.deepEqual(json(names("tri").slice(0, 2)), ["America/Port_of_Spain", "Africa/Tripoli"]);
+  assert.ok(names("tri").indexOf("Africa/Tripoli") < names("tri").indexOf("Europe/Vienna"));
+});
+
 test("offsets come from the browser's own data", () => {
   const july = new Date(Date.UTC(2027, 6, 1));
   assert.equal(page.utcOffsetText("Asia/Kolkata", july), "UTC+05:30");

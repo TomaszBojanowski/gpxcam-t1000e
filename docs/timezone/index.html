@@ -1113,9 +1113,15 @@ function zoneCountries(zone) {
   return entry ? entry.countries.map(countryName).join(", ") : "";
 }
 
-// Search results, best first: the zones of countries whose name (or two-letter code) matches,
-// as named for the country (zone.tab: Denmark gives Europe/Copenhagen); then zones and aliases
-// whose name or comment matches. Each name appears once.
+// The city part of a zone name: "New_York" of "America/New_York".
+function cityOf(name) {
+  return name.slice(name.lastIndexOf("/") + 1);
+}
+
+// Search results, best first. First what starts with the text: countries by name (or their
+// two-letter code), as named for the country (zone.tab: Denmark gives Europe/Copenhagen), then
+// zones and aliases by city or full name. Then what only contains it, in the same order, zones
+// also by their comment. Each name appears once.
 function searchZones(query) {
   const q = searchable(String(query).trim());
   if (!q) return [];
@@ -1126,21 +1132,24 @@ function searchZones(query) {
     seen.add(name);
     results.push({ name, zone: TZ_DATA.aliases[name] || name, detail });
   };
-  for (const [code, [country, zones]] of Object.entries(TZ_DATA.countries)) {
-    if (searchable(country).includes(q) || code.toLowerCase() === q) {
-      for (const [name, comment] of zones) add(name, comment ? `${country}, ${comment}` : country);
+  for (const atStart of [true, false]) {
+    const matches = (text) => (atStart ? text.startsWith(q) : text.includes(q));
+    const nameMatches = (name) => matches(searchable(name)) || matches(searchable(cityOf(name)));
+    for (const [code, [country, zones]] of Object.entries(TZ_DATA.countries)) {
+      if (matches(searchable(country)) || (atStart && code.toLowerCase() === q)) {
+        for (const [name, comment] of zones) add(name, comment ? `${country}, ${comment}` : country);
+      }
     }
-  }
-  for (const [name, { comment }] of ZONES) {
-    if (searchable(name).includes(q) || searchable(comment).includes(q)) {
-      const countries = zoneCountries(name);
-      add(name, [countries, comment].filter(Boolean).join(" - "));
+    for (const [name, { comment }] of ZONES) {
+      if (nameMatches(name) || (!atStart && searchable(comment).includes(q))) {
+        add(name, [zoneCountries(name), comment].filter(Boolean).join(" - "));
+      }
     }
-  }
-  for (const [alias, zone] of Object.entries(TZ_DATA.aliases)) {
-    if (!searchable(alias).includes(q)) continue;
-    const country = COUNTRY_OF_NAME.get(alias);
-    add(alias, country ? `${country} (same as ${zone})` : `same as ${zone}`);
+    for (const [alias, zone] of Object.entries(TZ_DATA.aliases)) {
+      if (!nameMatches(alias)) continue;
+      const country = COUNTRY_OF_NAME.get(alias);
+      add(alias, country ? `${country} (same as ${zone})` : `same as ${zone}`);
+    }
   }
   return results;
 }
