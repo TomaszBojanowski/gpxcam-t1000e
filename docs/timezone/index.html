@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
+<link rel="icon" href="data:,">
 <title>gpxcam time zone</title>
 <style>
 :root {
@@ -44,6 +46,8 @@ p { margin: 8px 0; }
 .lead, .note, small { color: var(--muted); }
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
 .hidden { display: none; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 button {
   font: inherit;
   padding: 8px 16px;
@@ -98,22 +102,25 @@ input[type="search"] {
       <button id="disconnect" type="button" class="secondary" disabled>Disconnect</button>
     </div>
     <div id="card" class="panel" style="margin-top: 12px">
-      <p id="card-status">Not connected.</p>
+      <p id="card-status" role="status">Not connected.</p>
       <div id="card-lines" class="card-lines"></div>
     </div>
 
     <h2>2. Choose the time zone</h2>
     <label for="search">Search by country, city or zone name</label>
     <input id="search" type="search" placeholder="e.g. Poland, New York, Kolkata" autocomplete="off">
-    <p id="selected">No time zone selected.</p>
-    <ul id="results"></ul>
+    <p id="selected" role="status">No time zone selected.</p>
+    <fieldset>
+      <legend class="visually-hidden">Time zones found</legend>
+      <ul id="results"></ul>
+    </fieldset>
 
     <h2>3. Save it on the card</h2>
     <div class="row">
       <button id="save" type="button" disabled>Save</button>
     </div>
     <div id="save-answer" class="panel hidden" style="margin-top: 12px">
-      <p id="save-status"></p>
+      <p id="save-status" role="status"></p>
       <div id="save-lines" class="card-lines"></div>
       <p class="note">The camera gets the new time zone the next time the card connects to it:
          switch the camera off and on. The card connects only when its GPS has a fix.</p>
@@ -1156,6 +1163,13 @@ function noAnswerText(readError) {
   return "No answer from the card. Is it a T1000-E with gpxcam? Unplug it, plug it in again and retry.";
 }
 
+// What stops the page after the card's answer to 'tz' when connecting, or null if it can go on.
+function tzProblemText(version, answer) {
+  if (answer === "no-tz") return `gpxcam ${version} cannot set the time zone. Install gpxcam 1.2.0 or newer first.`;
+  if (answer === "none") return "No answer from the card to 'tz'. Unplug it, plug it in again and retry.";
+  return null;
+}
+
 // ---- The connection to the card ----
 
 class Card {
@@ -1370,10 +1384,10 @@ function startPage() {
       return;
     }
     const lines = await opened.timeZone().catch(() => []);
-    const answer = classifyTzAnswer(lines);
-    if (answer === "no-tz" || answer === "none") {
+    const problem = tzProblemText(version, classifyTzAnswer(lines));
+    if (problem) {
       await opened.close();
-      disconnected(`gpxcam ${version} cannot set the time zone. Install gpxcam 1.2.0 or newer first.`, "bad");
+      disconnected(problem, "bad");
       return;
     }
     card = opened;
@@ -1388,28 +1402,31 @@ function startPage() {
   };
 
   const disconnect = async () => {
+    if (!card) return;
     const closing = card;
     card = null;
+    refreshButtons();
     await closing.close();
     disconnected("Not connected.");
     ui.cardLines.textContent = "";
   };
 
   const save = async () => {
+    const name = selected.name; // the list may change while the card answers
     busy = true;
     refreshButtons();
     ui.saveAnswer.classList.remove("hidden");
-    setStatus(ui.saveStatus, `Saving ${selected.name}...`);
+    setStatus(ui.saveStatus, `Saving ${name}...`);
     ui.saveLines.textContent = "";
     let lines = [];
     try {
-      lines = await card.timeZone(selected.name);
+      lines = await card.timeZone(name);
     } catch (error) {
       lines = [];
     }
     const messages = {
-      saved: [`Saved: ${selected.name}.`, "good"],
-      unchanged: [`${selected.name} was already set on the card.`, "good"],
+      saved: [`Saved: ${name}.`, "good"],
+      unchanged: [`${name} was already set on the card.`, "good"],
       unknown: ["The card does not know this time zone. Is its firmware older than this page?", "bad"],
       "not-saved": ["The card could not save the time zone. Try again.", "bad"],
       none: ["No answer from the card.", "bad"],

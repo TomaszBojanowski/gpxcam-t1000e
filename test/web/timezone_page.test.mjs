@@ -13,7 +13,7 @@ const appCode = scripts[1];
 const page = vm.runInContext(
   scripts.join("\n") +
     "\n;({ TZ_DATA, BAUD_RATE, CARD_USB, MAX_RESULTS, findZone, searchZones, utcOffsetText, allowedCommand," +
-    " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText })",
+    " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText, tzProblemText })",
   vm.createContext({ TextEncoder, TextDecoder, setTimeout, clearTimeout, console }),
 );
 
@@ -185,6 +185,20 @@ test("the card's other answers are told apart", () => {
 test("firmware without tz is recognised", async () => {
   const { card } = await openCard({ tz: OLD_FIRMWARE });
   assert.equal(page.classifyTzAnswer(await card.timeZone()), "no-tz");
+});
+
+test("a card without tz and a card that does not answer tz get different messages", () => {
+  assert.match(page.tzProblemText("1.1.0", "no-tz"), /^gpxcam 1\.1\.0 cannot set the time zone/);
+  assert.match(page.tzProblemText("1.2.0", "none"), /^No answer from the card to 'tz'/);
+  assert.equal(page.tzProblemText("1.2.0", "state"), null);
+});
+
+test("the page fetches nothing: content security policy", () => {
+  const policy = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(html);
+  assert.ok(policy);
+  assert.match(policy[1], /^default-src 'none';/);
+  assert.doesNotMatch(policy[1], /connect-src|https?:/);
+  assert.doesNotMatch(html, /<script[^>]+src=|<link[^>]+href="(?!data:)/);
 });
 
 test("a refused command is not written; no answer ends after the time limit", async () => {
