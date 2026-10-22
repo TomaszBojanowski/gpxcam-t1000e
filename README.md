@@ -2,8 +2,8 @@
 
 Firmware for the Seeed SenseCAP **T1000-E** tracker card that gives a Panasonic **LUMIX S5II**
 the position from the card's own GPS over Bluetooth LE – no phone needed. The camera writes the
-position into the EXIF data of every photo. It speaks the same protocol as the gpxcam app for
-Android, which this firmware replaces.
+position into the EXIF data of every photo. It does the job of gpxcam, the author's Android app
+that sends the phone's position to the camera; the gpxcam app and its repository are private.
 
 ![SenseCAP T1000-E next to a LUMIX S5II](docs/images/t1000e-s5ii.jpg)
 
@@ -12,15 +12,42 @@ Android, which this firmware replaces.
 Status: all milestones done (M0–M6) – pairing, normal work with the camera and power saving
 are tested on the card with an S5II.
 
-## Hardware
+## What you need
 
-- **Seeed SenseCAP T1000-E** (nRF52840, Airoha AG3335 GPS, Semtech LR1110 radio – kept asleep,
-  buzzer, button, green LED, 700 mAh battery), with its factory UF2 bootloader and SoftDevice
-  S140 7.3.0 (as shipped with Meshtastic).
-- **Panasonic LUMIX S5II** (DC-S5M2). Other LUMIX cameras with the same Bluetooth protocol may
-  work, but they are not tested.
+- **Seeed SenseCAP Card Tracker T1000-E for Meshtastic** – the card as sold for Meshtastic, with
+  its factory UF2 bootloader (Board-ID `nRF52840-T1000-E-v1`) and SoftDevice S140 7.3.0. Inside:
+  nRF52840, Airoha AG3335 GPS, Semtech LR1110 radio (kept asleep), buzzer, button, green LED,
+  700 mAh battery. gpxcam replaces Meshtastic on the card; you can go back at any time
+  (see [Back to Meshtastic](#back-to-meshtastic)).
+- **Panasonic LUMIX S5II** (DC-S5M2) – the only camera tested so far. Other LUMIX models may work
+  if they use the same Bluetooth protocol, but nobody has tried them yet. If you test one, please
+  open an issue.
 
-## Installation
+## Known limitations
+
+- The card sets the camera's clock to Central European Time (EU DST rules) on every connection.
+  Outside that time zone the camera's local time will be off, while the GPS position and GPS time
+  in EXIF stay correct. A time zone setting is planned for the next version.
+
+## Install the release (Windows, macOS, Linux)
+
+No tools needed: the card takes the firmware as a file copied to a USB drive.
+
+1. Before you start: gpxcam replaces Meshtastic. If you may want to go back later, note your
+   Meshtastic settings (channels and keys) first.
+2. Download `gpxcam-t1000e-<version>.uf2` from the
+   [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases) page.
+3. Put the card into flashing mode: hold its button and plug the USB cable in twice quickly. The
+   LED lights green and a USB drive named **T1000-E** appears.
+4. Open `INFO_UF2.TXT` on that drive. It must show `Board-ID: nRF52840-T1000-E-v1` and
+   `SoftDevice: S140 7.3.0`. If it shows something else, stop: this firmware is not for that card.
+5. Copy the `.uf2` file onto the drive. The card restarts with gpxcam and the drive disappears
+   (your computer may warn that the drive was removed – that is normal).
+6. Pair the card with the camera, see [Pairing](#pairing-once).
+
+The file holds only the application: the bootloader and the SoftDevice stay as they are.
+
+## Build from source (Linux)
 
 Linux with:
 - PlatformIO: `uv tool install platformio`
@@ -57,7 +84,16 @@ and plug the cable in twice quickly – the LED lights up and the T1000-E drive 
 - The data area (0xEA000–0xF4000, with the pairing file) is not written by flashing: the card
   keeps its pairing.
 - Do not open the serial port at 1200 baud: that starts the bootloader without its drive.
-- Back to Meshtastic: <https://flasher.meshtastic.org> (device: Seeed SenseCAP T1000-E).
+- Back to Meshtastic: see the next section.
+
+## Back to Meshtastic
+
+1. Put the card into flashing mode: hold its button and plug the USB cable in twice quickly.
+2. Install Meshtastic with the [Meshtastic Web Flasher](https://flasher.meshtastic.org) (device:
+   Seeed SenseCAP T1000-E), or copy a Meshtastic `.uf2` file for the T1000-E onto the T1000-E drive.
+
+gpxcam never changes the bootloader or the SoftDevice, so Meshtastic installs as on a new card.
+Whether Meshtastic keeps its old settings has not been checked – be ready to set it up again.
 
 ## User guide
 
@@ -86,10 +122,13 @@ it pairs with one camera at a time: a new pairing replaces the old one.
 
 ### Normal use
 
-Switch the card on and keep it near the camera. When the camera is on, the card connects by
-itself (two rising beeps) and the camera shows its Bluetooth and GPS icons. The card sends the
-position at once and then every 25 s – earlier when it moves more than 20 m. Without a GPS fix
-the connection stays, but no position is sent.
+Switch the card on and keep it near the camera. The card connects to the camera only when its GPS
+has a position fix: the camera needs the exact time from it. After you switch the card on, the
+first fix takes about 1–3 minutes outdoors or near a window; deep indoors it may not come at all.
+
+When the camera is on, the card connects by itself (two rising beeps) and the camera shows its
+Bluetooth and GPS icons. The card sends the position at once and then every 25 s – earlier when
+it moves more than 20 m. Without a GPS fix the connection stays, but no position is sent.
 
 When the camera is switched off, the card notices it (two falling beeps) and waits:
 - for the first 10 minutes it keeps the GPS ready, so the camera gets a position about 10 s
@@ -168,7 +207,7 @@ link and battery rules – are tested with made-up data and the vectors from `do
 - Pins, board file and linker script: [Meshtastic](https://github.com/meshtastic/firmware)
   (GPL-3.0), completed from Seeed's T1000-E SDK – details in `docs/HARDWARE.md` and in the code.
 - Arduino core: Meshtastic's fork of the Adafruit nRF52 core, pinned in `platformio.ini`.
-- Protocol: the gpxcam app for Android.
+- Protocol: worked out with gpxcam, the author's Android app (private, not published).
 
 ## License
 
