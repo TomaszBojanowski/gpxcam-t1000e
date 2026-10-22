@@ -31,7 +31,7 @@ bool shouldConnect(const pairing_record::Record &pairing, const camera_list::Ent
 //   LongStandby - after that: scan 100 ms every 10 s, GPS in Backup.
 enum class SearchMode { Normal, Rare, Standby, LongStandby };
 constexpr uint32_t RARE_AFTER_MS = 5 * MS_PER_MINUTE;
-constexpr uint32_t LONG_STANDBY_AFTER_MS = 10 * MS_PER_MINUTE; // M6 decision: a break between photos
+constexpr uint32_t LONG_STANDBY_AFTER_MS = 20 * MS_PER_MINUTE; // a break between photos (10 min in M6)
 
 // cameraSeen: a report of the paired camera since the link started; msSinceSeen and
 // lastState: of its last report; msSearching: since the search started; msInStandby:
