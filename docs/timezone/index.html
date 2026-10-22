@@ -50,6 +50,7 @@
   }
 }
 * { box-sizing: border-box; }
+html { scrollbar-gutter: stable; } /* the page does not move sideways when its scroll bar comes and goes */
 body {
   margin: 0;
   padding: 24px 16px 48px;
@@ -109,7 +110,8 @@ input[type="search"] {
 }
 input[type="search"]:focus { border-color: var(--accent); }
 input[type="radio"] { accent-color: var(--accent); }
-#results { list-style: none; margin: 8px 0 0; padding: 0; max-height: 22rem; overflow-y: auto; }
+/* A fixed height of about six results, so what follows does not move while typing */
+#results { list-style: none; margin: 8px 0 0; padding: 0; height: 19.6rem; overflow-y: auto; }
 #results li { border-bottom: 1px solid var(--line); }
 #results label { display: flex; gap: 10px; align-items: baseline; padding: 6px 8px; cursor: pointer; border-radius: 6px; }
 #results label:hover { background: var(--hover); }
