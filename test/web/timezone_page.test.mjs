@@ -13,7 +13,7 @@ const appCode = scripts[1];
 const page = vm.runInContext(
   scripts.join("\n") +
     "\n;({ TZ_DATA, BAUD_RATE, CARD_USB, MAX_RESULTS, findZone, searchZones, utcOffsetText, allowedCommand," +
-    " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone })",
+    " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText })",
   vm.createContext({ TextEncoder, TextDecoder, setTimeout, clearTimeout, console }),
 );
 
@@ -34,7 +34,8 @@ const TZ_SAVED = [
 const OLD_FIRMWARE = ["command: unknown 'tz'\r\n", "commands: v = version and reset reason,\r\n"];
 
 // A serial port that answers commands with chunks of text; it records what the page does.
-function simulatedCard(answers) {
+// readFails: reading fails at once, as in Chromium on Linux after a pyserial program.
+function simulatedCard(answers, readFails = false) {
   const encoder = new TextEncoder();
   let output;
   const port = {
@@ -42,7 +43,12 @@ function simulatedCard(answers) {
     signals: null,
     closed: false,
     written: [],
-    readable: new ReadableStream({ start: (controller) => { output = controller; } }),
+    readable: new ReadableStream({
+      start: (controller) => { output = controller; },
+      pull: (controller) => {
+        if (readFails) controller.error(new DOMException("The device has been lost.", "NetworkError"));
+      },
+    }),
     writable: new WritableStream({
       write(chunk) {
         const command = new TextDecoder().decode(chunk);
@@ -59,8 +65,8 @@ function simulatedCard(answers) {
   return port;
 }
 
-async function openCard(answers) {
-  const port = simulatedCard(answers);
+async function openCard(answers, readFails = false) {
+  const port = simulatedCard(answers, readFails);
   const card = new page.Card(port);
   await card.open();
   return { port, card };
@@ -187,6 +193,16 @@ test("a refused command is not written; no answer ends after the time limit", as
   await assert.rejects(card.timeZone("Mars/Olympus_Mons"));
   assert.deepEqual(port.written, []);
   assert.deepEqual(json(await card.ask("v", () => true, 50)), []);
+});
+
+test("a read that fails at once is explained", async () => {
+  const { card } = await openCard({ v: VERSION_ANSWER }, true);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(card.readError.message, "The device has been lost.");
+  assert.equal(card.reader, null); // reading has ended
+  assert.match(page.noAnswerText(card.readError), /^Reading from the card failed \(The device has been lost\.\)/);
+  assert.match(page.noAnswerText(card.readError), /unplug the card, plug it in again/);
+  assert.match(page.noAnswerText(null), /^No answer from the card/);
 });
 
 test("closing ends reading and closes the port", async () => {

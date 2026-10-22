@@ -1144,6 +1144,18 @@ class LineSplitter {
   }
 }
 
+// Why the card did not answer 'v'. A read that fails at once while the card is plugged in comes
+// from Linux: a program using pyserial (a serial monitor such as pio device monitor) leaves the
+// port with VMIN=0, which the kernel keeps for the next program, and Chromium then takes the
+// first empty read for a lost device. Plugging the card in again resets the port's settings.
+function noAnswerText(readError) {
+  if (readError) {
+    return `Reading from the card failed (${readError.message}). On Linux this happens after another serial ` +
+      "program, such as a serial monitor, used the card: unplug the card, plug it in again and click Connect.";
+  }
+  return "No answer from the card. Is it a T1000-E with gpxcam? Unplug it, plug it in again and retry.";
+}
+
 // ---- The connection to the card ----
 
 class Card {
@@ -1152,6 +1164,7 @@ class Card {
     this.splitter = new LineSplitter();
     this.waiters = new Set();
     this.reader = null;
+    this.readError = null; // why reading ended, if it failed
     this.onClosed = null; // called once when reading ends (unplugged, closed)
   }
 
@@ -1171,7 +1184,7 @@ class Card {
         for (const line of this.splitter.push(decoder.decode(value, { stream: true }))) this.deliver(line);
       }
     } catch (error) {
-      // unplugged or closed: reading simply ends
+      this.readError = error; // unplugged, or see noAnswerText()
     } finally {
       if (this.reader) this.reader.releaseLock();
       this.reader = null;
@@ -1353,7 +1366,7 @@ function startPage() {
     const version = await opened.version().catch(() => null);
     if (!version) {
       await opened.close();
-      disconnected("No answer from the card. Is it a T1000-E with gpxcam? Unplug it, plug it in again and retry.", "bad");
+      disconnected(noAnswerText(opened.readError), "bad");
       return;
     }
     const lines = await opened.timeZone().catch(() => []);
@@ -1365,7 +1378,8 @@ function startPage() {
     }
     card = opened;
     card.onClosed = () => {
-      if (card === opened) disconnected("The card was disconnected.");
+      const why = opened.readError ? ` (${opened.readError.message})` : "";
+      if (card === opened) disconnected(`The connection to the card ended${why}.`, "bad");
     };
     busy = false;
     setStatus(ui.cardStatus, `Connected: gpxcam ${version}. Its time zone now:`, "good");
