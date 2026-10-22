@@ -74,6 +74,9 @@ at 48.75 ms the service and characteristic discovery takes about 2.6 s of it):
 | 1.1.0, first connection after the card starts | 48.75 ms | about 3.7 s |
 | 1.1.0, kept handles | 48.75 ms | about 1.1 s |
 
+Since 1.2.0 the card writes the time twice in every connection that stays open (below, "The time zone in the
+camera"): one more write, about 0.1 s.
+
 While connected, the camera sends a notification `01` on handle 0x0046 every 30 s (also to the gpxcam app
 and to Lumix Lab), and `01` on handle 0x0094 once right after connecting. The card does not need them.
 
@@ -102,7 +105,8 @@ Strictly in this order, each step only after the answer to the previous one:
 3. write the app name,
 4. write the device name,
 5. write the time – **success means the camera knows the card** (with an unknown identifier it returns an
-   ATT error and disconnects),
+   ATT error and disconnects); the card (since 1.2.0, not when pairing) then writes it once more, see "The time
+   zone in the camera",
 6. write `01` to the GPS mode, enable notifications,
 7. the location at once, then about every 25 s.
 
@@ -119,12 +123,32 @@ completed". Without pairing an unknown identifier is refused at the time write.
   between characters. The card's name is `T1000-E` (the camera shows it in its list of paired devices).
 - **App name:** plain UTF-8 text padded with zeros to 32 bytes; the card sends `gpxcam T1000-E <version>`.
 - **Time (10 B, little-endian):** year u16, month, day, hour, minute, second – **UTC**; then the standard
-  time-zone offset in minutes (i16) and the summer-time flag (u8). For Poland: `60` and `1` in summer / `0` in
-  winter (EU rule: the change is on the last Sunday of March and of October at 01:00 UTC).
+  time-zone offset in minutes (i16) and the summer-time flag (u8), which adds one hour. For Poland: `60` and `1` in
+  summer / `0` in winter. The card takes both from the time zone set with `tz` (`src/posix_tz.cpp`). Summer time one
+  hour *behind* standard time (Europe/Dublin, whose standard time is the summer one) goes the other way round:
+  `0` and `1` in summer. Summer time that is not one hour ahead (Australia/Lord_Howe +30 min, Antarctica/Troll +2 h)
+  goes as the offset in effect without the flag: the local time is right, the camera shows no summer-time mark.
 - **Location (16 B, little-endian):** GPS time u32 = `unix_seconds − 315964800` (**without** leap seconds),
   latitude i32 × 1e7, longitude i32 × 1e7, altitude i16 in metres, `0x41` ("A" – valid position), `0x00`.
   **The time is the moment of sending, not the time of the fix** – otherwise the camera greys out its GPS icon
   after a while. Without a valid fix no location is sent.
+
+## The time zone in the camera
+
+Tested on the S5II on 2026-10-22 with the card writing different time zones (photos checked with exiftool):
+- **The camera takes the standard offset from the time packet *before* the last one, and only the summer-time
+  flag from the last one.** Example: after Warsaw (`60`, summer) the card wrote New York (`-300`, summer): the photo
+  had +02:00 (60 + 1 h); after that, Kolkata (`330`, no flag): −05:00 (−300 + 0). All 16 photos of the first test
+  follow this rule, and it predicted the last of them before it was taken.
+- Neither the end of the connection nor 5.6 minutes of waiting brings the new offset in; only the next time write
+  does. The camera's UTC clock is right in every case: its own UTC stamp (Panasonic `TimeStamp` in EXIF) and the
+  GPS time agree.
+- So since 1.2.0 the card writes the time **twice** in every connection that stays open: the second packet makes
+  the zone of the first count. With it, New York, Kolkata and Warsaw were right in the photos after one connection
+  each. Pairing writes the time once (as up to 1.1); the connection right after it writes it twice.
+- A refused second write is logged and ends nothing: the zone then counts from the next connection.
+- The phone apps (gpxcam, Lumix Lab) write the time once per connection, so after a change of the phone's time
+  zone the camera most likely shows the old one until the next connection (not checked).
 
 ## Test vectors
 
@@ -140,8 +164,9 @@ Moment: 2026-10-13 22:30:29 UTC, time zone Europe/Warsaw (summer time).
   `03020100070605040b0a09080f0e0d0cffffffcd`
 - `xor(00 00 00 00 0f, 01 02 03 04)` → `010203040e`
 
-All vectors, the location included, are checked in `test/test_lumix`; the calendar and the EU summer-time rule
-in `test/test_utc`. The name "Zażółć gęślą jaźń aparatu" (34 bytes of UTF-8) is cut to 22 bytes, as in gpxcam.
+All vectors, the location included, are checked in `test/test_lumix`; the calendar in `test/test_utc`, the time
+zone rules in `test/test_posix_tz` (Europe/Warsaw gives the camera the same bytes as the EU rule of versions up to
+1.1). The name "Zażółć gęślą jaźń aparatu" (34 bytes of UTF-8) is cut to 22 bytes, as in gpxcam.
 
 Advertisement (made-up serial number `12 34 56 78 9a`, tests in `test/test_lumix`):
 - `02 01 06 09 ff 3a 00 00 12 34 56 78 9a` → camera, state `00` (on), serial number `123456789a`
