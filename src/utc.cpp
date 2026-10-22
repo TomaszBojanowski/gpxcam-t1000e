@@ -18,6 +18,28 @@ bool isLeapYear(int year)
     return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
 }
 
+// The inverse of daysFromCivil(): civil_from_days from the same source.
+void civilFromDays(int64_t days, int *year, int *month, int *day)
+{
+    days += 719468;
+    const int64_t era = (days >= 0 ? days : days - 146096) / 146097;
+    const int64_t dayOfEra = days - era * 146097;
+    const int64_t yearOfEra = (dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146096) / 365;
+    const int64_t dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100);
+    const int64_t monthIndex = (5 * dayOfYear + 2) / 153; // 0 = March
+    *day = (int)(dayOfYear - (153 * monthIndex + 2) / 5 + 1);
+    *month = (int)(monthIndex < 10 ? monthIndex + 3 : monthIndex - 9);
+    *year = (int)(yearOfEra + era * 400 + (*month <= 2));
+}
+
+int64_t lastSunday(int year, int month) // in days since 1970-01-01
+{
+    const int64_t lastDay = daysFromCivil(year, month, daysInMonth(year, month));
+    return lastDay - (weekday(lastDay) - SUNDAY);
+}
+
+} // namespace
+
 int daysInMonth(int year, int month)
 {
     static const uint8_t DAYS[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
@@ -36,32 +58,10 @@ int64_t daysFromCivil(int year, int month, int day)
     return era * 146097 + dayOfEra - 719468;
 }
 
-// The inverse, civil_from_days, from the same source.
-void civilFromDays(int64_t days, int *year, int *month, int *day)
-{
-    days += 719468;
-    const int64_t era = (days >= 0 ? days : days - 146096) / 146097;
-    const int64_t dayOfEra = days - era * 146097;
-    const int64_t yearOfEra = (dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146096) / 365;
-    const int64_t dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100);
-    const int64_t monthIndex = (5 * dayOfYear + 2) / 153; // 0 = March
-    *day = (int)(dayOfYear - (153 * monthIndex + 2) / 5 + 1);
-    *month = (int)(monthIndex < 10 ? monthIndex + 3 : monthIndex - 9);
-    *year = (int)(yearOfEra + era * 400 + (*month <= 2));
-}
-
-int weekday(int64_t days) // 0 = Sunday
+int weekday(int64_t days)
 {
     return (int)(((days % DAYS_PER_WEEK) + DAYS_PER_WEEK + THURSDAY) % DAYS_PER_WEEK);
 }
-
-int64_t lastSunday(int year, int month) // in days since 1970-01-01
-{
-    const int64_t lastDay = daysFromCivil(year, month, daysInMonth(year, month));
-    return lastDay - (weekday(lastDay) - SUNDAY);
-}
-
-} // namespace
 
 bool isValid(const DateTime &t)
 {

@@ -23,6 +23,15 @@ int64_t toUnixSeconds(const DateTime &t);
 
 DateTime fromUnixSeconds(int64_t seconds);
 
+// Days since 1970-01-01 for a valid date (proleptic Gregorian calendar).
+int64_t daysFromCivil(int year, int month, int day);
+
+// Days in a month (1..12) of a year.
+int daysInMonth(int year, int month);
+
+// Day of the week of a day counted from 1970-01-01: 0 = Sunday .. 6 = Saturday.
+int weekday(int64_t days);
+
 // EU rule (Directive 2000/84/EC): summer time from 01:00 UTC on the last Sunday of
 // March until 01:00 UTC on the last Sunday of October.
 bool euSummerTime(int64_t unixSeconds);
