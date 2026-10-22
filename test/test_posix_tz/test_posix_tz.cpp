@@ -148,7 +148,7 @@ void test_parse_refuses()
     }
 }
 
-// Every rule of the tz table, at every change of five years, against the full database.
+// Every rule of the tz table, at every change of 2026-2031, against the full database.
 void test_every_table_rule_matches_the_database()
 {
     for (const ZoneVector &v : ZONE_VECTORS) {

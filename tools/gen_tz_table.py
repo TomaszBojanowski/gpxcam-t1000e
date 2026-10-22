@@ -11,7 +11,7 @@ years; a difference means that the zone's near future is listed as single transi
 rule does not describe.
 
 The test vectors give, for one zone of every rule, the UTC offset from the full database one
-second before and at every change of 2027-2031 (for a rule without summer time: on
+second before and at every change of 2026-2031 (for a rule without summer time: on
 2027-07-01).
 
 Usage: tools/gen_tz_table.py [zoneinfo directory]   (default /usr/share/zoneinfo)
@@ -29,7 +29,7 @@ ZONEINFO = sys.argv[1] if len(sys.argv) > 1 else "/usr/share/zoneinfo"
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 OUTPUT = os.path.join(ROOT, "src", "tz_table_data.inc")
 VECTORS = os.path.join(ROOT, "test", "test_posix_tz", "zone_vectors.inc")
-VECTOR_YEARS = range(2027, 2032)
+VECTOR_YEARS = range(2026, 2032)
 FIXED_OFFSET_MOMENT = calendar.timegm((2027, 7, 1, 0, 0, 0))
 SKIPPED = {"Factory"}  # a placeholder zone, not a place
 NAME = re.compile(r"^[A-Za-z0-9/_+-]{1,40}$")
