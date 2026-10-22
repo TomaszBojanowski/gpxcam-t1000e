@@ -1,4 +1,5 @@
-// Tests of the time zone page, docs/timezone/index.html, on the PC: node --test test/web
+// Tests of the time zone page, docs/timezone/index.html, on the PC:
+// node --test test/web/timezone_page.test.mjs
 // The page's scripts run in a separate context without a browser; the card is simulated with
 // answers in the form of the real card's console (src/main.cpp, src/tz_store.cpp), made-up values.
 import assert from "node:assert/strict";

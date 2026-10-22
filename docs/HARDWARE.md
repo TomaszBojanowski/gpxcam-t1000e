@@ -295,8 +295,8 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
 | 120–123 | CRC-32 (IEEE 802.3, as zlib) of bytes 0–119, little-endian |
 
 - **Without the file** the zone is Europe/Warsaw, with the same time packet as up to 1.1, and nothing is written.
-  A damaged file, or one whose rule cannot be used, means Europe/Warsaw and a log entry. Setting the same zone again
-  writes nothing.
+  A damaged file, or one whose rule cannot be used, means Europe/Warsaw and a log entry. Setting the zone that is
+  already saved writes nothing (the first `tz`, also with Europe/Warsaw, writes the file).
 - **A name from the table takes the table's current rule** when the card starts; the saved rule is only the
   fallback. So a newer firmware with a newer tz database updates a saved zone by itself.
 - **Writing** as the pairing file: a temporary file, `rename`, a check read (`src/tz_store.cpp`). The file system
@@ -310,7 +310,7 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   (permanent summer time from 2026-03-08) changed their law, which the current rules rightly do not cover.
 - **Console:** `tz`, `tz NAME`, `tz RULE`; commands up to 66 characters (`tz`, a space and a 63-character rule). The
   argument of `tz` keeps its case (`M3.5.0`); all other commands are matched in lower case.
-- **Size:** flash 142,636 → 157,444 bytes (+14.8 KB, the table included), RAM +192 bytes.
+- **Size:** flash +15.0 KB over 1.1.0, about 157.6 KB in all (the table about 11 KB), RAM +192 bytes.
 - **Tested on the card (2026-10-22):** zones by name in any case (`asia/kolkata` saved as `Asia/Kolkata`), an
   alias, a POSIX rule, Dublin, Lord Howe; the zone and the pairing kept after switching off and on with the button
   and after flashing a new build; a wrong name, a rule without summer-time dates and a 67-character command

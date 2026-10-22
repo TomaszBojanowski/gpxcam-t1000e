@@ -189,7 +189,7 @@ bool isTimeZoneCommand(const char *cmd, const char **argument)
     return true;
 }
 
-// The camera gets the time zone with the time, once per connection.
+// The camera gets the time zone with the time when the card connects to it (camera_session).
 void setTimeZone(const char *argument)
 {
     if (argument[0] != '\0') {

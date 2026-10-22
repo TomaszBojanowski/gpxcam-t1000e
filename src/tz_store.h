@@ -15,8 +15,7 @@ namespace tz_store {
 // cannot mount it).
 void begin(bool fileSystemMounted);
 
-// The zone in effect, valid after begin().
-const tz_record::Record &record();
+// The rule of the zone in effect, valid after begin().
 const posix_tz::Rule &rule();
 
 enum class SetResult {

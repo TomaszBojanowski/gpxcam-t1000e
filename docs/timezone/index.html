@@ -1006,7 +1006,7 @@ const TZ_TIMEOUT_MS = 6000; // saving writes flash: about 1 s, more the first ti
 const ANSWER_QUIET_MS = 400; // an answer is complete after this long without another of its lines
 const MAX_RESULTS = 60;
 
-// ---- Zones (pure functions, tested with node --test test/web) ----
+// ---- Zones (pure functions, tested with node --test test/web/timezone_page.test.mjs) ----
 
 const ZONES = new Map(TZ_DATA.zones.map(([name, countries, comment]) => [name, { countries, comment }]));
 const NAMES_LOWER = new Map(); // lower-case name: name as the card's table spells it

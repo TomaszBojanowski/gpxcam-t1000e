@@ -103,11 +103,6 @@ void begin(bool fileSystemMounted)
     savedInFile = true;
 }
 
-const tz_record::Record &record()
-{
-    return current;
-}
-
 const posix_tz::Rule &rule()
 {
     return currentRule;
