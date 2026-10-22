@@ -193,7 +193,7 @@ p.bad::before {
 
     <h2>2. Choose the time zone</h2>
     <label for="search">Search by country, city or zone name</label>
-    <input id="search" type="search" placeholder="e.g. Poland, New York, Kolkata" autocomplete="off">
+    <input id="search" type="search" placeholder="e.g. Poland, New York, Tokyo" autocomplete="off">
     <p id="selected" role="status">No time zone selected.</p>
     <fieldset>
       <legend class="visually-hidden">Time zones found</legend>
@@ -1126,6 +1126,31 @@ function zoneCountries(zone) {
   return entry ? entry.countries.map(countryName).join(", ") : "";
 }
 
+// What a name of the card's table stands for: the countries and IANA's comment of a zone, or
+// the zone of an alias (with the country a zone.tab name belongs to).
+function detailOf(name) {
+  const zone = TZ_DATA.aliases[name];
+  if (zone) {
+    const country = COUNTRY_OF_NAME.get(name);
+    return country ? `${country} (same as ${zone})` : `same as ${zone}`;
+  }
+  const entry = ZONES.get(name);
+  return [zoneCountries(name), entry ? entry.comment : ""].filter(Boolean).join(" - ");
+}
+
+// The list before anything is typed: the computer's zone first, then every zone of the card.
+function startList(computer) {
+  const results = [];
+  if (computer) {
+    const detail = [detailOf(computer.name), "your computer"].filter(Boolean).join(" - ");
+    results.push({ name: computer.name, zone: computer.zone, detail });
+  }
+  for (const name of ZONES.keys()) {
+    if (!computer || name !== computer.name) results.push({ name, zone: name, detail: detailOf(name) });
+  }
+  return results;
+}
+
 // The city part of a zone name: "New_York" of "America/New_York".
 function cityOf(name) {
   return name.slice(name.lastIndexOf("/") + 1);
@@ -1154,14 +1179,10 @@ function searchZones(query) {
       }
     }
     for (const [name, { comment }] of ZONES) {
-      if (nameMatches(name) || (!atStart && searchable(comment).includes(q))) {
-        add(name, [zoneCountries(name), comment].filter(Boolean).join(" - "));
-      }
+      if (nameMatches(name) || (!atStart && searchable(comment).includes(q))) add(name, detailOf(name));
     }
-    for (const [alias, zone] of Object.entries(TZ_DATA.aliases)) {
-      if (!nameMatches(alias)) continue;
-      const country = COUNTRY_OF_NAME.get(alias);
-      add(alias, country ? `${country} (same as ${zone})` : `same as ${zone}`);
+    for (const alias of Object.keys(TZ_DATA.aliases)) {
+      if (nameMatches(alias)) add(alias, detailOf(alias));
     }
   }
   return results;
@@ -1386,7 +1407,8 @@ function startPage() {
     saveLines: element("save-lines"),
   };
   let card = null;
-  let selected = computerZone();
+  const computer = computerZone();
+  let selected = computer;
   let busy = false;
 
   if (!("serial" in navigator) || !window.isSecureContext) {
@@ -1417,7 +1439,8 @@ function startPage() {
 
   const showResults = () => {
     ui.results.replaceChildren();
-    for (const result of searchZones(ui.search.value)) {
+    const typed = ui.search.value.trim() !== "";
+    for (const result of typed ? searchZones(ui.search.value) : startList(computer)) {
       const item = document.createElement("li");
       const label = document.createElement("label");
       const radio = document.createElement("input");
@@ -1541,7 +1564,6 @@ function startPage() {
       if (card && event.target === card.port) card.close();
     });
   }
-  if (selected) ui.search.value = selected.name;
   showSelected();
   showResults();
   refreshButtons();

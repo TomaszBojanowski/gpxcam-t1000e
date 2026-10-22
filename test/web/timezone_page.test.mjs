@@ -14,7 +14,8 @@ const appCode = scripts[1];
 const page = vm.runInContext(
   scripts.join("\n") +
     "\n;({ TZ_DATA, BAUD_RATE, CARD_USB, MAX_RESULTS, findZone, searchZones, utcOffsetText, allowedCommand," +
-    " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText, tzProblemText })",
+    " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText, tzProblemText," +
+    " startList })",
   vm.createContext({ TextEncoder, TextDecoder, setTimeout, clearTimeout, console }),
 );
 
@@ -112,6 +113,22 @@ test("the computer's zone is offered under the name people know", () => {
   assert.deepEqual(json(page.preferredZone("Europe/Copenhagen")), { name: "Europe/Copenhagen", zone: "Europe/Berlin" });
   assert.deepEqual(json(page.preferredZone("Europe/Warsaw")), { name: "Europe/Warsaw", zone: "Europe/Warsaw" });
   assert.equal(page.preferredZone("Mars/Olympus_Mons"), null);
+});
+
+test("before anything is typed: the computer's zone first, then every zone", () => {
+  const warsaw = page.startList(page.preferredZone("Europe/Warsaw"));
+  assert.equal(warsaw[0].name, "Europe/Warsaw");
+  assert.equal(warsaw[0].detail, "Poland - your computer");
+  assert.equal(warsaw.length, page.TZ_DATA.zones.length); // Warsaw is not listed twice
+  assert.equal(new Set(warsaw.map((result) => result.name)).size, warsaw.length);
+  const copenhagen = page.startList(page.preferredZone("Europe/Copenhagen"));
+  assert.equal(copenhagen[0].detail, "Denmark (same as Europe/Berlin) - your computer");
+  assert.ok(copenhagen.some((result) => result.name === "Europe/Berlin"));
+  const unknown = page.startList(null);
+  assert.equal(unknown.length, page.TZ_DATA.zones.length);
+  assert.equal(unknown[0].name, "Africa/Abidjan");
+  assert.equal(page.searchZones("").length, 0); // searching starts with the first letter
+  assert.match(html, /placeholder="e\.g\. Poland, New York, Tokyo"/);
 });
 
 test("what starts with the text comes before what only contains it", () => {
