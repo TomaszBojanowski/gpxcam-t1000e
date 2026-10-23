@@ -106,12 +106,19 @@ Strictly in this order, each step only after the answer to the previous one:
 4. write the device name,
 5. write the time – **success means the camera knows the card** (with an unknown identifier it returns an
    ATT error and disconnects); the card (since 1.2.0, not when pairing) then writes it once more, see "The time
-   zone in the camera",
+   zone in the camera"; with the clock setting off (since 1.3.0) the card skips this step, see below,
 6. write `01` to the GPS mode, enable notifications,
 7. the location at once, then about every 25 s.
 
 Pairing is the same sequence, run while the camera is in state `03`; the camera then shows "Pairing
 completed". Without pairing an unknown identifier is refused at the time write.
+
+**Without the time write** (1.3.0, `clock off`; tested on the S5II on 2026-10-23): the camera takes the connection
+just the same. It accepted the GPS mode and the locations, showed its GPS icon, and the photo had the time zone set
+by hand in the camera's menu (−04:00) with the right GPS time and position. Since the time write is where the
+camera refuses an unknown card, the card then treats a refusal of any other step, or three connections in a row
+that end before a location, as "the camera does not know the card" (`docs/HARDWARE.md`, "Card page and clock
+setting").
 
 ## Byte formats
 

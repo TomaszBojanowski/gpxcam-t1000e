@@ -289,7 +289,8 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
 |---|---|
 | 0–3 | magic `GXTZ` |
 | 4 | format version = 1 |
-| 5–7 | 0 (reserved) |
+| 5 | clock (1.3.0): 0 = the card sets the camera's clock (also in the files of 1.2), 1 = it does not (`clock off`) |
+| 6–7 | 0 (reserved) |
 | 8–55 | zone name from the table, NUL-terminated, zero-padded (empty for a rule given directly) |
 | 56–119 | POSIX TZ rule, NUL-terminated, zero-padded |
 | 120–123 | CRC-32 (IEEE 802.3, as zlib) of bytes 0–119, little-endian |
@@ -318,6 +319,45 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   time zone page (`docs/timezone/index.html`, Chromium on Linux): connect, read, save, disconnect, the cable pulled
   out while connected, connecting after `pio device monitor` (the message above, then fine after plugging in
   again); the card never restarted and got only `v` and `tz`.
+
+## Card page and clock setting (1.3.0)
+
+- **`status`** (`src/status_text.h`, tested on the PC): the state for the card page (`docs/index.html`) as
+  `status: key=value ...` lines, `status: end` last, without the camera's serial number, the card id or a position:
+
+  ```
+  status: format=1 fw=1.3.0 git=1234567
+  status: battery_mv=4100 battery_pct=89 charger=charging
+  status: gps=on gps_fix=1 gps_sat=11
+  status: paired=1 link=connected
+  status: pair=idle pair_attempt=0 pair_result=none
+  status: clock=on tz=Europe/Warsaw
+  status: end
+  ```
+
+  Values: `charger` no_usb, charging, charged, not_charging; `link` off, searching, connecting, connected, pausing,
+  stopped (the camera refused the card); `pair` idle, waiting_gps, searching, connecting, pausing; `pair_result`
+  (of the last pairing since the start) none, paired, not_saved, not_possible, no_gps_fix, no_camera,
+  not_in_pairing_mode (a LUMIX camera seen, but not in state `03`), failed, cancelled; `tz` the zone name, or the
+  POSIX rule when it was given directly. A later version may add keys; a changed meaning raises `format`. Every
+  line fits one log line (at most 125 characters); the lines are not kept in the log history, as the page asks
+  every 5 s (every 2 s while pairing).
+- **Battery percent** (`battery_rules::percentFromMillivolts`): Meshtastic's estimate for the T1000-E – its
+  discharge curve `OCV_ARRAY` (4190, 4042, 3957, 3885, 3820, 3776, 3746, 3725, 3696, 3644, 3100 mV for 100 … 0 %,
+  `variants/nrf52840/tracker-t1000-e/variant.h` at 6d41e279f1f5) with straight lines between the points – scaled
+  so that 3.40 V, where the card powers off (5 % on that curve), is 0 %. Rough: under load and while charging the
+  voltage is not the resting voltage of the curve.
+- **Clock off** (`clock off`, byte 5 of `timezone.bin`): a normal connection skips both time writes; the
+  introduction is the key, the identifier, the app name and the device name, then the GPS mode and the
+  locations. Pairing writes the time as before. Without the time write the card does not learn at once that the
+  camera has forgotten it, so with the clock off it stops (as after a refused time, until `link on`, a new
+  pairing or a restart) when the camera refuses any write of the introduction, the GPS mode or the first
+  location, or when 3 connections in a row end before the camera takes a location
+  (`link_policy::refusalMeansUnknownCard`, `earlyEndMeansUnknownCard`, tested on the PC).
+- **The card page** sends only `v`, `status`, `pair`, `pair off`, `unpair`, `clock on`, `clock off`, `tz` and `tz`
+  with a zone from its list, one command at a time (answers are told apart only by their first word). The old
+  address `/timezone/` leads to it.
+- **Size:** flash +3.0 KB over 1.2.0, about 160.6 KB in all; RAM +8 bytes.
 
 ## Pairing (M4)
 
