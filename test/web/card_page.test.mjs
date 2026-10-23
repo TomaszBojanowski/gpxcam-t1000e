@@ -477,6 +477,20 @@ test("zone names break after a slash, not inside a word", () => {
   assert.equal(name.children.indexOf("/") + 1, name.children.findIndex((part) => typeof part !== "string"));
 });
 
+test("the zone to save says whether the card has it already", async () => {
+  const port = simulatedCard({ v: VERSION_1_3, status: STATUS_ANSWER }); // the card has Europe/Warsaw
+  const ui = openPage(port);
+  await chooseZone(ui, "Europe/Warsaw");
+  assert.match(ui.selected.textContent, /^To save: Europe\/Warsaw, now UTC\+0[12]:00$/);
+  await ui.connect.fire("click");
+  assert.match(ui.selected.textContent, /^To save: Europe\/Warsaw, now UTC\+0[12]:00 \(already on the card\)$/);
+  await chooseZone(ui, "America/New_York");
+  assert.match(ui.selected.textContent, /^To save: America\/New_York, now UTC-0[45]:00$/);
+  await chooseZone(ui, "Europe/Warsaw");
+  await ui.disconnect.fire("click");
+  assert.match(ui.selected.textContent, /^To save: Europe\/Warsaw, now UTC\+0[12]:00$/);
+});
+
 test("saving a zone: the note about the next connection only when it was saved", async () => {
   const answers = { v: VERSION_1_3, status: STATUS_ANSWER, "tz America/New_York": TZ_SAVED };
   const port = simulatedCard(answers);

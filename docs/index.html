@@ -1872,6 +1872,7 @@ function startPage() {
       showSound();
     }
     lastState = state;
+    showSelected();
     followPairing(state);
     showPairing();
   };
@@ -1907,6 +1908,7 @@ function startPage() {
     pairMessage = null;
   };
 
+  // The zone that Save would send; the computer's zone is offered first, and it may not be the card's.
   const showSelected = () => {
     if (!selected) {
       ui.selected.textContent = "No time zone selected.";
@@ -1914,7 +1916,8 @@ function startPage() {
     }
     const offset = utcOffsetText(selected.zone);
     const same = selected.name !== selected.zone ? ` (same as ${selected.zone})` : "";
-    ui.selected.textContent = `Selected: ${selected.name}${same}${offset ? `, now ${offset}` : ""}`;
+    const onCard = lastState !== null && lastState.timeZone === selected.name ? " (already on the card)" : "";
+    ui.selected.textContent = `To save: ${selected.name}${same}${offset ? `, now ${offset}` : ""}${onCard}`;
   };
 
   const showResults = () => {
@@ -1957,6 +1960,7 @@ function startPage() {
     card = null;
     busy = false;
     hideCard();
+    showSelected();
     setStatus(ui.cardStatus, message, kind);
     showClock();
     showSound();
