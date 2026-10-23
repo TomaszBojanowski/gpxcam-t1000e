@@ -122,6 +122,23 @@ void test_location_due()
     TEST_ASSERT_EQUAL(Send::Periodic, link_policy::locationDue(true, 30000, 500, true));
 }
 
+// With the time written, only its refusal says the camera does not know the card (gpxcam
+// notes: an unknown device gets through the identifier, app name and device name); without
+// it ('clock off'), any refused write of the introduction and the first location does.
+void test_refusal_means_unknown_card()
+{
+    using link_policy::IntroductionWrite;
+    using link_policy::refusalMeansUnknownCard;
+    const IntroductionWrite others[] = {IntroductionWrite::Identifier, IntroductionWrite::AppName,
+                                        IntroductionWrite::DeviceName, IntroductionWrite::GpsMode,
+                                        IntroductionWrite::FirstLocation};
+    TEST_ASSERT_TRUE(refusalMeansUnknownCard(IntroductionWrite::Time, true));
+    for (IntroductionWrite write : others) {
+        TEST_ASSERT_FALSE(refusalMeansUnknownCard(write, true)); // clock on: retried as before
+        TEST_ASSERT_TRUE(refusalMeansUnknownCard(write, false)); // clock off: the card stops
+    }
+}
+
 void test_distance()
 {
     // 0.0001 degree of latitude, of longitude at 54.6 N, 0.00018 degree of latitude
@@ -146,6 +163,7 @@ int main(int, char **)
     RUN_TEST(test_gps_needed);
     RUN_TEST(test_pause_sequence);
     RUN_TEST(test_location_due);
+    RUN_TEST(test_refusal_means_unknown_card);
     RUN_TEST(test_distance);
     return UNITY_END();
 }

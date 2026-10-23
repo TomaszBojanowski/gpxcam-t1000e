@@ -83,4 +83,9 @@ uint32_t distanceMetres(int32_t latitude1E7, int32_t longitude1E7, int32_t latit
     return (uint32_t)lround(EARTH_RADIUS_M * sqrt(x * x + y * y));
 }
 
+bool refusalMeansUnknownCard(IntroductionWrite write, bool timeWritten)
+{
+    return write == IntroductionWrite::Time || !timeWritten;
+}
+
 } // namespace link_policy

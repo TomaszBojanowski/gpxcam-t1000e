@@ -13,7 +13,8 @@
 
 namespace camera_session {
 
-// Rejected: the camera refused the time, it does not know the card.
+// Rejected: a refusal that means the camera does not know the card: the time, or with the clock
+// off any write of the introduction (link_policy::refusalMeansUnknownCard()).
 enum class Result { Running, Accepted, Rejected, Failed };
 
 // What the session found on the camera; valid after Accepted.
@@ -41,6 +42,10 @@ const char *failure();
 bool notEstablished();
 
 const Discovered &discovered();
+
+// Whether the last session wrote the time: always when pairing; in a connection that stays
+// open unless the clock is off ('clock off', tz_store). link_control judges refusals by it.
+bool writesTime();
 
 // The handles of the last camera are kept in RAM after an introduction it accepted, and the
 // next session with the same camera skips the service and characteristic discovery

@@ -61,6 +61,17 @@ enum class Send { No, First, Periodic, Moved, Asked };
 // that one; metresMoved: from the position sent then; cameraAsked: a notification came.
 Send locationDue(bool sentBefore, uint32_t msSinceLast, uint32_t metresMoved, bool cameraAsked);
 
+// The writes of the introduction (camera_session) and the first ones of the link, in order.
+enum class IntroductionWrite { Identifier, AppName, DeviceName, Time, GpsMode, FirstLocation };
+
+// Whether a GATT refusal of this write means that the camera does not know the card (never
+// paired, or forgotten), so that the card stops connecting instead of trying again: after a
+// few refused connections the S5II stops advertising. The S5II takes the identifier, app name
+// and device name of an unknown device and refuses the time (gpxcam notes, 2026-10-14);
+// without the time write ('clock off', timeWritten false) nothing shows it so clearly, so any
+// refusal in the introduction counts.
+bool refusalMeansUnknownCard(IntroductionWrite write, bool timeWritten);
+
 // Distance in metres between two positions in degrees * 10^7 (equirectangular
 // approximation; good to well under 1 % for the short distances it is used for).
 uint32_t distanceMetres(int32_t latitude1E7, int32_t longitude1E7, int32_t latitude2E7, int32_t longitude2E7);

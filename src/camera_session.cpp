@@ -10,6 +10,7 @@
 #include "camera_link.h"
 #include "gps.h"
 #include "handle_cache.h"
+#include "link_policy.h"
 #include "log.h"
 #include "posix_tz.h"
 #include "tz_store.h"
@@ -42,8 +43,9 @@ Step step = Step::Idle;
 uint32_t stepStart = 0;
 uint32_t stepLimit = 0;
 bool keepOpen = false;
+bool timeWritten = true; // set at the start: false only with the clock off in a lasting connection
 bool accepted = false;
-bool rejected = false; // the camera refused the time
+bool rejected = false; // a refusal that means the camera does not know the card (link_policy)
 bool establishFailed = false; // HCI 0x3e: the connection was not established
 char failureText[80] = "";
 
@@ -284,12 +286,26 @@ void onCharacteristics(const camera_link::Event &event)
         readKey();
 }
 
+link_policy::IntroductionWrite introductionWrite(Step s)
+{
+    switch (s) {
+    case Step::DeviceId:
+        return link_policy::IntroductionWrite::Identifier;
+    case Step::AppName:
+        return link_policy::IntroductionWrite::AppName;
+    case Step::DeviceName:
+        return link_policy::IntroductionWrite::DeviceName;
+    default:
+        return link_policy::IntroductionWrite::Time;
+    }
+}
+
 // A write answer: next step on success, failure otherwise.
 void onWritten(const camera_link::Event &event, void (*next)())
 {
     if (event.status != BLE_GATT_STATUS_SUCCESS) {
         setFailure("%s: refused (GATT 0x%04x)", stepName(step), event.status);
-        rejected = step == Step::Time; // the camera does not know the card
+        rejected = link_policy::refusalMeansUnknownCard(introductionWrite(step), timeWritten);
         fail();
         return;
     }
@@ -442,7 +458,7 @@ void handleEvent(const camera_link::Event &event)
         break;
     case Step::DeviceName:
         if (event.type == EventType::WriteDone)
-            onWritten(event, keepOpen && !tz_store::clockOn() ? introduceWithoutTime : writeTime);
+            onWritten(event, timeWritten ? writeTime : introduceWithoutTime);
         break;
     case Step::Time:
         if (event.type == EventType::WriteDone)
@@ -507,6 +523,7 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     info = {};
     info.mtu = BLE_GATT_ATT_MTU_DEFAULT;
     keepOpen = keepConnection;
+    timeWritten = !keepConnection || tz_store::clockOn();
     accepted = false;
     rejected = false;
     establishFailed = false;
@@ -544,6 +561,11 @@ const char *failure()
 bool notEstablished()
 {
     return establishFailed;
+}
+
+bool writesTime()
+{
+    return timeWritten;
 }
 
 const Discovered &discovered()

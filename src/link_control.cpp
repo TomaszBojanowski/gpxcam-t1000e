@@ -262,6 +262,16 @@ void rejectedByCamera()
     enter(Phase::Rejected);
 }
 
+// A refused GPS mode or first location while the connection is open, when it means that the
+// camera does not know the card (link_policy::refusalMeansUnknownCard()).
+void rejectedWhileConnected(const char *what, uint16_t status)
+{
+    logger::line("link: %s refused (GATT 0x%04x)", what, status);
+    if (camera_link::connected())
+        camera_link::disconnect(); // the Disconnected event is dropped by the next connect
+    rejectedByCamera();
+}
+
 void enterConnected()
 {
     sentBefore = false;
@@ -376,6 +386,12 @@ bool handleConnectionEvent(const camera_link::Event &event)
 void onLocationWritten(const camera_link::Event &event)
 {
     writePending = false;
+    if (event.status != BLE_GATT_STATUS_SUCCESS && !sentBefore &&
+        link_policy::refusalMeansUnknownCard(link_policy::IntroductionWrite::FirstLocation,
+                                             camera_session::writesTime())) {
+        rejectedWhileConnected("first location", event.status);
+        return;
+    }
     if (event.status != BLE_GATT_STATUS_SUCCESS) {
         failedCount++;
         logger::transient("link: location refused (GATT 0x%04x)", event.status);
@@ -459,6 +475,12 @@ void settingUp(uint32_t now)
         if (handleConnectionEvent(event))
             continue;
         if (phase == Phase::GpsMode && event.type == camera_link::EventType::WriteDone) {
+            if (event.status != BLE_GATT_STATUS_SUCCESS &&
+                link_policy::refusalMeansUnknownCard(link_policy::IntroductionWrite::GpsMode,
+                                                     camera_session::writesTime())) {
+                rejectedWhileConnected("GPS mode", event.status);
+                continue;
+            }
             if (event.status != BLE_GATT_STATUS_SUCCESS) {
                 logger::line("link: GPS mode refused (GATT 0x%04x) - going on", event.status);
                 camera_session::forgetHandles("GPS mode refused");
