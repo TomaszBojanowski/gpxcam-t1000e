@@ -15,7 +15,8 @@ const page = vm.runInContext(
   scripts.join("\n") +
     "\n;({ TZ_DATA, BAUD_RATE, CARD_USB, MAX_RESULTS, findZone, searchZones, utcOffsetText, allowedCommand," +
     " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText, tzProblemText," +
-    " startList, parseStatus, batteryText, gpsText, cameraText, zoneText })",
+    " startList, parseStatus, batteryText, gpsText, cameraText, zoneText, classifyClockAnswer, clockAnswerText," +
+    " clockNoteText })",
   vm.createContext({ TextEncoder, TextDecoder, setTimeout, clearTimeout, console }),
 );
 
@@ -49,6 +50,12 @@ const STATE = {
 };
 const NO_STATUS = ["command: unknown 'status'\r\n", "commands: v = version and reset reason,\r\n"];
 const statusLines = (text) => text.trim().split("\n");
+const STATUS_CLOCK_OFF = STATUS_ANSWER.map((piece) => piece.replace("clock=on", "clock=off"));
+const CLOCK_OFF_SAVED = [
+  "clock: off saved - from the next connection\r\n",
+  "clock: off - the card leaves the camera's clock alone; set it in the camera's menu\r\n",
+];
+const CLOCK_NOT_SAVED = ["clock: could not write the time zone file\r\n"];
 
 // A serial port that answers commands with chunks of text; it records what the page does.
 // readFails: reading fails at once, as in Chromium on Linux after a pyserial program.
@@ -218,11 +225,13 @@ test("offsets come from the browser's own data", () => {
   assert.equal(page.utcOffsetText("Mars/Olympus_Mons", july), "");
 });
 
-test("only v, status, tz and tz with a name from the table can be sent", () => {
-  for (const allowed of ["v", "status", "tz", "tz Europe/Warsaw", "tz Poland", "tz Etc/GMT+5"]) {
+test("only v, status, clock on/off, tz and tz with a name from the table can be sent", () => {
+  for (const allowed of ["v", "status", "clock on", "clock off", "tz", "tz Europe/Warsaw", "tz Poland",
+    "tz Etc/GMT+5"]) {
     assert.equal(page.allowedCommand(allowed), true, allowed);
   }
-  const refused = ["dfu", "off", "pair", "unpair", "link off", "log", "bat log clear", "status ", "tz europe/warsaw",
+  const refused = ["dfu", "off", "pair", "unpair", "link off", "log", "bat log clear", "status ", "clock",
+    "clock  on", "Clock off", "tz europe/warsaw",
     "tz Mars/Olympus_Mons", "tz <+0545>-5:45", "tz Europe/Warsaw\ndfu", "tz Europe/Warsaw ", "V", ""];
   for (const command of refused) assert.equal(page.allowedCommand(command), false, command);
   for (const [name] of page.TZ_DATA.zones) assert.equal(page.allowedCommand(`tz ${name}`), true, name);
@@ -437,4 +446,74 @@ test("a card that does not answer 'status' is closed with a message", async () =
   assert.match(ui["card-status"].textContent, /^No answer from the card to 'status'/);
   assert.equal(ui["card-status"].className, "bad");
   assert.equal(ui.connect.disabled, false);
+});
+
+test("the answers to 'clock on' and 'clock off' are told apart and explained", async () => {
+  const { port, card } = await openCard({ "clock off": CLOCK_OFF_SAVED });
+  const lines = await card.clock(false);
+  assert.deepEqual(port.written, ["clock off\n"]);
+  assert.equal(page.classifyClockAnswer(lines), "saved");
+  const classify = (lines) => page.classifyClockAnswer(lines);
+  assert.equal(classify([]), "none");
+  assert.equal(classify(["clock: on saved - from the next connection"]), "saved");
+  assert.equal(classify(["clock: already on", "clock: on - the card sets the camera's clock"]), "unchanged");
+  assert.equal(classify(["clock: could not write the time zone file"]), "not-saved");
+  assert.equal(classify(["command: unknown 'clock off'"]), "no-clock");
+  assert.match(page.clockAnswerText(true, "saved")[0], /switch the camera off and on\.$/);
+  assert.match(page.clockAnswerText(false, "saved")[0], /leaves the camera's clock alone\.$/);
+  assert.equal(page.clockAnswerText(false, "not-saved")[1], "bad");
+  assert.equal(page.clockAnswerText(false, "none")[1], "bad");
+  assert.match(page.clockNoteText(true), /^Each time it connects, the card sets the camera's clock/);
+  assert.match(page.clockNoteText(false), /set the time and the time zone in the camera's menu\. Pairing still/);
+  assert.match(page.clockNoteText(true, "1.2.0"), /^gpxcam 1\.2\.0 always sets the camera's clock\./);
+  assert.equal(page.zoneText({ ...STATE, clockOn: false }), "Europe/Warsaw; the card leaves the camera's clock alone");
+});
+
+test("the clock switch follows the card and turns the time zone choice off with it", async () => {
+  const answers = { v: VERSION_1_3, status: STATUS_ANSWER };
+  const port = simulatedCard(answers);
+  const ui = openPage(port);
+  assert.equal(ui.clock.disabled, true); // not connected
+  assert.equal(ui["clock-note"].textContent, "Connect the card to change this setting.");
+  await ui.connect.fire("click");
+  assert.equal(ui.clock.checked, true);
+  assert.equal(ui.clock.disabled, false);
+  assert.equal(ui.zones.disabled, false);
+  assert.match(ui["clock-note"].textContent, /^Each time it connects/);
+
+  answers["clock off"] = CLOCK_OFF_SAVED;
+  answers.status = STATUS_CLOCK_OFF;
+  ui.clock.checked = false;
+  await ui.clock.fire("change");
+  assert.deepEqual(port.written.slice(-2), ["clock off\n", "status\n"]);
+  assert.equal(ui["clock-answer"].textContent, "Saved. From the next connection the card leaves the camera's clock alone.");
+  assert.equal(ui["clock-answer"].className, "good");
+  assert.equal(ui.clock.checked, false);
+  assert.equal(ui.zones.disabled, true);
+  assert.match(ui["clock-note"].textContent, /camera's menu/);
+  assert.match(ui["state-zone"].textContent, /leaves the camera's clock alone$/);
+
+  answers["clock on"] = CLOCK_NOT_SAVED; // the card keeps the clock off
+  ui.clock.checked = true;
+  await ui.clock.fire("change");
+  assert.equal(ui["clock-answer"].className, "bad");
+  assert.equal(ui.clock.checked, false); // as the card has it
+  assert.equal(ui.zones.disabled, true);
+
+  await ui.disconnect.fire("click");
+  assert.equal(ui.clock.checked, false);
+  assert.equal(ui.clock.disabled, true);
+  assert.equal(ui.zones.disabled, false); // a zone can be chosen before connecting
+  assert.equal(ui["clock-answer"].textContent, "");
+});
+
+test("with gpxcam 1.2 the clock switch stays on and cannot be changed", async () => {
+  const port = simulatedCard({ v: VERSION_ANSWER, status: NO_STATUS, tz: TZ_STATE });
+  const ui = openPage(port);
+  await ui.connect.fire("click");
+  assert.equal(ui.clock.checked, true);
+  assert.equal(ui.clock.disabled, true);
+  assert.equal(ui.zones.disabled, false);
+  assert.match(ui["clock-note"].textContent, /^gpxcam 1\.2\.0 always sets the camera's clock\. Switching it off needs/);
+  await ui.disconnect.fire("click");
 });

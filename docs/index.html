@@ -111,7 +111,11 @@ input[type="search"] {
   color: var(--text);
 }
 input[type="search"]:focus { border-color: var(--accent); }
-input[type="radio"] { accent-color: var(--accent); }
+input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); }
+label.switch { display: flex; gap: 8px; align-items: center; font-weight: 600; cursor: pointer; }
+label.switch:has(input:disabled) { color: var(--muted); cursor: default; }
+input[type="checkbox"] { width: 18px; height: 18px; margin: 0; }
+fieldset:disabled { opacity: 0.55; }
 /* A panel of a fixed height, about four and a half results, so what follows does not move while
    typing and the empty part reads as part of the list */
 #results {
@@ -171,8 +175,8 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
 <body>
 <main>
   <h1><span class="logo" translate="no">gpx<span>cam</span></span> card</h1>
-  <p class="lead">See the state of a SenseCAP T1000-E card with gpxcam and set the time zone that it gives
-     your LUMIX camera.</p>
+  <p class="lead">See the state of a SenseCAP T1000-E card with gpxcam and choose how it sets the clock of your
+     LUMIX camera.</p>
 
   <div id="unsupported" class="panel hidden">
     <p class="bad"><strong>This browser cannot talk to the card.</strong></p>
@@ -207,18 +211,26 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
       </div>
     </div>
 
-    <h2>Time zone of the camera's clock</h2>
-    <label for="search">Search by country, city or zone name</label>
-    <input id="search" type="search" placeholder="e.g. Poland, New York, Tokyo" autocomplete="off">
-    <p id="selected" role="status">No time zone selected.</p>
-    <fieldset>
-      <legend class="visually-hidden">Time zones found</legend>
-      <ul id="results"></ul>
-    </fieldset>
+    <h2>The camera's clock</h2>
+    <label class="switch"><input id="clock" type="checkbox" disabled> The card sets the camera's clock and time
+      zone</label>
+    <p id="clock-note" class="note">Connect the card to change this setting.</p>
+    <p id="clock-answer" role="status"></p>
 
-    <div class="row" style="margin-top: 12px">
-      <button id="save" type="button" disabled>Save</button>
-    </div>
+    <fieldset id="zones">
+      <legend class="visually-hidden">Time zone</legend>
+      <label for="search">Time zone: search by country, city or zone name</label>
+      <input id="search" type="search" placeholder="e.g. Poland, New York, Tokyo" autocomplete="off">
+      <p id="selected" role="status">No time zone selected.</p>
+      <fieldset>
+        <legend class="visually-hidden">Time zones found</legend>
+        <ul id="results"></ul>
+      </fieldset>
+
+      <div class="row" style="margin-top: 12px">
+        <button id="save" type="button" disabled>Save</button>
+      </div>
+    </fieldset>
     <div id="save-answer" class="panel hidden" style="margin-top: 12px">
       <p id="save-status" role="status"></p>
       <div id="save-lines" class="card-lines"></div>
@@ -230,8 +242,9 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
   <h2>About this page</h2>
   <p class="note">The page runs only in your browser and sends nothing over the internet. It talks to the card
      over USB at 115200 baud and sends it only these commands: <code>v</code> (version), <code>status</code> (the
-     card's state), <code>tz</code> (show the time zone) and <code>tz</code> with the zone you chose. Offsets shown
-     in the list come from your browser and are only a guide; the card uses its own copy of the tz database.</p>
+     card's state), <code>clock on</code> and <code>clock off</code> (whether the card sets the camera's clock),
+     <code>tz</code> (show the time zone) and <code>tz</code> with the zone you chose. Offsets shown in the list
+     come from your browser and are only a guide; the card uses its own copy of the tz database.</p>
   <p class="note"><a href="https://github.com/TomaszBojanowski/gpxcam-t1000e">gpxcam-t1000e on GitHub</a></p>
 </main>
 
@@ -1105,6 +1118,7 @@ const VERSION_TIMEOUT_MS = 3000;
 const STATUS_TIMEOUT_MS = 3000;
 const STATUS_PERIOD_MS = 5000; // the card's state on the page refreshes itself this often
 const TZ_TIMEOUT_MS = 6000; // saving writes flash: about 1 s, more the first time
+const CLOCK_TIMEOUT_MS = 6000; // the clock setting is saved in the same file as the time zone
 const ANSWER_QUIET_MS = 400; // an answer is complete after this long without another of its lines
 const MAX_RESULTS = 60;
 
@@ -1236,9 +1250,9 @@ function computerZone() {
 
 // ---- The card's console (pure functions) ----
 
-// The only commands the page may send: v, status, tz, and tz with a name exactly as the table
-// spells it.
-const FIXED_COMMANDS = new Set(["v", "status", "tz"]);
+// The only commands the page may send: v, status, clock on, clock off, tz, and tz with a name
+// exactly as the table spells it.
+const FIXED_COMMANDS = new Set(["v", "status", "clock on", "clock off", "tz"]);
 function allowedCommand(command) {
   if (FIXED_COMMANDS.has(command)) return true;
   const match = /^tz ([A-Za-z0-9/_+-]{1,40})$/.exec(command);
@@ -1271,6 +1285,41 @@ function classifyTzAnswer(lines) {
   if (has("tz: unknown")) return "unknown";
   if (has("tz: could not write")) return "not-saved";
   return "state";
+}
+
+function isClockAnswer(line) {
+  return line.startsWith("clock: ") || line.startsWith("command: ");
+}
+
+// What the card answered to 'clock on' or 'clock off' (src/main.cpp setClock()).
+function classifyClockAnswer(lines) {
+  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
+  if (lines.length === 0) return "none";
+  if (has("command: unknown")) return "no-clock";
+  if (has("clock: on saved") || has("clock: off saved")) return "saved";
+  if (has("clock: already")) return "unchanged";
+  if (has("clock: could not write")) return "not-saved";
+  return "state";
+}
+
+// [text, kind] after switching the camera's clock on or off.
+function clockAnswerText(on, answer) {
+  switch (answer) {
+    case "saved": return on ?
+      ["Saved. The camera gets the time at the next connection: switch the camera off and on.", "good"] :
+      ["Saved. From the next connection the card leaves the camera's clock alone.", "good"];
+    case "unchanged": return ["The card already had this setting.", "good"];
+    case "not-saved": return ["The card could not save the setting. Try again.", "bad"];
+    default: return ["No answer from the card. Try again.", "bad"];
+  }
+}
+
+// What the setting means. version: gpxcam that cannot change it (before 1.3.0), or null.
+function clockNoteText(clockOn, version = null) {
+  if (version) return `gpxcam ${version} always sets the camera's clock. Switching it off needs version 1.3.0.`;
+  if (clockOn) return "Each time it connects, the card sets the camera's clock from its GPS, in the time zone below.";
+  return "The card leaves the camera's clock alone: set the time and the time zone in the camera's menu. " +
+    "Pairing still sets the clock once.";
 }
 
 // Splits the card's output into lines; a line may come in several pieces.
@@ -1391,6 +1440,7 @@ function cameraText(state) {
 
 // The zone and, for a name the browser knows, its offset now.
 function zoneText(state) {
+  if (!state.clockOn) return `${state.timeZone}; the card leaves the camera's clock alone`;
   const found = findZone(state.timeZone);
   const offset = found ? utcOffsetText(found.zone) : "";
   return offset ? `${state.timeZone}, now ${offset}` : state.timeZone;
@@ -1492,6 +1542,10 @@ class Card {
     return parseStatus(await this.ask("status", isStatusAnswer, STATUS_TIMEOUT_MS, statusAnswerDone));
   }
 
+  clock(on) {
+    return this.ask(on ? "clock on" : "clock off", isClockAnswer, CLOCK_TIMEOUT_MS);
+  }
+
   timeZone(name) {
     const command = name ? tzCommand(name) : "tz";
     if (!command) return Promise.reject(new Error(`unknown time zone: ${name}`));
@@ -1531,6 +1585,10 @@ function startPage() {
     refreshRow: element("refresh-row"),
     refresh: element("refresh"),
     stateTime: element("state-time"),
+    clock: element("clock"),
+    clockNote: element("clock-note"),
+    clockAnswer: element("clock-answer"),
+    zones: element("zones"),
     search: element("search"),
     selected: element("selected"),
     results: element("results"),
@@ -1545,6 +1603,8 @@ function startPage() {
   let busy = false;
   let refreshTimer = null;
   let refreshing = false;
+  let clockOn = null; // as the card has it; null: not connected, or it cannot be changed
+  let clockVersion = null; // gpxcam that always sets the clock
 
   if (!("serial" in navigator) || !window.isSecureContext) {
     element("unsupported").classList.remove("hidden");
@@ -1561,6 +1621,16 @@ function startPage() {
     ui.disconnect.disabled = card === null || busy;
     ui.save.disabled = card === null || busy || selected === null;
     ui.refresh.disabled = card === null || refreshing;
+    ui.clock.disabled = card === null || busy || clockOn === null;
+  };
+
+  // The switch as the card has it; the time zone can be chosen unless the clock is off.
+  const showClock = () => {
+    ui.clock.checked = clockOn === true || clockVersion !== null; // gpxcam 1.2 always sets it
+    ui.clockNote.textContent = card === null ? "Connect the card to change this setting." :
+      clockNoteText(clockOn !== false, clockVersion);
+    ui.zones.disabled = clockOn === false;
+    refreshButtons();
   };
 
   const showState = (state) => {
@@ -1572,6 +1642,10 @@ function startPage() {
     ui.stateTime.textContent = `Updated ${new Date().toLocaleTimeString()}.`;
     ui.state.classList.remove("hidden");
     ui.refreshRow.classList.remove("hidden");
+    if (!busy) { // a change being saved is shown when it is done
+      clockOn = state.clockOn;
+      showClock();
+    }
   };
 
   // Asks the card for its state now and then every STATUS_PERIOD_MS while it stays connected.
@@ -1594,6 +1668,9 @@ function startPage() {
     clearTimeout(refreshTimer);
     for (const part of [ui.state, ui.cardNote, ui.refreshRow]) part.classList.add("hidden");
     ui.cardLines.textContent = "";
+    clockOn = null;
+    clockVersion = null;
+    setStatus(ui.clockAnswer, "");
   };
 
   const showSelected = () => {
@@ -1644,7 +1721,7 @@ function startPage() {
     busy = false;
     hideCard();
     setStatus(ui.cardStatus, message, kind);
-    refreshButtons();
+    showClock();
   };
 
   // A card before gpxcam 1.3.0 answers 'tz' but not 'status'. Null if the page can go on.
@@ -1657,6 +1734,7 @@ function startPage() {
     ui.cardNote.textContent = `gpxcam ${version} can only set the time zone from this page. From version 1.3.0 ` +
       "it also shows the card's state here.";
     ui.cardNote.classList.remove("hidden");
+    clockVersion = version;
     return null;
   };
 
@@ -1706,7 +1784,7 @@ function startPage() {
       showState(status.state);
       refreshTimer = setTimeout(refresh, STATUS_PERIOD_MS);
     }
-    refreshButtons();
+    showClock();
   };
 
   const disconnect = async () => {
@@ -1746,10 +1824,28 @@ function startPage() {
     if (!ui.state.classList.contains("hidden")) refresh(); // the new zone in the card's state
   };
 
+  // The switch shows the card's setting again once the card has answered.
+  const setClock = async () => {
+    const asked = card;
+    if (!asked) return;
+    const on = ui.clock.checked;
+    busy = true;
+    refreshButtons();
+    setStatus(ui.clockAnswer, "Saving...");
+    const lines = await asked.clock(on).catch(() => []);
+    if (card !== asked) return;
+    const [text, kind] = clockAnswerText(on, classifyClockAnswer(lines));
+    setStatus(ui.clockAnswer, text, kind);
+    busy = false;
+    await refresh();
+    showClock();
+  };
+
   ui.connect.addEventListener("click", connect);
   ui.disconnect.addEventListener("click", disconnect);
   ui.save.addEventListener("click", save);
   ui.refresh.addEventListener("click", refresh);
+  ui.clock.addEventListener("change", setClock);
   ui.search.addEventListener("input", showResults);
   if ("serial" in navigator) {
     navigator.serial.addEventListener("disconnect", (event) => {
@@ -1758,7 +1854,7 @@ function startPage() {
   }
   showSelected();
   showResults();
-  refreshButtons();
+  showClock();
 }
 
 if (typeof document !== "undefined") startPage();
