@@ -212,11 +212,11 @@ test("the computer's zone is offered under the name people know", () => {
 test("before anything is typed: the computer's zone first, then every zone", () => {
   const warsaw = page.startList(page.preferredZone("Europe/Warsaw"));
   assert.equal(warsaw[0].name, "Europe/Warsaw");
-  assert.equal(warsaw[0].detail, "Poland - your computer");
+  assert.equal(warsaw[0].detail, "Poland \u00b7 your computer");
   assert.equal(warsaw.length, page.TZ_DATA.zones.length); // Warsaw is not listed twice
   assert.equal(new Set(warsaw.map((result) => result.name)).size, warsaw.length);
   const copenhagen = page.startList(page.preferredZone("Europe/Copenhagen"));
-  assert.equal(copenhagen[0].detail, "Denmark (same as Europe/Berlin) - your computer");
+  assert.equal(copenhagen[0].detail, "Denmark (same as Europe/Berlin) \u00b7 your computer");
   assert.ok(copenhagen.some((result) => result.name === "Europe/Berlin"));
   const unknown = page.startList(null);
   assert.equal(unknown.length, page.TZ_DATA.zones.length);
@@ -382,6 +382,11 @@ test("motion is short, changes only colours and the toggle's knob, and stops wit
   assert.match(reduced, /\*, \*::before, \*::after \{ animation: none !important; transition: none !important;/);
 });
 
+test("what a returning reader does not need is folded: the steps once paired, and About", () => {
+  assert.match(html, /<details id="pair-help" class="help" open>\s*<summary>How to pair<\/summary>/);
+  assert.match(html, /<details class="about">\s*<summary>About this page<\/summary>/);
+});
+
 test("hidden parts stay hidden whatever display their own rule gives", () => {
   assert.match(html, /^\.hidden \{ display: none !important; \}/m);
 });
@@ -502,10 +507,12 @@ test("commands go one at a time: the next after the answer to the one before", a
 test("the page shows the state of a card with 'status'", async () => {
   const port = simulatedCard({ v: VERSION_1_3, status: STATUS_ANSWER });
   const ui = openPage(port);
+  assert.equal(ui.intro.hidden, false); // how to connect, until connected
   assert.equal(ui.connect.disabled, false);
   await ui.connect.fire("click");
   assert.deepEqual(port.written, ["v\n", "status\n"]);
   assert.equal(ui["card-status"].textContent, "Connected to the card");
+  assert.equal(ui.intro.hidden, true);
   assert.equal(ui["card-status"].className, "good");
   assert.equal(ui.state.hidden, false);
   assert.equal(ui["state-firmware"].textContent, "gpxcam 1.3.0 \u00b7 git 1234567");
@@ -522,6 +529,7 @@ test("the page shows the state of a card with 'status'", async () => {
   assert.equal(port.closed, true);
   assert.equal(ui.state.hidden, true);
   assert.equal(ui["card-status"].textContent, "Not connected.");
+  assert.equal(ui.intro.hidden, false);
 });
 
 test("the page sets the time zone of a card with gpxcam 1.2 and says what 1.3.0 adds", async () => {
@@ -579,11 +587,13 @@ test("saving a zone: the note about the next connection only when it was saved",
   assert.ok(port.written.includes("tz America/New_York\n"));
   assert.equal(ui["save-status"].textContent, "Saved: America/New_York.");
   assert.equal(ui["save-note"].hidden, false);
+  assert.equal(ui["save-lines"].textContent, ""); // "Saved: ..." says what the card's lines say
   await statusAfterSave();
   answers["tz America/New_York"] = ["tz: could not write the time zone file\r\n"];
   await ui.save.fire("click");
   assert.equal(ui["save-status"].className, "bad");
   assert.equal(ui["save-note"].hidden, true);
+  assert.equal(ui["save-lines"].textContent, "tz: could not write the time zone file");
   await statusAfterSave();
   await ui.disconnect.fire("click");
 });
@@ -610,7 +620,7 @@ test("the answers to 'clock on' and 'clock off' are told apart and explained", a
   assert.equal(classify(["clock: could not write the time zone file"]), "not-saved");
   assert.equal(classify(["command: unknown 'clock off'"]), "no-clock");
   assert.match(page.clockAnswerText(true, "saved")[0], /switch the camera off and on\.$/);
-  assert.match(page.clockAnswerText(false, "saved")[0], /leaves the camera's clock alone\.$/);
+  assert.equal(page.clockAnswerText(false, "saved")[0], "Saved. It counts from the next connection.");
   assert.equal(page.clockAnswerText(false, "not-saved")[1], "bad");
   assert.equal(page.clockAnswerText(false, "none")[1], "bad");
   assert.match(page.clockNoteText(true), /^Each time it connects, the card sets the camera's clock/);
@@ -636,7 +646,7 @@ test("the clock switch follows the card and turns the time zone choice off with 
   ui.clock.checked = false;
   await ui.clock.fire("change");
   assert.deepEqual(port.written.slice(-2), ["clock off\n", "status\n"]);
-  assert.equal(ui["clock-answer"].textContent, "Saved. From the next connection the card leaves the camera's clock alone.");
+  assert.equal(ui["clock-answer"].textContent, "Saved. It counts from the next connection.");
   assert.equal(ui["clock-answer"].className, "good");
   assert.equal(ui.clock.checked, false);
   assert.equal(ui.zones.disabled, true);
@@ -788,7 +798,7 @@ test("the pairing stages and results are explained", () => {
   assert.match(page.pairResultText("no_gps_fix")[0], /^No GPS time within 2 minutes\. Put the card outdoors/);
   assert.match(page.pairResultText("not_in_pairing_mode")[0], /^The card saw a LUMIX camera, but not in pairing mode/);
   assert.equal(page.pairResultText("failed")[1], "bad");
-  assert.match(page.pairResultText("failed")[0], /If the camera lists T1000-E from an earlier pairing, delete it/);
+  assert.match(page.pairResultText("failed")[0], /If the camera lists T1000\u2011E from an earlier pairing, delete it/);
   assert.deepEqual(json(page.pairResultText("cancelled")), ["Pairing cancelled.", ""]);
   assert.equal(page.classifyUnpairAnswer(["link: off", "pair: camera forgotten (the card id stays)"]), "forgotten");
   assert.equal(page.classifyUnpairAnswer(["pair: no camera paired"]), "not-paired");
@@ -805,6 +815,7 @@ test("pairing from the page: the stages, the result, then forgetting the camera"
   assert.equal(ui.pair.disabled, true); // not connected
   await ui.connect.fire("click");
   assert.equal(ui["camera-note"].textContent, "The card is not paired with a camera yet.");
+  assert.equal(ui["pair-help"].open, true); // the steps are open while no camera is paired
   assert.equal(ui.pair.textContent, "Pair");
   assert.equal(ui.pair.disabled, false);
   assert.equal(ui.unpair.hidden, true);
@@ -831,8 +842,8 @@ test("pairing from the page: the stages, the result, then forgetting the camera"
   assert.equal(ui["pair-cancel"].hidden, true);
   assert.equal(ui.pair.textContent, "Pair again");
   assert.equal(ui.pair.className, "secondary");
-  assert.equal(ui["camera-note"].textContent, "The card is paired with a camera. Pairing again replaces it " +
-    "(with the same camera: delete T1000-E in the camera's Bluetooth menu first).");
+  assert.equal(ui["camera-note"].textContent, "The card is paired with a camera. Pairing again replaces it.");
+  assert.equal(ui["pair-help"].open, false); // the steps fold away once paired
   await ui.refresh.fire("click");
   assert.equal(ui["pair-progress"].className, "good"); // the result stays
 
@@ -893,11 +904,11 @@ test("with gpxcam 1.2 pairing is left to the card's button", async () => {
   await ui.connect.fire("click");
   assert.equal(ui.pair.disabled, true);
   assert.equal(ui.unpair.hidden, true);
-  for (const id of ["camera-note", "pair-steps", "pair-row"]) assert.equal(ui[id].hidden, true, id);
+  for (const id of ["camera-note", "pair-help", "pair-row"]) assert.equal(ui[id].hidden, true, id);
   assert.equal(ui["camera-old"].hidden, false); // pair with the button, with a link to the README
   const readme = '<a href="https://github.com/TomaszBojanowski/gpxcam-t1000e#pairing-once">the README</a>';
   assert.ok(html.includes(readme));
   await ui.disconnect.fire("click");
-  for (const id of ["camera-note", "pair-steps", "pair-row"]) assert.equal(ui[id].hidden, false, id);
+  for (const id of ["camera-note", "pair-help", "pair-row"]) assert.equal(ui[id].hidden, false, id);
   assert.equal(ui["camera-old"].hidden, true);
 });
