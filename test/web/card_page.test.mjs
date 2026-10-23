@@ -15,7 +15,7 @@ const page = vm.runInContext(
   scripts.join("\n") +
     "\n;({ TZ_DATA, BAUD_RATE, CARD_USB, MAX_RESULTS, findZone, searchZones, utcOffsetText, allowedCommand," +
     " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText, tzProblemText," +
-    " startList, parseStatus, batteryText, gpsText, cameraText, zoneText, classifyClockAnswer, clockAnswerText," +
+    " startList, parseStatus, cameraTile, gpsTile, batteryTile, zoneTile, classifyClockAnswer, clockAnswerText," +
     " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText, SOUND_SETTINGS," +
     " classifySoundAnswer, soundAnswerText, soundNoteText })",
   vm.createContext({ TextEncoder, TextDecoder, setTimeout, clearTimeout, console }),
@@ -436,24 +436,37 @@ test("a card before 1.3.0, a missing line, no end and a newer format are told ap
   assert.deepEqual(json(page.parseStatus(more).state), STATE);
 });
 
-test("the state is shown in words", () => {
+test("the state is shown as tiles, each state in a word, not only by the colour of its dot", () => {
   const state = (changes) => ({ ...STATE, ...changes });
-  assert.equal(page.batteryText(state({ charger: "no_usb" })), "89 % (4.10 V)");
-  assert.equal(page.batteryText(STATE), "charging, about 89 % (4.10 V)");
-  assert.equal(page.batteryText(state({ charger: "charged", batteryMv: 4180 })), "charged (4.18 V)");
-  assert.equal(page.batteryText(state({ charger: "not_charging" })), "on USB, not charging, about 89 % (4.10 V)");
-  assert.equal(page.gpsText(STATE), "fix, 11 satellites");
-  assert.equal(page.gpsText(state({ gpsOn: false })), "off, to save power");
-  assert.match(page.gpsText(state({ gpsFix: false, gpsSatellites: 1 })), /^no fix yet \(1 satellite\); outdoors/);
-  assert.equal(page.cameraText(STATE), "paired, connected");
-  assert.equal(page.cameraText(state({ paired: false, link: "off" })), "not paired");
-  assert.equal(page.cameraText(state({ link: "searching", gpsFix: false })),
-    "paired, looking for the camera; it connects once the GPS has a fix");
-  assert.equal(page.cameraText(state({ link: "searching" })), "paired, looking for the camera");
-  assert.match(page.cameraText(state({ link: "stopped" })), /refused the card: pair them again$/);
-  assert.equal(page.cameraText(state({ link: "off", pair: "searching" })), "pairing");
-  assert.match(page.zoneText(state({ timeZone: "Asia/Kolkata" })), /^Asia\/Kolkata, now UTC\+05:30$/);
-  assert.equal(page.zoneText(state({ timeZone: "<+0545>-5:45" })), "<+0545>-5:45"); // a rule: no offset
+  const tile = (make, changes = {}) => json(make(state(changes)));
+  assert.deepEqual(tile(page.cameraTile), ["good", "Connected", "Sends the position"]);
+  assert.deepEqual(tile(page.cameraTile, { paired: false, link: "off" }), ["idle", "Not paired", "Pair it below"]);
+  assert.deepEqual(tile(page.cameraTile, { link: "searching" }),
+    ["idle", "Looking for it", "Camera off or out of range"]);
+  assert.deepEqual(tile(page.cameraTile, { link: "searching", gpsFix: false }),
+    ["warn", "Waiting for GPS", "Connects once the GPS has a fix"]);
+  assert.deepEqual(tile(page.cameraTile, { link: "stopped" }), ["bad", "Refused the card", "Pair them again"]);
+  assert.deepEqual(tile(page.cameraTile, { link: "off", pair: "searching" }),
+    ["warn", "Pairing", "See The camera below"]);
+  assert.deepEqual(tile(page.gpsTile), ["good", "Fix", "11 satellites"]);
+  assert.deepEqual(tile(page.gpsTile, { gpsOn: false }), ["idle", "Off", "Saves power"]);
+  assert.deepEqual(tile(page.gpsTile, { gpsFix: false, gpsSatellites: 1 }),
+    ["warn", "No fix yet", "1 satellite; outdoors 1\u20133 min"]);
+  assert.deepEqual(tile(page.batteryTile), ["good", "Charging", "about 89 % \u00b7 4.10 V"]);
+  assert.deepEqual(tile(page.batteryTile, { charger: "charged", batteryMv: 4180 }), ["good", "Charged", "4.18 V"]);
+  assert.deepEqual(tile(page.batteryTile, { charger: "not_charging" }),
+    ["idle", "On USB", "not charging, about 89 % \u00b7 4.10 V"]);
+  assert.deepEqual(tile(page.batteryTile, { charger: "no_usb" }), ["good", "Good", "89 % \u00b7 4.10 V"]);
+  assert.deepEqual(tile(page.batteryTile, { charger: "no_usb", batteryPercent: 19, batteryMv: 3620 }),
+    ["warn", "Low", "19 % \u00b7 3.62 V"]);
+  assert.deepEqual(tile(page.batteryTile, { charger: "no_usb", batteryPercent: 9, batteryMv: 3480 }),
+    ["bad", "Very low", "9 % \u00b7 3.48 V"]);
+  const [level, name, detail] = tile(page.zoneTile, { timeZone: "Asia/Kolkata" });
+  assert.deepEqual([level, name], ["good", "Asia/\u200bKolkata"]); // it may break after the slash
+  assert.equal(detail, "Clock on \u00b7 now UTC+05:30");
+  assert.equal(tile(page.zoneTile, { timeZone: "<+0545>-5:45" })[2], "Clock on \u00b7 a rule given directly");
+  assert.deepEqual(tile(page.zoneTile, { clockOn: false }),
+    ["idle", "Europe/\u200bWarsaw", "Clock off: set it on the camera"]);
 });
 
 test("commands go one at a time: the next after the answer to the one before", async () => {
@@ -475,12 +488,15 @@ test("the page shows the state of a card with 'status'", async () => {
   assert.equal(ui.connect.disabled, false);
   await ui.connect.fire("click");
   assert.deepEqual(port.written, ["v\n", "status\n"]);
-  assert.equal(ui["card-status"].textContent, "Connected.");
+  assert.equal(ui["card-status"].textContent, "Connected to the card");
   assert.equal(ui["card-status"].className, "good");
   assert.equal(ui.state.hidden, false);
-  assert.equal(ui["state-firmware"].textContent, "gpxcam 1.3.0 (git 1234567)");
-  assert.equal(ui["state-camera"].textContent, "paired, connected");
-  assert.match(ui["state-zone"].textContent, /^Europe\/Warsaw, now UTC\+0[12]:00$/);
+  assert.equal(ui["state-firmware"].textContent, "gpxcam 1.3.0 \u00b7 git 1234567");
+  assert.equal(ui["tile-camera"].className, "tile level-good");
+  assert.equal(ui["state-camera"].textContent, "Connected");
+  assert.equal(ui["state-camera-detail"].textContent, "Sends the position");
+  assert.equal(ui["state-zone"].textContent, "Europe/\u200bWarsaw");
+  assert.match(ui["state-zone-detail"].textContent, /^Clock on · now UTC\+0[12]:00$/);
   assert.equal(ui["refresh-row"].hidden, false);
   assert.equal(ui["card-note"].hidden, true);
   await ui.refresh.fire("click");
@@ -583,7 +599,7 @@ test("the answers to 'clock on' and 'clock off' are told apart and explained", a
   assert.match(page.clockNoteText(true), /^Each time it connects, the card sets the camera's clock/);
   assert.match(page.clockNoteText(false), /set the time and the time zone in the camera's menu\. Pairing still/);
   assert.match(page.clockNoteText(true, "1.2.0"), /^gpxcam 1\.2\.0 always sets the camera's clock\./);
-  assert.equal(page.zoneText({ ...STATE, clockOn: false }), "Europe/Warsaw; the card leaves the camera's clock alone");
+  assert.equal(page.zoneTile({ ...STATE, clockOn: false })[2], "Clock off: set it on the camera");
 });
 
 test("the clock switch follows the card and turns the time zone choice off with it", async () => {
@@ -608,7 +624,8 @@ test("the clock switch follows the card and turns the time zone choice off with 
   assert.equal(ui.clock.checked, false);
   assert.equal(ui.zones.disabled, true);
   assert.match(ui["clock-note"].textContent, /camera's menu/);
-  assert.match(ui["state-zone"].textContent, /leaves the camera's clock alone$/);
+  assert.equal(ui["state-zone-detail"].textContent, "Clock off: set it on the camera");
+  assert.equal(ui["tile-zone"].className, "tile level-idle");
 
   answers["clock on"] = CLOCK_NOT_SAVED; // the card keeps the clock off
   ui.clock.checked = true;
@@ -655,10 +672,10 @@ test("every pairing stage, result, link state and charger state of the firmware 
   assert.equal(page.pairResultText("none"), null);
   const links = firmwareValues("linkValue");
   assert.equal(links.length, 6);
-  const linkTexts = links.map((link) => page.cameraText({ ...STATE, link }));
+  const linkTexts = links.map((link) => page.cameraTile({ ...STATE, link }).join("|"));
   assert.equal(new Set(linkTexts).size, links.length); // none falls to another one's words
   const chargers = firmwareValues("chargerValue");
-  const chargerTexts = chargers.map((charger) => page.batteryText({ ...STATE, charger }));
+  const chargerTexts = chargers.map((charger) => page.batteryTile({ ...STATE, charger }).join("|"));
   assert.equal(new Set(chargerTexts).size, chargers.length);
 });
 
@@ -774,7 +791,7 @@ test("pairing from the page: the stages, the result, then forgetting the camera"
   assert.equal(ui["pair-progress"].textContent, "Waiting for GPS time, up to 2 minutes (3 satellites so far)...");
   assert.equal(ui.pair.disabled, true);
   assert.equal(ui["pair-cancel"].hidden, false);
-  assert.equal(ui["state-camera"].textContent, "pairing");
+  assert.equal(ui["state-camera"].textContent, "Pairing");
 
   answers.status = statusWith({ ...NOT_PAIRED, pair: "connecting", pair_attempt: 1 });
   await ui.refresh.fire("click");

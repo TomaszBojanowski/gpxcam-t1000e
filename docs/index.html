@@ -28,6 +28,9 @@
   --accent-tint: rgba(229, 32, 46, 0.08);
   --link: #d71a27; /* 4.5:1 also on the grey page */
   --good: #1e7a43;
+  --warn: #9a5b00;
+  --warn-tint: rgba(196, 120, 0, 0.09);
+  --idle: #8a9099;
   --error: #c42b1c;
   --error-tint: rgba(196, 43, 28, 0.07);
   --disabled-bg: #e9ebee;
@@ -61,6 +64,9 @@
     --accent-tint: rgba(229, 32, 46, 0.16);
     --link: #ff5a64;
     --good: #4cc47a;
+    --warn: #f0b048;
+    --warn-tint: rgba(240, 176, 72, 0.1);
+    --idle: #6e7881;
     --error: #ff7b6e;
     --error-tint: rgba(255, 123, 110, 0.1);
     --disabled-bg: #222a30;
@@ -80,7 +86,7 @@ body {
   color: var(--text);
   font: var(--fs)/1.45 system-ui, -apple-system, "Segoe UI", Cantarell, sans-serif;
 }
-main { max-width: 42rem; margin: 0 auto; }
+main { max-width: 46rem; margin: 0 auto; }
 h1 { margin: 0 0 var(--s2); font-size: 24px; line-height: 1; font-weight: 400; color: var(--muted); }
 .logo { font-weight: 800; color: var(--text); }
 .logo span { color: var(--accent); }
@@ -119,7 +125,6 @@ code { font: var(--fs-small) ui-monospace, Menlo, Consolas, monospace; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.state-area { margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--line); }
 /* A question before what cannot be undone */
 .confirm {
   padding: var(--s3);
@@ -128,7 +133,7 @@ code { font: var(--fs-small) ui-monospace, Menlo, Consolas, monospace; }
   background: var(--accent-tint);
 }
 .confirm > :first-child { margin-top: 0; }
-.hidden { display: none !important; } /* wins over the display of .row, dl.state and others */
+.hidden { display: none !important; } /* wins over the display of .row, .tiles and others */
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 button {
@@ -234,9 +239,63 @@ p.bad::before {
   color: var(--error);
 }
 .row { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; }
-dl.state { display: grid; grid-template-columns: max-content 1fr; gap: var(--s1) var(--s4); margin: var(--s2) 0 0; }
-dl.state dt { color: var(--muted); }
-dl.state dd { margin: 0; overflow-wrap: anywhere; }
+/* The connection: its state with a dot, the buttons on the right */
+.connect-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s3); }
+.connect-row #card-status { margin: 0; font-weight: 600; }
+.connect-row #card-status.bad { flex-basis: 100%; order: 1; font-weight: 400; } /* an error under the buttons */
+#card-status:not(.bad) { display: inline-flex; align-items: center; gap: var(--s2); }
+#card-status:not(.bad)::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--idle); }
+#card-status.good::before { background: var(--good); }
+/* The state as four tiles: a word for the state, a dot of its colour, the detail below. A fixed height, so the
+   page does not move when the words change. */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s2); margin-top: var(--s4); }
+.tile {
+  min-height: 118px;
+  padding: var(--s3);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+.tile-head { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--fs-small); }
+.tile-head .icon { width: 18px; height: 18px; stroke: var(--muted); }
+.tile strong { display: flex; align-items: baseline; gap: 6px; margin-top: var(--s2); font-size: 16px; }
+.tile strong::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--idle);
+  transform: translateY(-1px);
+}
+.tile-detail {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+.tile.level-good strong::before { background: var(--good); }
+.tile.level-warn { background: var(--warn-tint); }
+.tile.level-warn strong::before { background: var(--warn); }
+.tile.level-bad { background: var(--error-tint); border-color: var(--error); }
+.tile.level-bad strong::before { background: var(--error); }
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1) var(--s3);
+  margin-top: var(--s3);
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+.meta button { margin-left: auto; }
+button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--fs-small); }
+@media (max-width: 640px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 </style>
 </head>
 <body>
@@ -273,25 +332,62 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
         </svg>The card</h2>
       <p>Plug the card into this computer with a USB cable, click <em>Connect</em> and choose
          <em>T1000-E gpxcam</em>. Close other programs that use the card first (a serial monitor).</p>
-      <div class="row">
-        <button id="connect" type="button">Connect</button>
-        <button id="disconnect" type="button" class="secondary" disabled>Disconnect</button>
-      </div>
-      <div id="card" class="state-area">
+      <div class="connect-row">
         <p id="card-status" role="status">Not connected.</p>
-        <dl id="state" class="state hidden">
-          <dt>Firmware</dt><dd id="state-firmware"></dd>
-          <dt>Battery</dt><dd id="state-battery"></dd>
-          <dt>GPS</dt><dd id="state-gps"></dd>
-          <dt>Camera</dt><dd id="state-camera"></dd>
-          <dt>Time zone</dt><dd id="state-zone"></dd>
-        </dl>
-        <div id="card-lines" class="card-lines"></div>
-        <p id="card-note" class="note hidden"></p>
-        <div id="refresh-row" class="row gap-top hidden">
-          <button id="refresh" type="button" class="secondary">Refresh</button>
-          <small id="state-time"></small>
+        <div class="row">
+          <button id="connect" type="button">Connect</button>
+          <button id="disconnect" type="button" class="secondary" disabled>Disconnect</button>
         </div>
+      </div>
+      <div id="state" class="tiles hidden">
+        <div id="tile-camera" class="tile">
+          <div class="tile-head">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3.5 8.5h3.2l1.6-2.5h7.4l1.6 2.5h3.2v10.5h-17z"/>
+              <circle cx="12" cy="13.5" r="3.6"/>
+            </svg>Camera
+          </div>
+          <strong id="state-camera"></strong>
+          <div id="state-camera-detail" class="tile-detail"></div>
+        </div>
+        <div id="tile-gps" class="tile">
+          <div class="tile-head">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="6.5"/>
+              <circle cx="12" cy="12" r="2.2"/>
+              <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/>
+            </svg>GPS
+          </div>
+          <strong id="state-gps"></strong>
+          <div id="state-gps-detail" class="tile-detail"></div>
+        </div>
+        <div id="tile-battery" class="tile">
+          <div class="tile-head">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="2.5" y="7.5" width="17" height="9" rx="2"/>
+              <path d="M21.5 10.5v3M6 10.5v3M9 10.5v3"/>
+            </svg>Battery
+          </div>
+          <strong id="state-battery"></strong>
+          <div id="state-battery-detail" class="tile-detail"></div>
+        </div>
+        <div id="tile-zone" class="tile">
+          <div class="tile-head">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.5"/>
+              <path d="M12 7.5V12l3 2"/>
+            </svg>Time zone
+          </div>
+          <strong id="state-zone"></strong>
+          <div id="state-zone-detail" class="tile-detail"></div>
+        </div>
+      </div>
+      <div id="card-lines" class="card-lines"></div>
+      <p id="card-note" class="note hidden"></p>
+      <div id="refresh-row" class="meta hidden">
+        <span id="state-firmware"></span>
+        <small id="state-time"></small>
+        <button id="refresh" type="button" class="secondary small">Refresh</button>
       </div>
     </section>
 
@@ -1610,37 +1706,57 @@ function parseStatus(lines) {
   };
 }
 
-// On USB the battery reads higher than it is, so the percent is only about.
-function batteryText(state) {
-  const volts = `${(state.batteryMv / 1000).toFixed(2)} V`;
-  switch (state.charger) {
-    case "no_usb": return `${state.batteryPercent} % (${volts})`;
-    case "charging": return `charging, about ${state.batteryPercent} % (${volts})`;
-    case "charged": return `charged (${volts})`;
-    default: return `on USB, not charging, about ${state.batteryPercent} % (${volts})`;
-  }
-}
+// ---- The card's state as tiles: [level, word, detail] ----
+// level: good; warn (under way, or worth a look); bad (needs you); idle (nothing to do now). The word always
+// says the state: the colour of the dot only repeats it.
 
-function gpsText(state) {
-  if (!state.gpsOn) return "off, to save power";
-  const satellites = state.gpsSatellites === 1 ? "1 satellite" : `${state.gpsSatellites} satellites`;
-  if (state.gpsFix) return `fix, ${satellites}`;
-  return `no fix yet (${satellites}); outdoors or by a window the first fix takes 1-3 minutes`;
-}
+const BATTERY_LOW_PERCENT = 20; // the card powers itself off at 0 % (3.40 V)
+const BATTERY_VERY_LOW_PERCENT = 10;
 
 // The card connects to the camera only with a GPS fix: the camera gets the time from it.
-function cameraText(state) {
-  if (state.pair !== "idle") return "pairing";
-  if (!state.paired) return "not paired";
+function cameraTile(state) {
+  if (state.pair !== "idle") return ["warn", "Pairing", "See The camera below"];
+  if (!state.paired) return ["idle", "Not paired", "Pair it below"];
   switch (state.link) {
-    case "connected": return "paired, connected";
-    case "connecting": return "paired, connecting";
-    case "searching": return state.gpsFix ? "paired, looking for the camera" :
-      "paired, looking for the camera; it connects once the GPS has a fix";
-    case "pausing": return "paired, looking again in a moment";
-    case "stopped": return "paired, but the camera refused the card: pair them again";
-    default: return "paired, the link is off ('link on' in a serial terminal)";
+    case "connected": return ["good", "Connected", "Sends the position"];
+    case "connecting": return ["warn", "Connecting", "A few seconds"];
+    case "searching": return state.gpsFix ? ["idle", "Looking for it", "Camera off or out of range"] :
+      ["warn", "Waiting for GPS", "Connects once the GPS has a fix"];
+    case "pausing": return ["warn", "Trying again", "In a few seconds"];
+    case "stopped": return ["bad", "Refused the card", "Pair them again"];
+    default: return ["idle", "Link off", "'link on' in a serial terminal"];
   }
+}
+
+function gpsTile(state) {
+  if (!state.gpsOn) return ["idle", "Off", "Saves power"];
+  const satellites = state.gpsSatellites === 1 ? "1 satellite" : `${state.gpsSatellites} satellites`;
+  if (state.gpsFix) return ["good", "Fix", satellites];
+  return ["warn", "No fix yet", `${satellites}; outdoors 1\u20133 min`];
+}
+
+// On USB the battery reads higher than it is, so the percent is only about.
+function batteryTile(state) {
+  const volts = `${(state.batteryMv / 1000).toFixed(2)} V`;
+  const percent = `${state.batteryPercent} %`;
+  switch (state.charger) {
+    case "charging": return ["good", "Charging", `about ${percent} \u00b7 ${volts}`];
+    case "charged": return ["good", "Charged", volts];
+    case "not_charging": return ["idle", "On USB", `not charging, about ${percent} \u00b7 ${volts}`];
+    default:
+      if (state.batteryPercent < BATTERY_VERY_LOW_PERCENT) return ["bad", "Very low", `${percent} \u00b7 ${volts}`];
+      if (state.batteryPercent < BATTERY_LOW_PERCENT) return ["warn", "Low", `${percent} \u00b7 ${volts}`];
+      return ["good", "Good", `${percent} \u00b7 ${volts}`];
+  }
+}
+
+// The zone may break after a "/" (zero-width space); its offset now when the browser knows the name.
+function zoneTile(state) {
+  const name = state.timeZone.replaceAll("/", "/\u200b");
+  if (!state.clockOn) return ["idle", name, "Clock off: set it on the camera"];
+  const found = findZone(state.timeZone);
+  const offset = found ? utcOffsetText(found.zone) : "";
+  return ["good", name, offset ? `Clock on \u00b7 now ${offset}` : "Clock on \u00b7 a rule given directly"];
 }
 
 // What the card does while it pairs ('status': pair, pair_attempt).
@@ -1675,14 +1791,6 @@ function pairResultText(result) {
     case "cancelled": return ["Pairing cancelled.", ""];
     default: return [`Pairing ended: ${result}.`, ""];
   }
-}
-
-// The zone and, for a name the browser knows, its offset now.
-function zoneText(state) {
-  if (!state.clockOn) return `${state.timeZone}; the card leaves the camera's clock alone`;
-  const found = findZone(state.timeZone);
-  const offset = found ? utcOffsetText(found.zone) : "";
-  return offset ? `${state.timeZone}, now ${offset}` : state.timeZone;
 }
 
 // ---- The connection to the card ----
@@ -1831,10 +1939,6 @@ function startPage() {
     cardStatus: element("card-status"),
     state: element("state"),
     stateFirmware: element("state-firmware"),
-    stateBattery: element("state-battery"),
-    stateGps: element("state-gps"),
-    stateCamera: element("state-camera"),
-    stateZone: element("state-zone"),
     cardLines: element("card-lines"),
     cardNote: element("card-note"),
     refreshRow: element("refresh-row"),
@@ -1951,12 +2055,19 @@ function startPage() {
     refreshButtons();
   };
 
+  // A tile: its level as a class (the colour of the dot), the word and the detail.
+  const showTile = (name, [level, word, detail]) => {
+    element(`tile-${name}`).className = `tile level-${level}`;
+    element(`state-${name}`).textContent = word;
+    element(`state-${name}-detail`).textContent = detail;
+  };
+
   const showState = (state) => {
-    ui.stateFirmware.textContent = `gpxcam ${state.version} (git ${state.git})`;
-    ui.stateBattery.textContent = batteryText(state);
-    ui.stateGps.textContent = gpsText(state);
-    ui.stateCamera.textContent = cameraText(state);
-    ui.stateZone.textContent = zoneText(state);
+    ui.stateFirmware.textContent = `gpxcam ${state.version} \u00b7 git ${state.git}`;
+    showTile("camera", cameraTile(state));
+    showTile("gps", gpsTile(state));
+    showTile("battery", batteryTile(state));
+    showTile("zone", zoneTile(state));
     ui.stateTime.textContent = `Updated ${new Date().toLocaleTimeString()}.`;
     ui.state.classList.remove("hidden");
     ui.refreshRow.classList.remove("hidden");
@@ -2118,7 +2229,7 @@ function startPage() {
     };
     busy = false;
     if (status.kind === "ok") {
-      setStatus(ui.cardStatus, "Connected.", "good");
+      setStatus(ui.cardStatus, "Connected to the card", "good");
       showState(status.state);
       refreshTimer = setTimeout(refresh, STATUS_PERIOD_MS);
     }
