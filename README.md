@@ -28,9 +28,11 @@ LUMIX S5II. The latest version is on the
 
 - The camera gets a new time zone only when the card connects to it: after changing the time zone,
   switch the camera off and on (see [Set the time zone](#set-the-time-zone)).
+- The battery percent is estimated from the voltage. With the USB cable plugged in the voltage
+  reads higher, so the percent shown on the card page is only about right.
 - Where summer time is not one hour ahead (Australia/Lord_Howe, Antarctica/Troll), the camera shows
   the right local time, but no summer-time mark.
-- The time zone rules are built into the firmware (tz database 2026e in 1.2.0). When a country
+- The time zone rules are built into the firmware (tz database 2026e since 1.2.0). When a country
   changes its rules later, the card needs a newer firmware for them.
 
 ## Install the release (Windows, macOS, Linux)
@@ -53,6 +55,28 @@ No tools needed: the card takes the firmware as a file copied to a USB drive.
 
 The file holds only the application: the bootloader and the SoftDevice stay as they are.
 
+## The card page
+
+[The card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/) talks to the card over USB from
+Chrome or Edge on Windows, macOS or Linux (Firefox, Safari and phones cannot talk to the card):
+- it shows the card's state: firmware, battery, GPS, the camera link and the time zone, refreshed
+  every few seconds;
+- it pairs the card with the camera, step by step, and says why if pairing fails; it can also
+  forget the paired camera;
+- it sets whether the card sets the camera's clock, and the time zone.
+
+1. Plug the card into the computer with a USB cable. Close serial monitors that use it.
+2. Open [the card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/).
+3. Click **Connect** and choose **T1000-E gpxcam**.
+
+The page runs only in the browser and sends nothing over the internet. It sends the card only `v`,
+`status`, `pair`, `pair off`, `unpair`, `clock on`, `clock off`, `tz` and `tz` with a zone from its
+list. With gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or newer.
+
+On Linux, if the page says "Reading from the card failed" after a serial monitor (for example
+`pio device monitor`) used the card: unplug the card and plug it in again. Such programs leave the
+port with a setting that Chrome does not handle, and plugging in again resets it.
+
 ## Set the time zone
 
 The card sets the camera's clock every time it connects: the time from the GPS and the time zone.
@@ -64,22 +88,12 @@ time by itself, with the rules of the tz database (IANA).
 A new time zone reaches the camera at the next connection: **switch the camera off and on** after
 changing it.
 
-### With the web page (Chrome or Edge on a computer)
+### With the card page
 
-1. Plug the card into the computer with a USB cable. Close serial monitors that use it.
-2. Open [the time zone page](https://tomaszbojanowski.github.io/gpxcam-t1000e/) in Chrome
-   or Edge on Windows, macOS or Linux. Firefox, Safari and phones cannot talk to the card.
-3. Click **Connect** and choose **T1000-E gpxcam**. The page shows the card's time zone.
-4. Find the time zone by country, city or zone name (the computer's own is selected already) and
-   click **Save**.
-5. Switch the camera off and on.
-
-The page runs only in the browser and sends nothing over the internet. It sends the card only `v`
-(version), `tz` and `tz` with the chosen zone.
-
-On Linux, if the page says "Reading from the card failed" after a serial monitor (for example
-`pio device monitor`) used the card: unplug the card and plug it in again. Such programs leave the
-port with a setting that Chrome does not handle, and plugging in again resets it.
+1. Connect the card on [the card page](#the-card-page).
+2. Under **The camera's clock**, find the time zone by country, city or zone name (the computer's
+   own is selected already) and click **Save**.
+3. Switch the camera off and on.
 
 ### With a serial terminal
 
@@ -96,6 +110,21 @@ The card does not show what you type: type the command and press Enter.
 | `tz` | shows the time zone, its rule and, with a GPS fix, what the camera gets now |
 | `tz Europe/Warsaw` | sets a time zone by its name in the tz database (any case; old names such as `Poland` work too) |
 | `tz <+0545>-5:45` | sets a POSIX TZ rule directly (summer-time dates in the `Mm.w.d` form, offsets within ±15 h) |
+
+### Leave the camera's clock alone (1.3.0)
+
+If you prefer to set the camera's clock yourself, switch off **The card sets the camera's clock and
+time zone** on the card page (or send `clock off`). From the next connection the card leaves the
+camera's time and time zone as they are and only sends the position; the GPS time in EXIF still
+comes from the card. Pairing still sets the clock once, so set the camera's time zone in its menu
+after pairing. `clock on` brings the card's clock setting back; the camera takes it at the next
+connection (switch the camera off and on).
+
+Without writing the time the card cannot see at once that the camera has forgotten it (removed
+from the camera's list of devices): the camera refuses the time only from a card it does not know.
+So with the clock off the card stops working with the camera when the camera refuses any step of
+the introduction, or ends three connections in a row before it takes a position. The card page
+then says that the camera refused the card: pair them again.
 
 ## Build from source (Linux)
 
@@ -171,7 +200,8 @@ Whether Meshtastic keeps its old settings has not been checked – be ready to s
    time from the GPS.
 2. On the camera start pairing in its Bluetooth menu (the screen that waits for a new device).
 3. On the card: a short click, and within 0.5 s press again and hold for 3 s – two short high
-   beeps.
+   beeps. Or click **Pair** on [the card page](#the-card-page): it shows each stage and, if
+   pairing fails, why.
 4. The card waits up to 120 s for GPS time and looks for the camera for up to 60 s. On success
    the camera shows "Pairing completed" and lists "T1000-E"; the card plays a rising melody.
    If it gives up: two clicks.
@@ -186,7 +216,8 @@ has a position fix: the camera needs the exact time from it. After you switch th
 first fix takes about 1–3 minutes outdoors or near a window; deep indoors it may not come at all.
 
 When the camera is on, the card connects by itself (two rising beeps), sets the camera's clock
-(see [Set the time zone](#set-the-time-zone)) and the camera shows its Bluetooth and GPS icons.
+(see [Set the time zone](#set-the-time-zone); this can be switched off) and the camera shows its
+Bluetooth and GPS icons.
 The card sends the position at once and then every 25 s – earlier when it moves more than 20 m. If the GPS loses its fix later, the connection stays, but no position is
 sent until the fix is back.
 
@@ -231,12 +262,14 @@ pio device monitor
 |---|---|
 | `v` | version (with the git commit) and the reason of the last reset |
 | `p` | state: radio, GPS, Bluetooth, pairing (card id, camera), time zone, link, battery |
+| `status` | the same in short `key=value` lines without the card id and the camera, for the card page |
 | `log` | the last 32 events, also from times without USB |
 | `off` | power off after a 15 s countdown (refused with USB; a short press cancels) |
 | `dfu` | restart into the UF2 bootloader for flashing |
 | `pair` / `pair off` | start / cancel pairing (as click + hold) |
 | `unpair` | forget the paired camera (the card id stays) |
 | `tz` / `tz NAME` / `tz RULE` | show / set the time zone, see [Set the time zone](#set-the-time-zone) |
+| `clock` / `clock on` / `clock off` | show / set whether the card sets the camera's clock, see [Leave the camera's clock alone](#leave-the-cameras-clock-alone-130) |
 | `link on` / `link off` | work with the paired camera; on by itself after start when a camera is paired |
 | `bat log on` / `bat log off` | battery log in flash: an entry every 10 min on the battery, up to 1024 |
 | `bat log` / `bat log clear` | show / delete the battery log |
@@ -258,9 +291,9 @@ node --test test/web/card_page.test.mjs
 The modules without hardware dependencies – NMEA parser, LUMIX protocol (advertisement, byte
 formats, location), camera list, UTC calendar, time zone table, POSIX time zone rules (against the
 full tz database at every change of 2026–2031), time zone file, pairing record, the camera handles
-kept between connections, link and battery rules – are tested with made-up data and the vectors
-from `docs/PROTOCOL.md`. The second command (Node.js, tested with version 22) tests the time zone
-page with a simulated card.
+kept between connections, link and battery rules, the lines of `status` – are tested with made-up
+data and the vectors from `docs/PROTOCOL.md`. The second command (Node.js, tested with version 22)
+tests the card page with a simulated card.
 
 ## Documentation
 
@@ -268,8 +301,8 @@ page with a simulated card.
   measurements and findings of every milestone, differences from Meshtastic.
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) – the Bluetooth LE protocol of LUMIX cameras, the
   connection parameters the S5II works with, how the camera takes the time zone, and test vectors.
-- [The time zone page](https://tomaszbojanowski.github.io/gpxcam-t1000e/) – sets the
-  card's time zone from Chrome or Edge (source: `docs/index.html`).
+- [The card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/) – the card's state, pairing,
+  the clock setting and the time zone from Chrome or Edge (source: `docs/index.html`).
 
 ## Sources
 
