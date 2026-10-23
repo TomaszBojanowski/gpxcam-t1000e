@@ -269,6 +269,30 @@ ol.steps li { margin: var(--s1) 0; }
 }
 .card-lines:empty { display: none; }
 .good { color: var(--good); font-weight: 600; }
+/* Under way: a pulsing dot before the text (connecting, saving, pairing) */
+.busy::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--s2);
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: 1px;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+/* Short colour changes when a state changes */
+button, .tile, .tile strong::before, input.toggle, input.toggle::after, .segmented label, #results label {
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+}
+.tile, .tile strong::before { transition-duration: 0.25s; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
 /* An error is told apart from the red accent not only by its colour: a framed box headed "Error". */
 p.bad {
   padding: var(--s2) var(--s3);
@@ -294,6 +318,7 @@ p.bad::before {
 #card-status:not(.bad) { display: inline-flex; align-items: center; gap: var(--s2); }
 #card-status:not(.bad)::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--idle); }
 #card-status.good::before { background: var(--good); }
+#card-status.busy::before { margin: 0; background: var(--accent); }
 /* The state as four tiles: a word for the state, a dot of its colour, the detail below. A fixed height, so the
    page does not move when the words change. */
 .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s2); margin-top: var(--s4); }
@@ -2078,7 +2103,7 @@ function startPage() {
     ui.pairCancel.classList.toggle("hidden", !pairing);
     ui.unpair.classList.toggle("hidden", !paired || pairing);
     if (!paired || pairing) ui.unpairConfirm.classList.add("hidden");
-    const [text, kind] = pairing ? [pairingText(lastState), ""] : pairMessage || ["", ""];
+    const [text, kind] = pairing ? [pairingText(lastState), "busy"] : pairMessage || ["", ""];
     setStatus(ui.pairProgress, text, kind);
     refreshButtons();
   };
@@ -2260,7 +2285,7 @@ function startPage() {
     refreshButtons();
     const opened = new Card(port);
     try {
-      setStatus(ui.cardStatus, "Connecting...");
+      setStatus(ui.cardStatus, "Connecting...", "busy");
       await opened.open();
     } catch (error) {
       disconnected("Could not open the card. Close other programs that use it (a serial monitor) and try again.", "bad");
@@ -2309,7 +2334,7 @@ function startPage() {
     busy = true;
     refreshButtons();
     ui.saveAnswer.classList.remove("hidden");
-    setStatus(ui.saveStatus, `Saving ${name}...`);
+    setStatus(ui.saveStatus, `Saving ${name}...`, "busy");
     ui.saveNote.classList.add("hidden");
     ui.saveLines.textContent = "";
     let lines = [];
@@ -2341,7 +2366,7 @@ function startPage() {
     const on = ui.clock.checked;
     busy = true;
     refreshButtons();
-    setStatus(ui.clockAnswer, "Saving...");
+    setStatus(ui.clockAnswer, "Saving...", "busy");
     const lines = await asked.clock(on).catch(() => []);
     if (card !== asked) return;
     const [text, kind] = clockAnswerText(on, classifyClockAnswer(lines));
@@ -2357,7 +2382,7 @@ function startPage() {
     if (!asked) return;
     busy = true;
     refreshButtons();
-    setStatus(ui.soundAnswer, "Saving...");
+    setStatus(ui.soundAnswer, "Saving...", "busy");
     const lines = await asked.sound(setting).catch(() => []);
     if (card !== asked) return;
     const [text, kind] = soundAnswerText(classifySoundAnswer(lines));
@@ -2390,7 +2415,7 @@ function startPage() {
     if (!asked) return;
     busy = true;
     refreshButtons();
-    setStatus(ui.pairProgress, "Forgetting the camera...");
+    setStatus(ui.pairProgress, "Forgetting the camera...", "busy");
     const answer = classifyUnpairAnswer(await asked.unpair().catch(() => []));
     if (card !== asked) return;
     busy = false;

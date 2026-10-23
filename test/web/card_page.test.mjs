@@ -365,6 +365,23 @@ test("each part of the page is a card with its heading and icon; the favicon is 
   assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,/);
 });
 
+test("motion is short, changes only colours and the toggle's knob, and stops with reduced motion", () => {
+  const style = /<style>([\s\S]*?)<\/style>/.exec(html)[1];
+  const durations = [...style.matchAll(/(\d*\.?\d+)s\b/g)].map((match) => Number(match[1]));
+  assert.ok(durations.length > 0);
+  for (const duration of durations) assert.ok(duration <= 0.25 || duration === 1.2, `${duration} s`); // 1.2: the pulse
+  for (const [, list] of style.matchAll(/transition: ([^;]+);/g)) {
+    if (list.startsWith("none")) continue; // the reduced-motion rule
+    for (const property of list.split(",").map((part) => part.trim().split(" ")[0])) {
+      assert.ok(["background-color", "border-color", "color", "transform"].includes(property), property);
+    }
+  }
+  const pulse = /@keyframes pulse \{([\s\S]*?)\n\}/.exec(style)[1];
+  assert.deepEqual([...new Set([...pulse.matchAll(/([a-z-]+):/g)].map((match) => match[1]))], ["opacity"]);
+  const reduced = /@media \(prefers-reduced-motion: reduce\) \{([^}]*)\}/.exec(style)[1];
+  assert.match(reduced, /\*, \*::before, \*::after \{ animation: none !important; transition: none !important;/);
+});
+
 test("hidden parts stay hidden whatever display their own rule gives", () => {
   assert.match(html, /^\.hidden \{ display: none !important; \}/m);
 });
@@ -798,6 +815,7 @@ test("pairing from the page: the stages, the result, then forgetting the camera"
   await ui.pair.fire("click");
   assert.deepEqual(port.written.slice(-2), ["pair\n", "status\n"]);
   assert.equal(ui["pair-progress"].textContent, "Waiting for GPS time, up to 2 minutes (3 satellites so far)...");
+  assert.equal(ui["pair-progress"].className, "busy"); // under way: a pulsing dot
   assert.equal(ui.pair.disabled, true);
   assert.equal(ui["pair-cancel"].hidden, false);
   assert.equal(ui["state-camera"].textContent, "Pairing");
