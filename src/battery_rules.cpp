@@ -2,6 +2,30 @@
 
 namespace battery_rules {
 
+namespace {
+
+// Meshtastic's OCV_ARRAY for the T1000-E: the resting voltage at 100, 90, ... 0 %.
+constexpr uint16_t DISCHARGE_CURVE_MV[] = {4190, 4042, 3957, 3885, 3820, 3776, 3746, 3725, 3696, 3644, 3100};
+constexpr uint32_t CURVE_STEPS = sizeof(DISCHARGE_CURVE_MV) / sizeof(DISCHARGE_CURVE_MV[0]) - 1;
+constexpr uint32_t PERCENT_PER_STEP = 100 / CURVE_STEPS;
+static_assert(PERCENT_PER_STEP * CURVE_STEPS == 100, "a point every 10 %");
+
+} // namespace
+
+uint8_t percentFromMillivolts(uint32_t millivolts)
+{
+    for (uint32_t i = 0; i <= CURVE_STEPS; i++) {
+        if (millivolts < DISCHARGE_CURVE_MV[i])
+            continue;
+        if (i == 0)
+            return 100;
+        const uint32_t above = millivolts - DISCHARGE_CURVE_MV[i];
+        const uint32_t span = DISCHARGE_CURVE_MV[i - 1] - DISCHARGE_CURVE_MV[i];
+        return (uint8_t)(PERCENT_PER_STEP * (CURVE_STEPS - i) + PERCENT_PER_STEP * above / span);
+    }
+    return 0;
+}
+
 bool powerOffForLowBattery(uint32_t millivolts, bool usb, bool atStart, uint8_t *lowReadings)
 {
     if (usb || millivolts >= LOW_MV) {

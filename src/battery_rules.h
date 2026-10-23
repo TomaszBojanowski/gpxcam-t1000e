@@ -1,5 +1,5 @@
 // Battery rules of M6, without hardware dependencies (tested on the PC): when to power off
-// to protect the battery, and the 8-byte entry of the battery log.
+// to protect the battery, the state of charge, and the 8-byte entry of the battery log.
 #pragma once
 
 #include <stddef.h>
@@ -19,6 +19,13 @@ constexpr uint8_t LOW_READINGS_TO_POWER_OFF = 2;
 // otherwise after LOW_READINGS_TO_POWER_OFF in a row. Never with USB connected: then the
 // card starts normally and the charger charges the battery.
 bool powerOffForLowBattery(uint32_t millivolts, bool usb, bool atStart, uint8_t *lowReadings);
+
+// State of charge, 0..100 %, estimated from the battery voltage as Meshtastic does for the
+// T1000-E: its discharge curve (OCV_ARRAY in variants/nrf52840/tracker-t1000-e/variant.h, a
+// voltage for every 10 %) with a straight line between the points, cut to a whole percent
+// (getBatteryPercent() in src/Power.cpp, both at 6d41e279f1f5). Rough: under load and while
+// charging the voltage differs from the resting voltage the curve is for.
+uint8_t percentFromMillivolts(uint32_t millivolts);
 
 // Battery log entry, little-endian: uptime in minutes (u32), battery voltage in mV (u16),
 // what the link was doing (link_control::Activity), flags.
