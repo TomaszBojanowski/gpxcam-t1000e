@@ -22,8 +22,8 @@ constexpr uint32_t SEARCH_MS = 60000;
 constexpr int MAX_ATTEMPTS = 3;
 constexpr uint32_t PAUSE_MS[MAX_ATTEMPTS - 1] = {10000, 30000}; // after attempts 1 and 2
 
-
-enum class Phase { Idle, WaitingForFix, Searching, Introducing, Pausing };
+using pairing::Phase;
+using pairing::Result;
 
 Phase phase = Phase::Idle;
 uint32_t phaseStart = 0;
@@ -33,6 +33,7 @@ bool scanWasOn = false;
 bool otherStateLogged = false; // "not in pairing mode" said once per session
 bool linkWasOn = false;        // the link is paused during a session
 bool paired = false;           // this session paired a camera
+Result lastResult = Result::None;
 uint8_t cameraSerial[lumix::SERIAL_LENGTH];
 
 void enter(Phase next)
@@ -64,8 +65,9 @@ void finish(bool resumeLink = true)
         gps::off(); // about 2 s: Backup mode for the next hot start
 }
 
-void giveUp(const char *reason)
+void giveUp(Result result, const char *reason)
 {
+    lastResult = result;
     logger::line("pair: given up - %s", reason);
     sound::playRefuse();
     finish();
@@ -79,9 +81,11 @@ void succeed()
         logger::line("pair: paired with camera %s", serial);
         sound::playPaired();
         paired = true;
+        lastResult = Result::Paired;
     } else {
         logger::line("pair: camera %s accepted the card, but the pairing file could not be written", serial);
         sound::playRefuse();
+        lastResult = Result::NotSaved;
     }
     finish();
 }
@@ -90,7 +94,7 @@ void attemptFailed(const char *reason)
 {
     logger::line("pair: attempt %d/%d failed - %s", attempt, MAX_ATTEMPTS, reason);
     if (attempt >= MAX_ATTEMPTS) {
-        giveUp("all attempts failed");
+        giveUp(Result::Failed, "all attempts failed");
         return;
     }
     logger::line("pair: next attempt in %lu s", (unsigned long)(PAUSE_MS[attempt - 1] / 1000));
@@ -130,7 +134,7 @@ void waitForFix(uint32_t now)
     } else if (now - phaseStart >= FIX_WAIT_MS) {
         logger::line("pair: no GPS fix in %lu s - pairing needs UTC time from the GPS; try near a window",
                      (unsigned long)(FIX_WAIT_MS / 1000));
-        giveUp("no GPS fix");
+        giveUp(Result::NoGpsFix, "no GPS fix");
     }
 }
 
@@ -159,7 +163,7 @@ void search(uint32_t now)
             logNotInPairingMode(*camera);
     }
     if (now - phaseStart >= SEARCH_MS)
-        giveUp("no camera in pairing mode in time");
+        giveUp(otherStateLogged ? Result::NotInPairingMode : Result::NoCamera, "no camera in pairing mode in time");
 }
 
 void introducing()
@@ -207,6 +211,7 @@ void start()
     if (!bluetooth::ready() || !pairing_store::ready()) {
         logger::line("pair: not possible - BLE or the pairing file is not available");
         sound::playRefuse();
+        lastResult = Result::NotPossible;
         return;
     }
     linkWasOn = link_control::active();
@@ -217,6 +222,7 @@ void start()
     attempt = 0;
     otherStateLogged = false;
     paired = false;
+    lastResult = Result::None;
     sound::playPairing();
     if (!gpsWasOn)
         gps::on();
@@ -229,12 +235,18 @@ void stop(bool resumeLink)
     if (phase == Phase::Idle)
         return;
     logger::line("pair: cancelled");
+    lastResult = Result::Cancelled;
     finish(resumeLink);
 }
 
 bool active()
 {
     return phase != Phase::Idle;
+}
+
+Progress progress()
+{
+    return {phase, phase == Phase::Idle ? 0 : attempt, lastResult};
 }
 
 void logState()
