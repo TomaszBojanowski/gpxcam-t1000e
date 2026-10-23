@@ -206,6 +206,18 @@ void writeTime()
     startWrite(camera_link::TIME, lumix::TIME_LENGTH, Step::Time);
 }
 
+// With the clock off ('clock off', tz_store) a connection that stays open writes no time: the
+// camera keeps its own clock and time zone and still takes the card and its locations (tested
+// on the S5II, docs/PROTOCOL.md). Pairing always writes the time.
+void introduceWithoutTime()
+{
+    logger::transient("camera: clock off - no time written");
+    accepted = true;
+    if (!usingKept)
+        keepHandles();
+    step = Step::Done; // the link goes on with the open connection
+}
+
 // The second time write only makes the zone of the first count (onTimeAccepted()): when it
 // cannot be sent or is refused, the link goes on and the zone counts from the next connection.
 void endTimeAgain(const char *what)
@@ -430,7 +442,7 @@ void handleEvent(const camera_link::Event &event)
         break;
     case Step::DeviceName:
         if (event.type == EventType::WriteDone)
-            onWritten(event, writeTime);
+            onWritten(event, keepOpen && !tz_store::clockOn() ? introduceWithoutTime : writeTime);
         break;
     case Step::Time:
         if (event.type == EventType::WriteDone)

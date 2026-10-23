@@ -18,18 +18,26 @@ void begin(bool fileSystemMounted);
 // The rule of the zone in effect, valid after begin().
 const posix_tz::Rule &rule();
 
+// Whether the card sets the camera's clock and time zone when it connects ('clock'): on
+// unless set off. Valid after begin().
+bool clockOn();
+
 enum class SetResult {
     Saved,     // written and in effect
-    Unchanged, // the same zone is already saved
+    Unchanged, // the same setting is already saved
     Unknown,   // neither a name from the tz table nor a usable POSIX TZ rule
-    NotSaved,  // writing failed; the zone in effect stays as it was
+    NotSaved,  // writing failed; what is in effect stays as it was
 };
 
-// Sets the zone from a name from the tz table (any case) or a POSIX TZ rule, and saves it.
+// Sets the zone from a name from the tz table (any case) or a POSIX TZ rule, and saves it;
+// the clock setting stays.
 SetResult set(const char *text);
 
-// Logs the zone and its rule and, with GPS time, the offset now and what the camera gets;
-// for 'p' and 'tz'.
+// Sets whether the card sets the camera's clock, and saves it with the zone (never Unknown).
+SetResult setClock(bool on);
+
+// Logs the zone and its rule and, with GPS time, the offset now and what the camera gets, or
+// that the clock is off; for 'p' and 'tz'.
 void logState();
 
 } // namespace tz_store

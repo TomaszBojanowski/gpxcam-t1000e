@@ -131,6 +131,8 @@ void logHelp()
     logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera),");
     logger::transient("          tz = time zone of the camera's clock: tz NAME (e.g. tz America/New_York),");
     logger::transient("          tz POSIX-RULE (e.g. tz <+0545>-5:45), tz alone shows it");
+    logger::transient("          clock on / clock off = the card sets the camera's clock or not (on: as up to 1.2),");
+    logger::transient("          clock alone shows it");
     logger::transient("          bat log on / bat log off = battery log in flash every 10 min on the battery,");
     logger::transient("          bat log = show it, bat log clear = delete it");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
@@ -196,6 +198,8 @@ void setTimeZone(const char *argument)
         switch (tz_store::set(argument)) {
         case tz_store::SetResult::Saved:
             logger::line("tz: saved - the camera gets it at the next connection");
+            if (!tz_store::clockOn())
+                logger::transient("tz: the clock is off - the card sends the zone only after 'clock on'");
             break;
         case tz_store::SetResult::Unchanged:
             logger::line("tz: already set");
@@ -210,6 +214,32 @@ void setTimeZone(const char *argument)
         }
     }
     tz_store::logState();
+}
+
+void logClock()
+{
+    if (tz_store::clockOn())
+        logger::transient("clock: on - the card sets the camera's clock and time zone ('tz') when it connects");
+    else
+        logger::transient("clock: off - the card leaves the camera's clock alone; set it in the camera's menu");
+}
+
+// Whether the card sets the camera's clock; it counts from the next connection.
+void setClock(bool on)
+{
+    switch (tz_store::setClock(on)) {
+    case tz_store::SetResult::Saved:
+        logger::line("clock: %s saved - from the next connection", on ? "on" : "off");
+        break;
+    case tz_store::SetResult::Unchanged:
+        logger::line("clock: already %s", on ? "on" : "off");
+        break;
+    case tz_store::SetResult::Unknown: // not returned by setClock()
+    case tz_store::SetResult::NotSaved:
+        logger::line("clock: could not write the time zone file");
+        return;
+    }
+    logClock();
 }
 
 void toLowerCase(char *text)
@@ -279,6 +309,12 @@ void runCommand(char *cmd)
             logger::line("pair: not running");
     } else if (strcmp(cmd, "unpair") == 0) {
         forgetCamera();
+    } else if (strcmp(cmd, "clock") == 0) {
+        logClock();
+    } else if (strcmp(cmd, "clock on") == 0) {
+        setClock(true);
+    } else if (strcmp(cmd, "clock off") == 0) {
+        setClock(false);
     } else if (strcmp(cmd, "bat log on") == 0) {
         battery_log::start();
     } else if (strcmp(cmd, "bat log off") == 0) {

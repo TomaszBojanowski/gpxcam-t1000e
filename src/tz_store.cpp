@@ -47,9 +47,9 @@ bool readFile(tz_record::Record *record, tz_record::Status *status)
     return true;
 }
 
-bool sameZone(const tz_record::Record &a, const tz_record::Record &b)
+bool sameRecord(const tz_record::Record &a, const tz_record::Record &b)
 {
-    return strcmp(a.name, b.name) == 0 && strcmp(a.rule, b.rule) == 0;
+    return strcmp(a.name, b.name) == 0 && strcmp(a.rule, b.rule) == 0 && a.clockOff == b.clockOff;
 }
 
 bool writeFile(const tz_record::Record &record)
@@ -69,7 +69,7 @@ bool writeFile(const tz_record::Record &record)
         return false;
     tz_record::Record check;
     tz_record::Status status;
-    return readFile(&check, &status) && status == tz_record::Status::Ok && sameZone(check, record);
+    return readFile(&check, &status) && status == tz_record::Status::Ok && sameRecord(check, record);
 }
 
 } // namespace
@@ -114,12 +114,31 @@ SetResult set(const char *text)
     posix_tz::Rule parsed;
     if (!tz_record::fromInput(text, &wanted) || !posix_tz::parse(wanted.rule, &parsed))
         return SetResult::Unknown;
-    if (savedInFile && sameZone(wanted, current))
+    wanted.clockOff = current.clockOff;
+    if (savedInFile && sameRecord(wanted, current))
         return SetResult::Unchanged;
     if (!fileSystemReady || !writeFile(wanted))
         return SetResult::NotSaved;
     current = wanted;
     currentRule = parsed;
+    savedInFile = true;
+    return SetResult::Saved;
+}
+
+bool clockOn()
+{
+    return !current.clockOff;
+}
+
+SetResult setClock(bool on)
+{
+    tz_record::Record wanted = current;
+    wanted.clockOff = !on;
+    if (savedInFile && sameRecord(wanted, current))
+        return SetResult::Unchanged;
+    if (!fileSystemReady || !writeFile(wanted))
+        return SetResult::NotSaved;
+    current = wanted;
     savedInFile = true;
     return SetResult::Saved;
 }
@@ -131,6 +150,10 @@ void logState()
                           current.rule, tz_table::tzdataVersion());
     else
         logger::transient("tz: rule %s, given directly", current.rule);
+    if (current.clockOff) {
+        logger::transient("tz: clock off - the card does not set the camera's clock or time zone");
+        return;
+    }
     int64_t now = 0;
     if (!gps::utcNow(&now))
         return;
