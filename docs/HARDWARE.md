@@ -363,10 +363,10 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
 ## Sound setting (1.3.0)
 
 - **Volume** is the PWM duty on the buzzer (P0.25, PWM3; Meshtastic's `tone()` always uses 50 %, shorter pulses
-  are quieter), `src/sound_rules.h`: **loud** 10 % (as up to 1.2, chosen by ear in M1), **quiet** 5 % (chosen by
-  ear on 2026-10-23 against 10, 2 and 1 %), **off**: only the answers to a held button at 5 % – the start and
-  power-off melodies, pairing started, and two clicks when switching off or pairing is refused – the rest is
-  silent. `diag snd N` ignores the setting.
+  are quieter), `src/sound_rules.h`: **loud** 10 % (as up to 1.2, chosen by ear in M1), **quiet** 2 % (chosen by
+  ear on 2026-10-23 against 10 and 1 %; 5 % sounded hardly quieter than 10 %), **off**: only the answers to a held
+  button at 2 % – the start and power-off melodies, pairing started, and two clicks when switching off or pairing
+  is refused – the rest is silent. `diag snd N` ignores the setting.
 - **Console:** `sound` shows it, `sound loud|quiet|off` saves it and plays two short rising beeps at the new volume
   (nothing with off). `p` and the start log show it, `status` gives `sound=`. The card reads the setting before the
   start melody, a few ms after `bluetooth::begin()`.

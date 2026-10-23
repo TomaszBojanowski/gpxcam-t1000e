@@ -14,14 +14,14 @@ void test_loud_and_quiet_play_everything()
 {
     TEST_ASSERT_EQUAL_UINT8(10, sound_rules::dutyPercent(Setting::Loud, Kind::Event));
     TEST_ASSERT_EQUAL_UINT8(10, sound_rules::dutyPercent(Setting::Loud, Kind::HoldAnswer));
-    TEST_ASSERT_EQUAL_UINT8(5, sound_rules::dutyPercent(Setting::Quiet, Kind::Event));
-    TEST_ASSERT_EQUAL_UINT8(5, sound_rules::dutyPercent(Setting::Quiet, Kind::HoldAnswer));
+    TEST_ASSERT_EQUAL_UINT8(2, sound_rules::dutyPercent(Setting::Quiet, Kind::Event));
+    TEST_ASSERT_EQUAL_UINT8(2, sound_rules::dutyPercent(Setting::Quiet, Kind::HoldAnswer));
 }
 
 void test_off_keeps_only_the_answers_to_a_held_button_quietly()
 {
     TEST_ASSERT_EQUAL_UINT8(0, sound_rules::dutyPercent(Setting::Off, Kind::Event));
-    TEST_ASSERT_EQUAL_UINT8(5, sound_rules::dutyPercent(Setting::Off, Kind::HoldAnswer));
+    TEST_ASSERT_EQUAL_UINT8(2, sound_rules::dutyPercent(Setting::Off, Kind::HoldAnswer));
 }
 
 void test_names()

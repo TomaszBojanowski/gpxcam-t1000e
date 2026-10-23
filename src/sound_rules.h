@@ -16,9 +16,10 @@ enum class Kind : uint8_t {
 
 // Volume = PWM duty, the share of each period the buzzer is driven (sound.cpp). Meshtastic's
 // tone() always uses 50 %; shorter pulses are quieter. Both chosen by ear on the card with
-// 'diag snd N': 10 % in M1, 5 % on 2026-10-23 (heard against 10, 2 and 1 %).
+// 'diag snd N': 10 % in M1, 2 % on 2026-10-23 (heard against 10 and 1 %; 5 % sounded hardly
+// quieter than 10 %).
 constexpr uint8_t LOUD_DUTY_PERCENT = 10;
-constexpr uint8_t QUIET_DUTY_PERCENT = 5;
+constexpr uint8_t QUIET_DUTY_PERCENT = 2;
 
 // The duty to play a sound with; 0 = silent. Off keeps the answers to a held button, quietly:
 // without them it is not clear when to let go.
