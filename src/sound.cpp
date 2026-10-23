@@ -5,6 +5,9 @@
 
 namespace {
 
+using sound_rules::Kind;
+using sound_rules::Setting;
+
 struct Note {
     uint16_t hz; // PAUSE for silence
     uint16_t ms;
@@ -40,10 +43,7 @@ constexpr Note CONNECTED_NOTES[] = {{NOTE_CS4, 60}, {NOTE_FS4, 60}};    // M5
 constexpr Note DISCONNECTED_NOTES[] = {{NOTE_FS4, 60}, {NOTE_CS4, 60}}; // M5
 constexpr Note TEST_PAUSE_NOTES[] = {{PAUSE, 700}};
 
-// Volume = PWM duty, the share of each period the buzzer is driven. Meshtastic's
-// tone() always uses 50 %; shorter pulses are quieter. 10 % for all sounds was
-// chosen by ear on the card in M1 ('diag snd N').
-constexpr uint8_t DUTY_PERCENT = 10;
+// Volume = PWM duty (sound_rules.h).
 constexpr uint8_t MAX_DUTY_PERCENT = 50; // never drive the coil for more than half a period
 
 // PWM3: tone() uses PWM2 (core Tone.cpp) and analogWrite() takes the first free module.
@@ -56,6 +56,7 @@ constexpr uint32_t PWM_CLOCK_HZ = 16000000 / 16;
 constexpr size_t QUEUE_MAX = 13; // the longest sequence is the volume test
 
 bool available = false;
+Setting currentSetting = Setting::Loud;
 bool isPlaying = false;
 bool inGap = false;
 Melody queue[QUEUE_MAX];
@@ -99,9 +100,10 @@ void finish()
     isPlaying = false;
 }
 
+// duty 0: the setting keeps this sound silent.
 void play(const Melody *melodies, size_t count, uint8_t duty)
 {
-    if (!available)
+    if (!available || duty == 0)
         return;
     if (isPlaying)
         finish(); // a new sound replaces the current one
@@ -130,6 +132,12 @@ bool advance()
     return queuePosition < queueLength;
 }
 
+// Plays one melody as loud as the setting gives for its kind.
+void play(const Melody &tune, Kind kind)
+{
+    play(&tune, 1, sound_rules::dutyPercent(currentSetting, kind));
+}
+
 } // namespace
 
 namespace sound {
@@ -142,52 +150,49 @@ bool begin()
     return available;
 }
 
+void setSetting(Setting setting)
+{
+    currentSetting = setting;
+}
+
 void playStart()
 {
-    const Melody sequence[] = {melody(START_NOTES)};
-    play(sequence, 1, DUTY_PERCENT);
+    play(melody(START_NOTES), Kind::HoldAnswer);
 }
 
 void playShutdown()
 {
-    const Melody sequence[] = {melody(SHUTDOWN_NOTES)};
-    play(sequence, 1, DUTY_PERCENT);
+    play(melody(SHUTDOWN_NOTES), Kind::HoldAnswer);
 }
 
 void playClick()
 {
-    const Melody sequence[] = {melody(CLICK_NOTES)};
-    play(sequence, 1, DUTY_PERCENT);
+    play(melody(CLICK_NOTES), Kind::Event);
 }
 
-void playRefuse()
+void playRefuse(Kind kind)
 {
-    const Melody sequence[] = {melody(REFUSE_NOTES)};
-    play(sequence, 1, DUTY_PERCENT);
+    play(melody(REFUSE_NOTES), kind);
 }
 
 void playPairing()
 {
-    const Melody sequence[] = {melody(PAIRING_NOTES)};
-    play(sequence, 1, DUTY_PERCENT);
+    play(melody(PAIRING_NOTES), Kind::HoldAnswer);
 }
 
 void playPaired()
 {
-    const Melody sequence[] = {melody(PAIRED_NOTES)};
-    play(sequence, 1, DUTY_PERCENT);
+    play(melody(PAIRED_NOTES), Kind::Event);
 }
 
 void playConnected()
 {
-    const Melody sequence[] = {melody(CONNECTED_NOTES)};
-    play(sequence, 1, DUTY_PERCENT);
+    play(melody(CONNECTED_NOTES), Kind::Event);
 }
 
 void playDisconnected()
 {
-    const Melody sequence[] = {melody(DISCONNECTED_NOTES)};
-    play(sequence, 1, DUTY_PERCENT);
+    play(melody(DISCONNECTED_NOTES), Kind::Event);
 }
 
 bool playTest(uint8_t duty)

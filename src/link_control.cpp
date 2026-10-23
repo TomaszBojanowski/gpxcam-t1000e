@@ -257,7 +257,7 @@ void rejectedByCamera()
     logger::line("link: camera %s refused the card (it does not know it) - not connecting again; "
                  "'pair' again or 'link on'",
                  serialText);
-    sound::playRefuse();
+    sound::playRefuse(sound::Kind::Event);
     bluetooth::scanOff();
     gps::off(); // nothing to send to
     enter(Phase::Rejected);

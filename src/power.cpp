@@ -224,7 +224,7 @@ void checkBattery(uint32_t millivolts, bool usb, bool atStart)
     logger::line("power: battery %lu mV, below %lu mV - powering off to protect it", (unsigned long)millivolts,
                  (unsigned long)battery_rules::LOW_MV);
     battery_log::addPowerOffEntry(millivolts);
-    sound::playRefuse();
+    sound::playRefuse(sound::Kind::Event);
     waitForSoundEnd();
     enterSystemOff(); // refuses with USB, then the card simply goes on
 }
@@ -274,7 +274,7 @@ void powerOff()
 {
     countdown = false;
     if (refuseWithUsb()) {
-        sound::playRefuse();
+        sound::playRefuse(sound::Kind::HoldAnswer);
         return;
     }
     sound::playShutdown();
@@ -282,13 +282,13 @@ void powerOff()
         sound::stop();
         logger::line("power: off cancelled: button still pressed after %lu s",
                      (unsigned long)(RELEASE_TIMEOUT_MS / 1000));
-        sound::playRefuse();
+        sound::playRefuse(sound::Kind::HoldAnswer);
         return;
     }
     waitForSoundEnd();
     board::led(false);
     enterSystemOff();
-    sound::playRefuse(); // reached only when enterSystemOff() refused
+    sound::playRefuse(sound::Kind::HoldAnswer); // reached only when enterSystemOff() refused
 }
 
 } // namespace power

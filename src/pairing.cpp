@@ -69,7 +69,7 @@ void giveUp(Result result, const char *reason)
 {
     lastResult = result;
     logger::line("pair: given up - %s", reason);
-    sound::playRefuse();
+    sound::playRefuse(sound::Kind::Event);
     finish();
 }
 
@@ -84,7 +84,7 @@ void succeed()
         lastResult = Result::Paired;
     } else {
         logger::line("pair: camera %s accepted the card, but the pairing file could not be written", serial);
-        sound::playRefuse();
+        sound::playRefuse(sound::Kind::Event);
         lastResult = Result::NotSaved;
     }
     finish();
@@ -210,7 +210,7 @@ void start()
     }
     if (!bluetooth::ready() || !pairing_store::ready()) {
         logger::line("pair: not possible - BLE or the pairing file is not available");
-        sound::playRefuse();
+        sound::playRefuse(sound::Kind::HoldAnswer);
         lastResult = Result::NotPossible;
         return;
     }
