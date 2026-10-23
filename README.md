@@ -201,6 +201,8 @@ Whether Meshtastic keeps its old settings has not been checked – be ready to s
 1. Put the card where the GPS can get a fix (outdoors or near a window): the camera needs the
    time from the GPS.
 2. On the camera start pairing in its Bluetooth menu (the screen that waits for a new device).
+   If the camera lists "T1000-E" from an earlier pairing, delete it there first: the camera does not
+   pair a card it already knows.
 3. On the card: a short click, and within 0.5 s press again and hold for 3 s – two short high
    beeps. Or click **Pair** on [the card page](#the-card-page): it shows each stage and, if
    pairing fails, why.
@@ -275,7 +277,7 @@ pio device monitor
 | `off` | power off after a 15 s countdown (refused with USB; a short press cancels) |
 | `dfu` | restart into the UF2 bootloader for flashing |
 | `pair` / `pair off` | start / cancel pairing (as click + hold) |
-| `unpair` | forget the paired camera (the card id stays) |
+| `unpair` | forget the paired camera (the card id stays: to pair with that camera again, delete "T1000-E" in its Bluetooth menu too) |
 | `tz` / `tz NAME` / `tz RULE` | show / set the time zone, see [Set the time zone](#set-the-time-zone) |
 | `clock` / `clock on` / `clock off` | show / set whether the card sets the camera's clock, see [Leave the camera's clock alone](#leave-the-cameras-clock-alone-130) |
 | `sound` / `sound loud` / `sound quiet` / `sound off` | show / set how loud the card is, see [Sounds and LED](#sounds-and-led); a new Loud or Quiet plays two short beeps |

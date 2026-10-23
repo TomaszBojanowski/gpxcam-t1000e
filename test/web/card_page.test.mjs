@@ -642,6 +642,7 @@ test("the pairing stages and results are explained", () => {
   assert.match(page.pairResultText("no_gps_fix")[0], /^No GPS time within 2 minutes\. Put the card outdoors/);
   assert.match(page.pairResultText("not_in_pairing_mode")[0], /^The card saw a LUMIX camera, but not in pairing mode/);
   assert.equal(page.pairResultText("failed")[1], "bad");
+  assert.match(page.pairResultText("failed")[0], /If the camera lists T1000-E from an earlier pairing, delete it/);
   assert.deepEqual(json(page.pairResultText("cancelled")), ["Pairing cancelled.", ""]);
   assert.equal(page.classifyUnpairAnswer(["link: off", "pair: camera forgotten (the card id stays)"]), "forgotten");
   assert.equal(page.classifyUnpairAnswer(["pair: no camera paired"]), "not-paired");
@@ -683,7 +684,8 @@ test("pairing from the page: the stages, the result, then forgetting the camera"
   assert.equal(ui["pair-cancel"].hidden, true);
   assert.equal(ui.pair.textContent, "Pair again");
   assert.equal(ui.pair.className, "secondary");
-  assert.equal(ui["camera-note"].textContent, "The card is paired with a camera. Pairing again replaces it.");
+  assert.equal(ui["camera-note"].textContent, "The card is paired with a camera. Pairing again replaces it " +
+    "(with the same camera: delete T1000-E in the camera's Bluetooth menu first).");
   await ui.refresh.fire("click");
   assert.equal(ui["pair-progress"].className, "good"); // the result stays
 

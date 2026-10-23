@@ -113,6 +113,12 @@ Strictly in this order, each step only after the answer to the previous one:
 Pairing is the same sequence, run while the camera is in state `03`; the camera then shows "Pairing
 completed". Without pairing an unknown identifier is refused at the time write.
 
+**A card the camera still lists is not paired again** (S5II, 2026-10-23): after the card forgot the camera
+(`unpair`) while the camera kept "T1000-E" in its list, the camera in state `03` took the key, the identifier, the
+app name and the device name, then closed the connection at the time write (`HCI 0x13`) in each of 3 attempts.
+After "T1000-E" was deleted in the camera's Bluetooth menu, the next pairing worked at the first attempt (the card
+id was the same).
+
 **Without the time write** (1.3.0, `clock off`; tested on the S5II on 2026-10-23): the camera takes the connection
 just the same. It accepted the GPS mode and the locations, showed its GPS icon, and the photo had the time zone set
 by hand in the camera's menu (−04:00) with the right GPS time and position. Since the time write is where the
