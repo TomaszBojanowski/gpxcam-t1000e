@@ -1,10 +1,13 @@
-// The time zone chosen with the 'tz' command, kept as one 124-byte record in the file system
-// (tz_store). No hardware dependencies (tested on the PC).
+// The time zone chosen with the 'tz' command and whether the card sets the camera's clock at
+// all ('clock'), kept as one 124-byte record in the file system (tz_store). No hardware
+// dependencies (tested on the PC).
 //
 // Record, multi-byte values little-endian:
 //   0..3     magic "GXTZ"
 //   4        format version, 1
-//   5..7     0, reserved
+//   5        clock: 0 = the card sets the camera's clock (as up to 1.2, whose files have 0
+//            here), 1 = it does not ('clock off')
+//   6..7     0, reserved
 //   8..55    zone name from the tz table, NUL-terminated, zero-padded; empty for a rule
 //            given directly
 //   56..119  POSIX TZ rule (posix_tz.h), NUL-terminated, zero-padded
@@ -28,18 +31,19 @@ constexpr const char *DEFAULT_NAME = "Europe/Warsaw";
 struct Record {
     char name[NAME_SIZE];
     char rule[RULE_SIZE];
+    bool clockOff; // the card does not set the camera's clock; false in a record made by {}
 };
 
-enum class Status { Ok, WrongSize, WrongMagic, WrongVersion, BadChecksum, BadText };
+enum class Status { Ok, WrongSize, WrongMagic, WrongVersion, BadChecksum, BadText, BadClockFlag };
 
 // What the user typed: a name from the tz table (any case; kept as the table spells it) or a
-// POSIX TZ rule. False, with *record unchanged, if it is neither or too long.
+// POSIX TZ rule, with the clock on. False, with *record unchanged, if it is neither or too long.
 bool fromInput(const char *text, Record *record);
 
 Record defaultRecord();
 
 // A newer firmware may bring a newer tz database: a record with a name from the table takes
-// the table's current rule. True if the rule changed.
+// the table's current rule; the clock setting stays. True if the rule changed.
 bool updateFromTable(Record *record);
 
 void encode(const Record &record, uint8_t out[SIZE]);

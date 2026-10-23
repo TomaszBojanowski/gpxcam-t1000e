@@ -18,6 +18,7 @@ using tz_record::Status;
 namespace {
 
 constexpr const char *WARSAW_RULE = "CET-1CEST,M3.5.0,M10.5.0/3";
+constexpr size_t CLOCK_OFFSET = 5;
 constexpr size_t NAME_OFFSET = 8;
 constexpr size_t RULE_OFFSET = 56;
 constexpr size_t CRC_OFFSET = 120;
@@ -108,6 +109,30 @@ void test_encode_layout()
     TEST_ASSERT_EQUAL_HEX32(0xac3c954d, storedCrc(data));
 }
 
+// Byte 5 says whether the card sets the camera's clock; 0, as in every file of 1.2, means it does.
+void test_clock_flag()
+{
+    Record record = fromInput("Europe/Warsaw");
+    TEST_ASSERT_FALSE(record.clockOff); // a new record keeps setting the clock
+    uint8_t data[tz_record::SIZE];
+    tz_record::encode(record, data);
+    TEST_ASSERT_EQUAL_UINT8(0, data[CLOCK_OFFSET]);
+    TEST_ASSERT_EQUAL_HEX32(0x37712f20, storedCrc(data)); // the same bytes as a file of 1.2
+
+    record.clockOff = true;
+    tz_record::encode(record, data);
+    TEST_ASSERT_EQUAL_UINT8(1, data[CLOCK_OFFSET]);
+    TEST_ASSERT_EQUAL_HEX32(0x7466c161, storedCrc(data));
+    Record decoded = {};
+    TEST_ASSERT_TRUE(tz_record::decode(data, sizeof(data), &decoded) == Status::Ok);
+    TEST_ASSERT_TRUE(decoded.clockOff);
+    assertRecord("Europe/Warsaw", WARSAW_RULE, decoded);
+
+    data[CLOCK_OFFSET] = 2;
+    resign(data);
+    assertDecodeFails(Status::BadClockFlag, data, tz_record::SIZE);
+}
+
 void test_round_trip()
 {
     const char *const inputs[] = {"Europe/Warsaw", "Australia/Lord_Howe", "<+0545>-5:45"};
@@ -166,8 +191,10 @@ void test_update_from_table()
     Record record = {};
     strcpy(record.name, "Europe/Warsaw");
     strcpy(record.rule, "CET-1");
+    record.clockOff = true;
     TEST_ASSERT_TRUE(tz_record::updateFromTable(&record));
     assertRecord("Europe/Warsaw", WARSAW_RULE, record);
+    TEST_ASSERT_TRUE(record.clockOff); // the clock setting stays
     TEST_ASSERT_FALSE(tz_record::updateFromTable(&record)); // already current
 
     Record rule = fromInput("<+0545>-5:45"); // no name: stays
@@ -201,6 +228,7 @@ int main(int, char **)
     RUN_TEST(test_input_refused);
     RUN_TEST(test_default_is_warsaw);
     RUN_TEST(test_encode_layout);
+    RUN_TEST(test_clock_flag);
     RUN_TEST(test_round_trip);
     RUN_TEST(test_decode_refuses);
     RUN_TEST(test_update_from_table);

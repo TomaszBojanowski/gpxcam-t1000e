@@ -14,6 +14,9 @@ constexpr uint8_t MAGIC[] = {'G', 'X', 'T', 'Z'};
 constexpr uint8_t VERSION = 1;
 
 constexpr size_t VERSION_OFFSET = 4;
+constexpr size_t CLOCK_OFFSET = 5;
+constexpr uint8_t CLOCK_ON = 0;
+constexpr uint8_t CLOCK_OFF = 1;
 constexpr size_t NAME_OFFSET = 8;
 constexpr size_t RULE_OFFSET = NAME_OFFSET + NAME_SIZE; // 56
 constexpr size_t CRC_OFFSET = RULE_OFFSET + RULE_SIZE;  // 120
@@ -69,7 +72,11 @@ bool updateFromTable(Record *record)
     const char *rule = nullptr;
     if (record->name[0] == '\0' || !tz_table::find(record->name, &name, &rule) || strcmp(rule, record->rule) == 0)
         return false;
-    return make(name, rule, record);
+    const bool clockOff = record->clockOff;
+    if (!make(name, rule, record))
+        return false;
+    record->clockOff = clockOff;
+    return true;
 }
 
 void encode(const Record &record, uint8_t out[SIZE])
@@ -77,6 +84,7 @@ void encode(const Record &record, uint8_t out[SIZE])
     memset(out, 0, SIZE);
     memcpy(out, MAGIC, sizeof(MAGIC));
     out[VERSION_OFFSET] = VERSION;
+    out[CLOCK_OFFSET] = record.clockOff ? CLOCK_OFF : CLOCK_ON;
     memcpy(&out[NAME_OFFSET], record.name, strnlen(record.name, NAME_SIZE - 1));
     memcpy(&out[RULE_OFFSET], record.rule, strnlen(record.rule, RULE_SIZE - 1));
     putU32(&out[CRC_OFFSET], pairing_record::crc32(out, CRC_OFFSET));
@@ -96,7 +104,14 @@ Status decode(const uint8_t *data, size_t length, Record *record)
     const char *rule = (const char *)&data[RULE_OFFSET];
     if (memchr(name, '\0', NAME_SIZE) == nullptr || memchr(rule, '\0', RULE_SIZE) == nullptr || rule[0] == '\0')
         return Status::BadText;
-    return make(name, rule, record) ? Status::Ok : Status::BadText;
+    if (data[CLOCK_OFFSET] != CLOCK_ON && data[CLOCK_OFFSET] != CLOCK_OFF)
+        return Status::BadClockFlag;
+    Record decoded;
+    if (!make(name, rule, &decoded))
+        return Status::BadText;
+    decoded.clockOff = data[CLOCK_OFFSET] == CLOCK_OFF;
+    *record = decoded;
+    return Status::Ok;
 }
 
 const char *statusText(Status status)
@@ -114,6 +129,8 @@ const char *statusText(Status status)
         return "bad checksum";
     case Status::BadText:
         return "bad text";
+    case Status::BadClockFlag:
+        return "bad clock flag";
     }
     return "?";
 }
