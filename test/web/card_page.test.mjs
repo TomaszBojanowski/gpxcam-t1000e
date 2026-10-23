@@ -431,7 +431,9 @@ test("closing ends reading and closes the port", async () => {
 test("the old address of the time zone page leads here and fetches nothing", () => {
   const old = readFileSync(new URL("../../docs/timezone/index.html", import.meta.url), "utf8");
   assert.match(old, /<meta http-equiv="refresh" content="0; url=\.\.\/">/);
-  assert.match(old, /<meta http-equiv="Content-Security-Policy" content="default-src 'none'">/);
+  // img-src data: for its empty favicon (data:,), which keeps the browser from asking for /favicon.ico
+  assert.match(old, /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:">/);
+  assert.match(old, /<link rel="icon" href="data:,">/);
   assert.match(old, /<a href="\.\.\/">/);
   assert.doesNotMatch(old, /<script|https?:/);
 });
