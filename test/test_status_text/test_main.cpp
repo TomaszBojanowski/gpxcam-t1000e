@@ -36,6 +36,7 @@ State someState()
     state.pairing = {pairing::Phase::Idle, 0, pairing::Result::None};
     state.clockOn = true;
     state.timeZone = "Europe/Warsaw";
+    state.sound = sound_rules::Setting::Loud;
     return state;
 }
 
@@ -52,14 +53,15 @@ void tearDown() {}
 void test_all_lines()
 {
     status_text::format(someState(), collect);
-    TEST_ASSERT_EQUAL_size_t(7, count);
+    TEST_ASSERT_EQUAL_size_t(8, count);
     TEST_ASSERT_EQUAL_STRING("status: format=1 fw=1.3.0 git=1234567", lines[0]);
     TEST_ASSERT_EQUAL_STRING("status: battery_mv=4100 battery_pct=89 charger=charging", lines[1]);
     TEST_ASSERT_EQUAL_STRING("status: gps=on gps_fix=1 gps_sat=11", lines[2]);
     TEST_ASSERT_EQUAL_STRING("status: paired=1 link=connected", lines[3]);
     TEST_ASSERT_EQUAL_STRING("status: pair=idle pair_attempt=0 pair_result=none", lines[4]);
     TEST_ASSERT_EQUAL_STRING("status: clock=on tz=Europe/Warsaw", lines[5]);
-    TEST_ASSERT_EQUAL_STRING("status: end", lines[6]);
+    TEST_ASSERT_EQUAL_STRING("status: sound=loud", lines[6]);
+    TEST_ASSERT_EQUAL_STRING("status: end", lines[7]);
 }
 
 void test_other_values()
@@ -76,12 +78,14 @@ void test_other_values()
     state.pairing = {pairing::Phase::Pausing, 2, pairing::Result::None};
     state.clockOn = false;
     state.timeZone = "<+0545>-5:45"; // a rule given directly
+    state.sound = sound_rules::Setting::Off;
     status_text::format(state, collect);
     TEST_ASSERT_EQUAL_STRING("status: battery_mv=3400 battery_pct=0 charger=no_usb", lines[1]);
     TEST_ASSERT_EQUAL_STRING("status: gps=off gps_fix=0 gps_sat=0", lines[2]);
     TEST_ASSERT_EQUAL_STRING("status: paired=0 link=stopped", lines[3]);
     TEST_ASSERT_EQUAL_STRING("status: pair=pausing pair_attempt=2 pair_result=none", lines[4]);
     TEST_ASSERT_EQUAL_STRING("status: clock=off tz=<+0545>-5:45", lines[5]);
+    TEST_ASSERT_EQUAL_STRING("status: sound=off", lines[6]);
 }
 
 void test_pairing_results()
@@ -103,7 +107,7 @@ void test_longest_lines_fit()
     state.pairing = {pairing::Phase::WaitingForFix, 3, pairing::Result::NotInPairingMode};
     state.timeZone = "<+000000000000000000000000000000000000000000000000000000000000>0"; // 63, the most
     status_text::format(state, collect);
-    TEST_ASSERT_EQUAL_size_t(7, count);
+    TEST_ASSERT_EQUAL_size_t(8, count);
     for (size_t i = 0; i < count; i++)
         TEST_ASSERT_TRUE(strlen(lines[i]) < status_text::LINE_SIZE - 1); // nothing was cut
     TEST_ASSERT_EQUAL_STRING("status: clock=on tz=<+000000000000000000000000000000000000000000000000000000000000>0",

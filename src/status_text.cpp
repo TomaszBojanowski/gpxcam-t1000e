@@ -107,6 +107,8 @@ void format(const State &state, void (*emit)(const char *line))
     emit(line);
     snprintf(line, sizeof(line), "status: clock=%s tz=%s", onOffValue(state.clockOn), state.timeZone);
     emit(line);
+    snprintf(line, sizeof(line), "status: sound=%s", sound_rules::settingName(state.sound));
+    emit(line);
     emit("status: end");
 }
 

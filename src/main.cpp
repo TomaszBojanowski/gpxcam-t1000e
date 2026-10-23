@@ -22,6 +22,7 @@
 #include "pairing.h"
 #include "pairing_store.h"
 #include "power.h"
+#include "settings_store.h"
 #include "sound.h"
 #include "status_text.h"
 #include "tz_record.h"
@@ -141,13 +142,14 @@ void logStatus()
     state.pairing = pairing::progress();
     state.clockOn = tz_store::clockOn();
     state.timeZone = tz_store::zoneText();
+    state.sound = settings_store::sound();
     status_text::format(state, [](const char *line) { logger::transient("%s", line); });
 }
 
 void logHelp()
 {
     logger::transient("commands: v = version and reset reason,");
-    logger::transient("          p = state of GPS, BLE, pairing, time zone, link and battery,");
+    logger::transient("          p = state of GPS, BLE, pairing, time zone, sound, link and battery,");
     logger::transient("          status = the same in short key=value lines, for the card page,");
     logger::transient("          dfu = UF2 bootloader (for flashing),");
     logger::transient("          off = System OFF after a 15 s countdown (refused with USB connected),");
@@ -160,6 +162,8 @@ void logHelp()
     logger::transient("          tz POSIX-RULE (e.g. tz <+0545>-5:45), tz alone shows it");
     logger::transient("          clock on / clock off = the card sets the camera's clock or not (on: as up to 1.2),");
     logger::transient("          clock alone shows it");
+    logger::transient("          sound loud / sound quiet / sound off = how loud the card is (off: it only answers");
+    logger::transient("          a held button, quietly), sound alone shows it");
     logger::transient("          bat log on / bat log off = battery log in flash every 10 min on the battery,");
     logger::transient("          bat log = show it, bat log clear = delete it");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
@@ -269,6 +273,48 @@ void setClock(bool on)
     logClock();
 }
 
+constexpr const char *SOUND_SET_COMMAND = "sound ";
+
+// What 'off' still plays (sound_rules.h): without it the user cannot tell when to let go.
+void logSoundOffNote()
+{
+    logger::transient("sound: off - the card only answers a held button (switching on and off, pairing), quietly");
+}
+
+void logSound()
+{
+    settings_store::logState();
+    if (settings_store::sound() == sound_rules::Setting::Off)
+        logSoundOffNote();
+}
+
+// "sound loud|quiet|off": saved at once and in effect for the next sound; a sample plays at
+// the new volume.
+void setSound(const char *name)
+{
+    sound_rules::Setting setting;
+    if (!sound_rules::settingFromName(name, &setting)) {
+        logger::line("sound: unknown setting '%s' - sound loud, sound quiet or sound off", name);
+        return;
+    }
+    switch (settings_store::setSound(setting)) {
+    case settings_store::SetResult::Saved:
+        logger::line("sound: %s saved", name);
+        break;
+    case settings_store::SetResult::Unchanged:
+        logger::line("sound: already %s", name);
+        break;
+    case settings_store::SetResult::NotSaved:
+        logger::line("sound: could not write the settings file");
+        return;
+    }
+    sound::setSetting(settings_store::sound());
+    if (setting == sound_rules::Setting::Off)
+        logSoundOffNote();
+    else
+        sound::playConnected(); // the sample: two short beeps
+}
+
 void toLowerCase(char *text)
 {
     for (; *text != '\0'; text++)
@@ -311,6 +357,7 @@ void runCommand(char *cmd)
         bluetooth::logState();
         pairing_store::logState();
         tz_store::logState();
+        settings_store::logState();
         pairing::logState();
         link_control::logState();
         logBattery(BatteryCheck::None);
@@ -344,6 +391,10 @@ void runCommand(char *cmd)
         setClock(true);
     } else if (strcmp(cmd, "clock off") == 0) {
         setClock(false);
+    } else if (strcmp(cmd, "sound") == 0) {
+        logSound();
+    } else if (strncmp(cmd, SOUND_SET_COMMAND, strlen(SOUND_SET_COMMAND)) == 0) {
+        setSound(cmd + strlen(SOUND_SET_COMMAND));
     } else if (strcmp(cmd, "bat log on") == 0) {
         battery_log::start();
     } else if (strcmp(cmd, "bat log off") == 0) {
@@ -440,6 +491,8 @@ void setup()
     board::sleepRadio();   // about 0.27 s
     const bool bleReady = bluetooth::begin(); // a few ms; up to about 1 s on the very first start
     button::begin();
+    settings_store::begin(bleReady); // reads a small file: a few ms
+    sound::setSetting(settings_store::sound());
     const bool soundReady = sound::begin();
     sound::playStart(); // right away: after a wake-up it tells the user to let go
 
@@ -467,6 +520,7 @@ void setup()
         pairing_store::logState();
     tz_store::begin(bleReady);
     tz_store::logState();
+    settings_store::logState();
     link_control::begin(); // starts when a camera is paired
     logHelp();
 }
