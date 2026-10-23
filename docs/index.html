@@ -1801,15 +1801,17 @@ function parseStatus(lines) {
 const BATTERY_LOW_PERCENT = 20; // the card powers itself off at 0 % (3.40 V)
 const BATTERY_VERY_LOW_PERCENT = 10;
 
-// The card connects to the camera only with a GPS fix: the camera gets the time from it.
+// The card connects to the camera only with a GPS fix: the camera gets the time from it. While the camera is
+// away a while, the card looks for it with the GPS asleep (link_policy::gpsNeeded): no fix, but nothing to wait for.
 function cameraTile(state) {
   if (state.pair !== "idle") return ["warn", "Pairing", "See The camera below"];
   if (!state.paired) return ["idle", "Not paired", "Pair it below"];
   switch (state.link) {
     case "connected": return ["good", "Connected", "Sends the position"];
     case "connecting": return ["warn", "Connecting", "A few seconds"];
-    case "searching": return state.gpsFix ? ["idle", "Looking for it", "Camera off or out of range"] :
-      ["warn", "Waiting for GPS", "Connects once the GPS has a fix"];
+    case "searching": return state.gpsOn && !state.gpsFix ?
+      ["warn", "Waiting for GPS", "Connects once the GPS has a fix"] :
+      ["idle", "Looking for it", "Camera off or out of range"];
     case "pausing": return ["warn", "Trying again", "In a few seconds"];
     case "stopped": return ["bad", "Refused the card", "Pair them again"];
     default: return ["idle", "Link off", "'link on' in a serial terminal"];
@@ -1829,7 +1831,7 @@ function batteryTile(state) {
   const percent = `${state.batteryPercent} %`;
   switch (state.charger) {
     case "charging": return ["good", "Charging", `about ${percent} \u00b7 ${volts}`];
-    case "charged": return ["good", "Charged", volts];
+    case "charged": return ["good", "Charged", `about ${percent} \u00b7 ${volts}`];
     case "not_charging": return ["idle", "On USB", `not charging, about ${percent} \u00b7 ${volts}`];
     default:
       if (state.batteryPercent < BATTERY_VERY_LOW_PERCENT) return ["bad", "Very low", `${percent} \u00b7 ${volts}`];
