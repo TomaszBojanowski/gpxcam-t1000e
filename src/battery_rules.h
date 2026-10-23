@@ -20,11 +20,13 @@ constexpr uint8_t LOW_READINGS_TO_POWER_OFF = 2;
 // card starts normally and the charger charges the battery.
 bool powerOffForLowBattery(uint32_t millivolts, bool usb, bool atStart, uint8_t *lowReadings);
 
-// State of charge, 0..100 %, estimated from the battery voltage as Meshtastic does for the
-// T1000-E: its discharge curve (OCV_ARRAY in variants/nrf52840/tracker-t1000-e/variant.h, a
-// voltage for every 10 %) with a straight line between the points, cut to a whole percent
-// (getBatteryPercent() in src/Power.cpp, both at 6d41e279f1f5). Rough: under load and while
-// charging the voltage differs from the resting voltage the curve is for.
+// The battery left until the card powers off, 0..100 %, estimated from the voltage. First the
+// state of charge as Meshtastic estimates it for the T1000-E: its discharge curve (OCV_ARRAY in
+// variants/nrf52840/tracker-t1000-e/variant.h, a voltage for every 10 %) with a straight line
+// between the points, cut to a whole percent (getBatteryPercent() in src/Power.cpp, both at
+// 6d41e279f1f5). Then scaled so that LOW_MV, where the card powers off (5 % on that curve),
+// gives 0 % and a full battery still 100 %: at most 5 points below Meshtastic's figure. Rough:
+// under load and while charging the voltage differs from the resting voltage of the curve.
 uint8_t percentFromMillivolts(uint32_t millivolts);
 
 // Battery log entry, little-endian: uptime in minutes (u32), battery voltage in mV (u16),

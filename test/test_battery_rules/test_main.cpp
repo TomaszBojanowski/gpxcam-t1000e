@@ -41,21 +41,28 @@ void test_running_after_two_low_readings_in_a_row()
     TEST_ASSERT_TRUE(battery_rules::powerOffForLowBattery(3350, false, false, &low));
 }
 
-// Expected values from Meshtastic's formula (src/Power.cpp), computed in Python for every
-// voltage from 2500 to 4500 mV: the integer version gives the same.
-void test_percent_from_the_discharge_curve()
+// Expected values computed in Python from Meshtastic's formula (src/Power.cpp; in brackets),
+// then scaled so that the power-off voltage (Meshtastic's 5 %) gives 0 %.
+void test_percent_left_until_power_off()
 {
-    TEST_ASSERT_EQUAL_UINT8(100, battery_rules::percentFromMillivolts(4300)); // charging
-    TEST_ASSERT_EQUAL_UINT8(100, battery_rules::percentFromMillivolts(4190));
-    TEST_ASSERT_EQUAL_UINT8(95, battery_rules::percentFromMillivolts(4116)); // halfway to 4042 (90 %)
-    TEST_ASSERT_EQUAL_UINT8(90, battery_rules::percentFromMillivolts(4042));
-    TEST_ASSERT_EQUAL_UINT8(60, battery_rules::percentFromMillivolts(3820));
-    TEST_ASSERT_EQUAL_UINT8(21, battery_rules::percentFromMillivolts(3700));
-    TEST_ASSERT_EQUAL_UINT8(10, battery_rules::percentFromMillivolts(3644));
-    TEST_ASSERT_EQUAL_UINT8(5, battery_rules::percentFromMillivolts(battery_rules::LOW_MV)); // powers off
-    TEST_ASSERT_EQUAL_UINT8(0, battery_rules::percentFromMillivolts(3100));
-    TEST_ASSERT_EQUAL_UINT8(0, battery_rules::percentFromMillivolts(3000));
+    TEST_ASSERT_EQUAL_UINT8(100, battery_rules::percentFromMillivolts(4300)); // charging (100)
+    TEST_ASSERT_EQUAL_UINT8(100, battery_rules::percentFromMillivolts(4190)); // full (100)
+    TEST_ASSERT_EQUAL_UINT8(94, battery_rules::percentFromMillivolts(4116));  // (95)
+    TEST_ASSERT_EQUAL_UINT8(89, battery_rules::percentFromMillivolts(4042));  // (90)
+    TEST_ASSERT_EQUAL_UINT8(57, battery_rules::percentFromMillivolts(3820));  // (60)
+    TEST_ASSERT_EQUAL_UINT8(16, battery_rules::percentFromMillivolts(3700));  // (21)
+    TEST_ASSERT_EQUAL_UINT8(5, battery_rules::percentFromMillivolts(3644));   // (10)
+    TEST_ASSERT_EQUAL_UINT8(2, battery_rules::percentFromMillivolts(3500));   // (7)
+    TEST_ASSERT_EQUAL_UINT8(0, battery_rules::percentFromMillivolts(battery_rules::LOW_MV)); // powers off (5)
+    TEST_ASSERT_EQUAL_UINT8(0, battery_rules::percentFromMillivolts(3100));   // (0)
     TEST_ASSERT_EQUAL_UINT8(0, battery_rules::percentFromMillivolts(0));
+}
+
+// The percent never falls while the voltage rises.
+void test_percent_never_falls_with_the_voltage()
+{
+    for (uint32_t mv = 2501; mv <= 4500; mv++)
+        TEST_ASSERT_TRUE(battery_rules::percentFromMillivolts(mv) >= battery_rules::percentFromMillivolts(mv - 1));
 }
 
 void test_entry_round_trip()
@@ -78,7 +85,8 @@ int main(int, char **)
     RUN_TEST(test_never_with_usb);
     RUN_TEST(test_at_start_after_one_low_reading);
     RUN_TEST(test_running_after_two_low_readings_in_a_row);
-    RUN_TEST(test_percent_from_the_discharge_curve);
+    RUN_TEST(test_percent_left_until_power_off);
+    RUN_TEST(test_percent_never_falls_with_the_voltage);
     RUN_TEST(test_entry_round_trip);
     return UNITY_END();
 }

@@ -10,9 +10,8 @@ constexpr uint32_t CURVE_STEPS = sizeof(DISCHARGE_CURVE_MV) / sizeof(DISCHARGE_C
 constexpr uint32_t PERCENT_PER_STEP = 100 / CURVE_STEPS;
 static_assert(PERCENT_PER_STEP * CURVE_STEPS == 100, "a point every 10 %");
 
-} // namespace
-
-uint8_t percentFromMillivolts(uint32_t millivolts)
+// Meshtastic's state of charge, 0..100 %.
+constexpr uint32_t stateOfCharge(uint32_t millivolts)
 {
     for (uint32_t i = 0; i <= CURVE_STEPS; i++) {
         if (millivolts < DISCHARGE_CURVE_MV[i])
@@ -21,9 +20,22 @@ uint8_t percentFromMillivolts(uint32_t millivolts)
             return 100;
         const uint32_t above = millivolts - DISCHARGE_CURVE_MV[i];
         const uint32_t span = DISCHARGE_CURVE_MV[i - 1] - DISCHARGE_CURVE_MV[i];
-        return (uint8_t)(PERCENT_PER_STEP * (CURVE_STEPS - i) + PERCENT_PER_STEP * above / span);
+        return PERCENT_PER_STEP * (CURVE_STEPS - i) + PERCENT_PER_STEP * above / span;
     }
     return 0;
+}
+
+constexpr uint32_t STATE_AT_POWER_OFF = stateOfCharge(LOW_MV);
+static_assert(STATE_AT_POWER_OFF < 100, "the power-off voltage is below a full battery");
+
+} // namespace
+
+uint8_t percentFromMillivolts(uint32_t millivolts)
+{
+    const uint32_t state = stateOfCharge(millivolts);
+    if (state <= STATE_AT_POWER_OFF)
+        return 0;
+    return (uint8_t)((state - STATE_AT_POWER_OFF) * 100 / (100 - STATE_AT_POWER_OFF));
 }
 
 bool powerOffForLowBattery(uint32_t millivolts, bool usb, bool atStart, uint8_t *lowReadings)
