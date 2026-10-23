@@ -72,6 +72,17 @@ enum class IntroductionWrite { Identifier, AppName, DeviceName, Time, GpsMode, F
 // refusal in the introduction counts.
 bool refusalMeansUnknownCard(IntroductionWrite write, bool timeWritten);
 
+// Without the time written, a camera that does not know the card may also just end the
+// connection: the S5II ends it itself after refusing the time (gpxcam notes). So this many
+// connections in a row that ended after they were made but before the camera took a location
+// count as a refusal.
+constexpr uint8_t EARLY_ENDS_FOR_UNKNOWN_CARD = 3;
+
+// Counts such an early end in *earlyEndsInARow (link_control sets it to 0 when the camera takes
+// a location) and says whether the card should stop as after a refusal. With the time written
+// its refusal shows an unknown card, so early ends do not count and the count goes back to 0.
+bool earlyEndMeansUnknownCard(bool timeWritten, uint8_t *earlyEndsInARow);
+
 // Distance in metres between two positions in degrees * 10^7 (equirectangular
 // approximation; good to well under 1 % for the short distances it is used for).
 uint32_t distanceMetres(int32_t latitude1E7, int32_t longitude1E7, int32_t latitude2E7, int32_t longitude2E7);

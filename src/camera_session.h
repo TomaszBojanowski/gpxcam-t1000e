@@ -43,6 +43,10 @@ bool notEstablished();
 
 const Discovered &discovered();
 
+// True if the last session failed because the connection ended after it was made (not HCI
+// 0x3e, a connection that was never made).
+bool endedAfterConnecting();
+
 // Whether the last session wrote the time: always when pairing; in a connection that stays
 // open unless the clock is off ('clock off', tz_store). link_control judges refusals by it.
 bool writesTime();

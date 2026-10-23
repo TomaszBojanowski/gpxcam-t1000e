@@ -139,6 +139,25 @@ void test_refusal_means_unknown_card()
     }
 }
 
+// Without the time written, the third connection in a row that ends before the camera takes a
+// location stops the card; with it, such ends never count.
+void test_early_ends_mean_unknown_card()
+{
+    uint8_t inARow = 0;
+    TEST_ASSERT_FALSE(link_policy::earlyEndMeansUnknownCard(false, &inARow));
+    TEST_ASSERT_FALSE(link_policy::earlyEndMeansUnknownCard(false, &inARow));
+    TEST_ASSERT_TRUE(link_policy::earlyEndMeansUnknownCard(false, &inARow));
+    TEST_ASSERT_EQUAL_UINT8(link_policy::EARLY_ENDS_FOR_UNKNOWN_CARD, inARow);
+
+    inARow = 0; // the camera took a location in between
+    TEST_ASSERT_FALSE(link_policy::earlyEndMeansUnknownCard(false, &inARow));
+    TEST_ASSERT_FALSE(link_policy::earlyEndMeansUnknownCard(false, &inARow));
+    TEST_ASSERT_FALSE(link_policy::earlyEndMeansUnknownCard(true, &inARow)); // clock on again
+    TEST_ASSERT_EQUAL_UINT8(0, inARow);
+    for (int i = 0; i < 10; i++)
+        TEST_ASSERT_FALSE(link_policy::earlyEndMeansUnknownCard(true, &inARow));
+}
+
 void test_distance()
 {
     // 0.0001 degree of latitude, of longitude at 54.6 N, 0.00018 degree of latitude
@@ -164,6 +183,7 @@ int main(int, char **)
     RUN_TEST(test_pause_sequence);
     RUN_TEST(test_location_due);
     RUN_TEST(test_refusal_means_unknown_card);
+    RUN_TEST(test_early_ends_mean_unknown_card);
     RUN_TEST(test_distance);
     return UNITY_END();
 }

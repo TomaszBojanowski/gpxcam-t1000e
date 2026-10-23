@@ -57,6 +57,7 @@ uint16_t serviceEnd = 0;
 
 // Locations of the current connection.
 bool sentBefore = false;
+uint8_t earlyEndsInARow = 0; // connections that ended before the camera took a location
 uint32_t lastSentMs = 0;
 int32_t lastLatitudeE7 = 0;
 int32_t lastLongitudeE7 = 0;
@@ -272,6 +273,19 @@ void rejectedWhileConnected(const char *what, uint16_t status)
     rejectedByCamera();
 }
 
+// A connection that ended before the camera took a location: without the time written, the
+// third in a row stops the card as a refusal does (link_policy::earlyEndMeansUnknownCard()).
+// True if it stopped.
+bool earlyEndStopped()
+{
+    if (!link_policy::earlyEndMeansUnknownCard(camera_session::writesTime(), &earlyEndsInARow))
+        return false;
+    logger::line("link: %u connections in a row ended before the camera took a location",
+                 (unsigned)earlyEndsInARow);
+    rejectedByCamera();
+    return true;
+}
+
 void enterConnected()
 {
     sentBefore = false;
@@ -319,6 +333,7 @@ void afterGpsMode()
 void onAccepted()
 {
     quickRetryUsed = false; // the next refused connection may get its quick attempt again
+    sentBefore = false;     // nothing sent in this connection yet
     const camera_session::Discovered &found = camera_session::discovered();
     const uint16_t gpsModeHandle = found.valueHandle[camera_link::GPS_MODE];
     locationHandle = found.valueHandle[camera_link::LOCATION];
@@ -353,6 +368,8 @@ void onDisconnected(uint16_t reason)
         failuresInARow = 0;
     if (phase != Phase::Connected) // ended while the link was being set up
         camera_session::forgetHandles("disconnected during the setup");
+    if (!sentBefore && earlyEndStopped())
+        return;
     char why[logger::LINE_MAX];
     snprintf(why, sizeof(why), "disconnected from camera %s after %lu s (HCI 0x%02x)", serialText,
              (unsigned long)(lasted / 1000), reason);
@@ -399,6 +416,7 @@ void onLocationWritten(const camera_link::Event &event)
         return;
     }
     sentCount++;
+    earlyEndsInARow = 0;
     if (!sentBefore)
         logger::line("link: first location sent to camera %s", serialText);
     else
@@ -526,6 +544,8 @@ void introducing()
         rejectedByCamera();
         break;
     case camera_session::Result::Failed:
+        if (camera_session::endedAfterConnecting() && earlyEndStopped())
+            break;
         if (camera_session::notEstablished() && !quickRetryUsed) {
             quickRetryUsed = true;
             pauseLength = QUICK_RETRY_MS;
@@ -634,6 +654,7 @@ void start()
     lumix::formatSerial(pairing_store::record().serial, serialText, sizeof(serialText));
     failuresInARow = 0;
     quickRetryUsed = false;
+    earlyEndsInARow = 0;
     cameraSeen = false;
     searchStartMs = millis();
     mode = link_policy::SearchMode::Normal;

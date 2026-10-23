@@ -47,6 +47,7 @@ bool timeWritten = true; // set at the start: false only with the clock off in a
 bool accepted = false;
 bool rejected = false; // a refusal that means the camera does not know the card (link_policy)
 bool establishFailed = false; // HCI 0x3e: the connection was not established
+bool endedEarly = false;      // the connection ended after it was made, during the introduction
 char failureText[80] = "";
 
 uint8_t cardUuid[lumix::UUID_LENGTH];
@@ -404,6 +405,7 @@ bool handleCommonEvent(const camera_link::Event &event)
         if (step != Step::Disconnecting) {
             setFailure("%s: the camera disconnected (HCI 0x%02x)", stepName(step), event.status);
             establishFailed = event.status == BLE_HCI_CONN_FAILED_TO_BE_ESTABLISHED;
+            endedEarly = step != Step::Connecting && !establishFailed;
             if (!accepted && handle_cache::forgetAfterFailure(true, establishFailed))
                 camera_session::forgetHandles(failureText);
             accepted = false; // the link is gone, also after an accepted time
@@ -527,6 +529,7 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     accepted = false;
     rejected = false;
     establishFailed = false;
+    endedEarly = false;
     failureText[0] = '\0';
     if (!camera_link::connect(camera)) {
         setFailure("connect: refused by the SoftDevice");
@@ -561,6 +564,11 @@ const char *failure()
 bool notEstablished()
 {
     return establishFailed;
+}
+
+bool endedAfterConnecting()
+{
+    return endedEarly;
 }
 
 bool writesTime()

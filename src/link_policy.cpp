@@ -88,4 +88,15 @@ bool refusalMeansUnknownCard(IntroductionWrite write, bool timeWritten)
     return write == IntroductionWrite::Time || !timeWritten;
 }
 
+bool earlyEndMeansUnknownCard(bool timeWritten, uint8_t *earlyEndsInARow)
+{
+    if (timeWritten) {
+        *earlyEndsInARow = 0;
+        return false;
+    }
+    if (*earlyEndsInARow < UINT8_MAX)
+        (*earlyEndsInARow)++;
+    return *earlyEndsInARow >= EARLY_ENDS_FOR_UNKNOWN_CARD;
+}
+
 } // namespace link_policy
