@@ -354,7 +354,15 @@ test("text and the edges of fields stand out enough in both themes", () => {
       assert.ok(contrast(c["--muted"], ground) >= 4.5, `muted text on ${ground}, dark ${dark}`);
       assert.ok(contrast(c["--link"], ground) >= 4.5, `red text on ${ground}, dark ${dark}`);
     }
+    assert.ok(contrast(c["--accent"], c["--panel"]) >= 3, `icons on a card, dark ${dark}`); // WCAG 1.4.11
   }
+});
+
+test("each part of the page is a card with its heading and icon; the favicon is drawn in the page", () => {
+  const card = /<section class="panel section">\s*<h2><svg class="icon"[^>]*>[\s\S]*?<\/svg>([^<]+)<\/h2>/g;
+  const cards = [...html.matchAll(card)];
+  assert.deepEqual(cards.map((card) => card[1]), ["The card", "The camera", "The camera's clock", "Sound"]);
+  assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,/);
 });
 
 test("hidden parts stay hidden whatever display their own rule gives", () => {
@@ -366,6 +374,7 @@ test("the page fetches nothing: content security policy", () => {
   assert.ok(policy);
   assert.match(policy[1], /^default-src 'none';/);
   assert.doesNotMatch(policy[1], /connect-src|https?:/);
+  assert.match(policy[1], /img-src data:/); // the favicon is a data: image
   assert.doesNotMatch(html, /<script[^>]+src=|<link[^>]+href="(?!data:)/);
 });
 
