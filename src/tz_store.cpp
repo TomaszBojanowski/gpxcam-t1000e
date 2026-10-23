@@ -108,6 +108,11 @@ const posix_tz::Rule &rule()
     return currentRule;
 }
 
+const char *zoneText()
+{
+    return current.name[0] != '\0' ? current.name : current.rule;
+}
+
 SetResult set(const char *text)
 {
     tz_record::Record wanted;

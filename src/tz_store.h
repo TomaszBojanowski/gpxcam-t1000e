@@ -18,6 +18,10 @@ void begin(bool fileSystemMounted);
 // The rule of the zone in effect, valid after begin().
 const posix_tz::Rule &rule();
 
+// The zone in effect as text: its name, or its POSIX rule when that was given directly. No
+// spaces. Valid after begin().
+const char *zoneText();
+
 // Whether the card sets the camera's clock and time zone when it connects ('clock'): on
 // unless set off. Valid after begin().
 bool clockOn();
