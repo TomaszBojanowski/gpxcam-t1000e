@@ -1,5 +1,5 @@
-// Tests of the time zone page, docs/timezone/index.html, on the PC:
-// node --test test/web/timezone_page.test.mjs
+// Tests of the card page, docs/index.html, on the PC:
+// node --test test/web/card_page.test.mjs
 // The page's scripts run in a separate context without a browser; the card is simulated with
 // answers in the form of the real card's console (src/main.cpp, src/tz_store.cpp), made-up values.
 import assert from "node:assert/strict";
@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import vm from "node:vm";
 
-const PAGE = new URL("../../docs/timezone/index.html", import.meta.url);
+const PAGE = new URL("../../docs/index.html", import.meta.url);
 const html = readFileSync(PAGE, "utf8");
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
 const appCode = scripts[1];
@@ -259,4 +259,12 @@ test("closing ends reading and closes the port", async () => {
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(port.closed, true);
   assert.equal(closed, true);
+});
+
+test("the old address of the time zone page leads here and fetches nothing", () => {
+  const old = readFileSync(new URL("../../docs/timezone/index.html", import.meta.url), "utf8");
+  assert.match(old, /<meta http-equiv="refresh" content="0; url=\.\.\/">/);
+  assert.match(old, /<meta http-equiv="Content-Security-Policy" content="default-src 'none'">/);
+  assert.match(old, /<a href="\.\.\/">/);
+  assert.doesNotMatch(old, /<script|https?:/);
 });

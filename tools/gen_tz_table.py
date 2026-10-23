@@ -3,7 +3,7 @@
 files on any computer and any day):
 - src/tz_table_data.inc: the time zone table of the 'tz' command;
 - test/test_posix_tz/zone_vectors.inc: the test vectors of src/posix_tz.cpp;
-- the zone data of the time zone page, docs/timezone/index.html, between its TZ_DATA markers.
+- the zone data of the card page, docs/index.html, between its TZ_DATA markers.
 
 Source: the release archives tzdata<version>.tar.gz and tzcode<version>.tar.gz from
 https://data.iana.org/time-zones/releases/, downloaded once into ~/.cache/gpxcam-t1000e and
@@ -69,7 +69,7 @@ DATA_FILES = ["africa", "antarctica", "asia", "australasia", "europe", "northame
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 OUTPUT = os.path.join(ROOT, "src", "tz_table_data.inc")
 VECTORS = os.path.join(ROOT, "test", "test_posix_tz", "zone_vectors.inc")
-PAGE = os.path.join(ROOT, "docs", "timezone", "index.html")
+PAGE = os.path.join(ROOT, "docs", "index.html")
 PAGE_BEGIN = "// BEGIN TZ_DATA"
 PAGE_END = "// END TZ_DATA"
 VECTOR_YEARS = range(2026, 2032)

@@ -67,7 +67,7 @@ changing it.
 ### With the web page (Chrome or Edge on a computer)
 
 1. Plug the card into the computer with a USB cable. Close serial monitors that use it.
-2. Open [the time zone page](https://tomaszbojanowski.github.io/gpxcam-t1000e/timezone/) in Chrome
+2. Open [the time zone page](https://tomaszbojanowski.github.io/gpxcam-t1000e/) in Chrome
    or Edge on Windows, macOS or Linux. Firefox, Safari and phones cannot talk to the card.
 3. Click **Connect** and choose **T1000-E gpxcam**. The page shows the card's time zone.
 4. Find the time zone by country, city or zone name (the computer's own is selected already) and
@@ -252,7 +252,7 @@ Measuring the current with the battery log: `docs/HARDWARE.md`, section "Measuri
 
 ```
 pio test -e native
-node --test test/web/timezone_page.test.mjs
+node --test test/web/card_page.test.mjs
 ```
 
 The modules without hardware dependencies – NMEA parser, LUMIX protocol (advertisement, byte
@@ -268,8 +268,8 @@ page with a simulated card.
   measurements and findings of every milestone, differences from Meshtastic.
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) – the Bluetooth LE protocol of LUMIX cameras, the
   connection parameters the S5II works with, how the camera takes the time zone, and test vectors.
-- [The time zone page](https://tomaszbojanowski.github.io/gpxcam-t1000e/timezone/) – sets the
-  card's time zone from Chrome or Edge (source: `docs/timezone/index.html`).
+- [The time zone page](https://tomaszbojanowski.github.io/gpxcam-t1000e/) – sets the
+  card's time zone from Chrome or Edge (source: `docs/index.html`).
 
 ## Sources
 
