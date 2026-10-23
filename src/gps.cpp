@@ -93,7 +93,7 @@ void resetCounters()
     sentenceTooLong = false;
 }
 
-int satellites()
+int satellitesInUse()
 {
     return haveGga ? lastGga.satellites : -1;
 }
@@ -128,9 +128,9 @@ void handleNavigation()
     if (valid && firstFixMs == NOT_YET) {
         firstFixMs = millis() - poweredAt;
         logger::line("gps: first fix %lu s after power on, %d satellites", (unsigned long)(firstFixMs / 1000),
-                     satellites());
+                     satellitesInUse());
     } else if (valid != fixValid && firstFixMs != NOT_YET) {
-        logger::line(valid ? "gps: fix again, %d satellites" : "gps: fix lost, %d satellites", satellites());
+        logger::line(valid ? "gps: fix again, %d satellites" : "gps: fix lost, %d satellites", satellitesInUse());
     }
     fixValid = valid;
 }
@@ -147,7 +147,8 @@ void formatStatus(char *out, size_t size)
     if (lastRmc.hasTime && lastRmc.hasDate)
         snprintf(clock, sizeof(clock), "%02u:%02u:%02u UTC %04u-%02u-%02u", lastRmc.time.hour, lastRmc.time.minute,
                  lastRmc.time.second, lastRmc.date.year, lastRmc.date.month, lastRmc.date.day);
-    snprintf(out, size, "fix %s, %d sat, alt %s, %s", fixValid ? "yes" : "no", satellites(), altitude, clock);
+    snprintf(out, size, "fix %s, %d sat, alt %s, %s", fixValid ? "yes" : "no", satellitesInUse(), altitude,
+             clock);
 }
 
 void finishSentence()
@@ -340,10 +341,20 @@ bool utcNow(int64_t *unixSeconds)
     return true;
 }
 
-bool position(int32_t *latitudeE7, int32_t *longitudeE7, int32_t *altitudeDm)
+bool hasFix()
 {
     // timeValid is set only by an RMC with a fix, which also has the position.
-    if (!powered || !timeValid || millis() - timeReceivedMs > TIME_MAX_AGE_MS || !fixValid)
+    return powered && timeValid && millis() - timeReceivedMs <= TIME_MAX_AGE_MS && fixValid;
+}
+
+int satellites()
+{
+    return powered ? satellitesInUse() : -1;
+}
+
+bool position(int32_t *latitudeE7, int32_t *longitudeE7, int32_t *altitudeDm)
+{
+    if (!hasFix())
         return false;
     *latitudeE7 = lastRmc.latitudeE7;
     *longitudeE7 = lastRmc.longitudeE7;

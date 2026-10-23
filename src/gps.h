@@ -27,6 +27,12 @@ bool utcNow(int64_t *unixSeconds);
 // fix. Stays in RAM: never logged.
 bool position(int32_t *latitudeE7, int32_t *longitudeE7, int32_t *altitudeDm);
 
+// A fix in the last RMC, at most 2 s old: when position() gives one.
+bool hasFix();
+
+// Satellites in use from the last GGA; -1 when off or not known yet.
+int satellites();
+
 // Sends "$<body>*hh\r\n" to the GPS (body e.g. "PAIR063,-1") and, with echo, shows it in
 // the log (not in the history). Does nothing when off.
 void sendCommand(const char *body, bool echo = true);
