@@ -385,6 +385,16 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   reads a newer file (and writes 0 there when it saves). Writing as the time zone file (`src/record_file.cpp`).
 - **Size:** flash +1.6 KB over the clock setting; 1.3.0 in all +4.6 KB over 1.2.0, about 162.2 KB; RAM +12 bytes
   over 1.2.0.
+- **Tested on the card with the S5II (2026-10-23):** the card page (Chromium on Linux, from localhost) shows the
+  same state as `p`; clock off with New York set in the camera: photos at −04:00 over two connections; clock on
+  again: the camera took Europe/Warsaw back at the next connection, photo at +02:00; pairing with the clock off
+  set the camera's zone once; forgetting the camera after the question, pairing from the page, a camera not in
+  pairing mode (the message after 60 s); a card with 1.2.0 on the page (the time zone only, the rest locked with
+  a message); Loud, Quiet and Off from the page and the console, with Off the answers to a held button quiet and
+  the connection silent; the pairing, time zone and settings files kept over flashing 1.2.0 and back. Found and
+  fixed in the test: Quiet at 5 % hardly differed from Loud (now 2 %); two clicks followed by `gps::off()`
+  sounded as one note of about 2 s (now `sound::playToEnd()` first); a camera that still lists the card does not
+  pair it again (`docs/PROTOCOL.md`).
 
 ## Pairing (M4)
 

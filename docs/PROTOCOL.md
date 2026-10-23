@@ -195,3 +195,9 @@ Advertisement (made-up serial number `12 34 56 78 9a`, tests in `test/test_lumix
   loop (pauses).
 - Garmin watches and other devices do not matter here – the card is the BLE central, the camera the
   peripheral.
+- With no paired device left the S5II switches Bluetooth off: no icon, no advertising (2026-10-23). When "T1000-E"
+  was deleted in its menu while the card was connected with the clock off, the camera ended that connection; the
+  card's next connection went through the introduction and ended after 1 s, before a location; then the camera
+  fell silent. The card, still paired on its side, just keeps looking; it never gets the three early ends that
+  stop it with the clock off ("Without the time write" above), which need a camera that keeps advertising, for
+  example with a phone still paired.
