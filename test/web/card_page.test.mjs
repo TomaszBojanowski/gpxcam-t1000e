@@ -16,7 +16,8 @@ const page = vm.runInContext(
     "\n;({ TZ_DATA, BAUD_RATE, CARD_USB, MAX_RESULTS, findZone, searchZones, utcOffsetText, allowedCommand," +
     " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText, tzProblemText," +
     " startList, parseStatus, batteryText, gpsText, cameraText, zoneText, classifyClockAnswer, clockAnswerText," +
-    " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText })",
+    " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText, SOUND_SETTINGS," +
+    " classifySoundAnswer, soundAnswerText, soundNoteText })",
   vm.createContext({ TextEncoder, TextDecoder, setTimeout, clearTimeout, console }),
 );
 
@@ -40,13 +41,14 @@ const STATUS_ANSWER = [
   "status: format=1 fw=1.3.0 git=1234567\r\nstatus: battery_mv=4100 battery_pct=89 charger=charging\r\n",
   "gps: fix yes, 11 sat, alt 157 m, 19:05:12 UTC 2027-07-01\r\n", // a log line in between
   "status: gps=on gps_fix=1 gps_sat=11\r\nstatus: paired=1 link=connected\r\n",
-  "status: pair=idle pair_attempt=0 pair_result=none\r\nstatus: clock=on tz=Europe/Warsaw\r\nsta",
+  "status: pair=idle pair_attempt=0 pair_result=none\r\nstatus: clock=on tz=Europe/Warsaw\r\n",
+  "status: sound=loud\r\nsta",
   "tus: end\r\n",
 ];
 const STATE = {
   version: "1.3.0", git: "1234567", batteryMv: 4100, batteryPercent: 89, charger: "charging", gpsOn: true,
   gpsFix: true, gpsSatellites: 11, paired: true, link: "connected", pair: "idle", pairAttempt: 0,
-  pairResult: "none", clockOn: true, timeZone: "Europe/Warsaw",
+  pairResult: "none", clockOn: true, timeZone: "Europe/Warsaw", sound: "loud",
 };
 const NO_STATUS = ["command: unknown 'status'\r\n", "commands: v = version and reset reason,\r\n"];
 const statusLines = (text) => text.trim().split("\n");
@@ -62,6 +64,10 @@ const statusWith = (changes) => [Object.entries(changes).reduce(
 const NOT_PAIRED = { paired: 0, link: "off" };
 const PAIR_STARTED = ["link: off\r\n", "pair: started - waiting for GPS time (up to 120 s)\r\n"];
 const FORGOTTEN = ["link: off\r\n", "pair: camera forgotten (the card id stays)\r\n"];
+const SOUND_OFF_SAVED = [
+  "sound: off saved\r\n",
+  "sound: off - the card only answers a held button (switching on and off, pairing), quietly\r\n",
+];
 
 // A serial port that answers commands with chunks of text; it records what the page does.
 // readFails: reading fails at once, as in Chromium on Linux after a pyserial program.
@@ -232,13 +238,14 @@ test("offsets come from the browser's own data", () => {
   assert.equal(page.utcOffsetText("Mars/Olympus_Mons", july), "");
 });
 
-test("only v, status, pair, pair off, unpair, clock on/off, tz and tz NAME can be sent", () => {
-  for (const allowed of ["v", "status", "pair", "pair off", "unpair", "clock on", "clock off", "tz",
-    "tz Europe/Warsaw", "tz Poland", "tz Etc/GMT+5"]) {
+test("only v, status, pair, pair off, unpair, clock on/off, sound loud/quiet/off, tz and tz NAME can be sent", () => {
+  for (const allowed of ["v", "status", "pair", "pair off", "unpair", "clock on", "clock off", "sound loud",
+    "sound quiet", "sound off", "tz", "tz Europe/Warsaw", "tz Poland", "tz Etc/GMT+5"]) {
     assert.equal(page.allowedCommand(allowed), true, allowed);
   }
   const refused = ["dfu", "off", "link off", "link on", "log", "bat log clear", "status ", "clock",
-    "clock  on", "Clock off", "pair on", "Pair", "unpair now", "tz europe/warsaw",
+    "clock  on", "Clock off", "sound", "sound on", "sound  off", "Sound loud", "diag snd 10", "pair on", "Pair",
+    "unpair now", "tz europe/warsaw",
     "tz Mars/Olympus_Mons", "tz <+0545>-5:45", "tz Europe/Warsaw\ndfu", "tz Europe/Warsaw ", "V", ""];
   for (const command of refused) assert.equal(page.allowedCommand(command), false, command);
   for (const [name] of page.TZ_DATA.zones) assert.equal(page.allowedCommand(`tz ${name}`), true, name);
@@ -525,9 +532,9 @@ test("with gpxcam 1.2 the clock switch stays on and cannot be changed", async ()
   await ui.disconnect.fire("click");
 });
 
-// The values the firmware gives (src/status_text.cpp), read from its source.
-function firmwareValues(functionName) {
-  const source = readFileSync(new URL("../../src/status_text.cpp", import.meta.url), "utf8");
+// The values the firmware gives (src/status_text.cpp, or another file), read from its source.
+function firmwareValues(functionName, file = "status_text.cpp") {
+  const source = readFileSync(new URL(`../../src/${file}`, import.meta.url), "utf8");
   const body = new RegExp(`const char \\*${functionName}\\([^)]*\\)\\n\\{([\\s\\S]*?)\\n\\}`).exec(source);
   assert.ok(body, functionName);
   return [...body[1].matchAll(/return "([a-z_]+)";/g)].map((match) => match[1]).filter((value) => value !== "unknown");
@@ -550,6 +557,77 @@ test("every pairing stage, result, link state and charger state of the firmware 
   const chargers = firmwareValues("chargerValue");
   const chargerTexts = chargers.map((charger) => page.batteryText({ ...STATE, charger }));
   assert.equal(new Set(chargerTexts).size, chargers.length);
+});
+
+test("the page offers every sound setting of the firmware, each with its own choice", () => {
+  assert.deepEqual(json(page.SOUND_SETTINGS), firmwareValues("settingName", "sound_rules.cpp"));
+  for (const setting of page.SOUND_SETTINGS) assert.match(html, new RegExp(`id="sound-${setting}" type="radio"`));
+});
+
+test("the answers to 'sound loud|quiet|off' are told apart and explained", async () => {
+  const { port, card } = await openCard({ "sound off": SOUND_OFF_SAVED });
+  const lines = await card.sound("off");
+  assert.deepEqual(port.written, ["sound off\n"]);
+  assert.equal(page.classifySoundAnswer(lines), "saved");
+  const classify = (lines) => page.classifySoundAnswer(lines);
+  assert.equal(classify([]), "none");
+  assert.equal(classify(["sound: quiet saved"]), "saved");
+  assert.equal(classify(["sound: already loud"]), "unchanged");
+  assert.equal(classify(["sound: could not write the settings file"]), "not-saved");
+  assert.equal(classify(["command: unknown 'sound off'"]), "no-sound");
+  assert.deepEqual(json(page.soundAnswerText("saved")), ["Saved.", "good"]);
+  assert.equal(page.soundAnswerText("not-saved")[1], "bad");
+  assert.equal(page.soundAnswerText("none")[1], "bad");
+  assert.equal(page.soundAnswerText("no-sound")[1], "bad");
+  assert.match(page.soundNoteText(), /^Choosing Loud or Quiet plays two short beeps/);
+  assert.match(page.soundNoteText("1.2.0"), /^gpxcam 1\.2\.0 always plays its sounds loud\./);
+});
+
+test("the sound choice follows the card", async () => {
+  const answers = { v: VERSION_1_3, status: STATUS_ANSWER };
+  const port = simulatedCard(answers);
+  const ui = openPage(port);
+  const checked = () => [...page.SOUND_SETTINGS].filter((setting) => ui[`sound-${setting}`].checked);
+  assert.deepEqual(checked(), []); // not connected
+  assert.equal(ui["sound-quiet"].disabled, true);
+  assert.equal(ui["sound-note"].textContent, "Connect the card to change this setting.");
+  await ui.connect.fire("click");
+  assert.deepEqual(checked(), ["loud"]);
+  assert.equal(ui["sound-quiet"].disabled, false);
+  assert.match(ui["sound-note"].textContent, /^Choosing Loud or Quiet/);
+
+  answers["sound quiet"] = ["sound: quiet saved\r\n"];
+  answers.status = statusWith({ sound: "quiet" });
+  ui["sound-quiet"].checked = true; // as the browser does on a click
+  await ui["sound-quiet"].fire("change");
+  assert.deepEqual(port.written.slice(-2), ["sound quiet\n", "status\n"]);
+  assert.equal(ui["sound-answer"].textContent, "Saved.");
+  assert.equal(ui["sound-answer"].className, "good");
+  assert.deepEqual(checked(), ["quiet"]);
+
+  answers["sound off"] = ["sound: could not write the settings file\r\n"]; // the card stays quiet
+  ui["sound-off"].checked = true;
+  await ui["sound-off"].fire("change");
+  assert.equal(ui["sound-answer"].className, "bad");
+  ui["sound-quiet"].checked = false; // the browser unchecks the others in the group: the page checks them again
+  await ui.refresh.fire("click");
+  assert.deepEqual(checked(), ["quiet"]); // as the card has it
+
+  await ui.disconnect.fire("click");
+  assert.deepEqual(checked(), []);
+  assert.equal(ui["sound-off"].disabled, true);
+  assert.equal(ui["sound-answer"].textContent, "");
+});
+
+test("with gpxcam 1.2 the sound stays loud and cannot be changed", async () => {
+  const port = simulatedCard({ v: VERSION_ANSWER, status: NO_STATUS, tz: TZ_STATE });
+  const ui = openPage(port);
+  await ui.connect.fire("click");
+  assert.equal(ui["sound-loud"].checked, true);
+  assert.equal(ui["sound-loud"].disabled, true);
+  assert.equal(ui["sound-off"].disabled, true);
+  assert.match(ui["sound-note"].textContent, /^gpxcam 1\.2\.0 always plays its sounds loud\. Choosing needs/);
+  await ui.disconnect.fire("click");
 });
 
 test("the pairing stages and results are explained", () => {
