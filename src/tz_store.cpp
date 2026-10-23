@@ -5,19 +5,14 @@
 
 #include "gps.h"
 #include "log.h"
+#include "record_file.h"
 #include "tz_table.h"
-
-// Written like the pairing file (pairing_store.cpp): a temporary file renamed over the
-// record, which littlefs 1.7 does atomically, also on power loss, then read back, because
-// File::close() reports no errors.
-
-using namespace Adafruit_LittleFS_Namespace;
 
 namespace {
 
-constexpr const char *DIRECTORY = "/gpxcam";
 constexpr const char *PATH = "/gpxcam/timezone.bin";
 constexpr const char *TEMP_PATH = "/gpxcam/timezone.tmp";
+static_assert(tz_record::SIZE <= record_file::MAX_SIZE, "one block");
 
 constexpr int32_t SECONDS_PER_MINUTE = 60;
 constexpr int32_t MINUTES_PER_HOUR = 60;
@@ -37,13 +32,11 @@ void useDefault()
 // False if the file is missing; otherwise *status says whether *record was read.
 bool readFile(tz_record::Record *record, tz_record::Status *status)
 {
-    File file(InternalFS);
-    if (!file.open(PATH, FILE_O_READ))
-        return false;
     uint8_t data[tz_record::SIZE + 1]; // one byte more, to notice a longer file
-    const int length = file.read(data, sizeof(data));
-    file.close();
-    *status = tz_record::decode(data, length < 0 ? 0 : (size_t)length, record);
+    size_t length = 0;
+    if (!record_file::read(PATH, data, sizeof(data), &length))
+        return false;
+    *status = tz_record::decode(data, length, record);
     return true;
 }
 
@@ -56,20 +49,7 @@ bool writeFile(const tz_record::Record &record)
 {
     uint8_t data[tz_record::SIZE];
     tz_record::encode(record, data);
-    if (!InternalFS.exists(DIRECTORY) && !InternalFS.mkdir(DIRECTORY))
-        return false;
-    if (InternalFS.exists(TEMP_PATH) && !InternalFS.remove(TEMP_PATH)) // left by a power loss
-        return false;
-    File file(InternalFS);
-    if (!file.open(TEMP_PATH, FILE_O_WRITE))
-        return false;
-    const size_t written = file.write(data, sizeof(data));
-    file.close();
-    if (written != sizeof(data) || !InternalFS.rename(TEMP_PATH, PATH))
-        return false;
-    tz_record::Record check;
-    tz_record::Status status;
-    return readFile(&check, &status) && status == tz_record::Status::Ok && sameRecord(check, record);
+    return record_file::write(PATH, TEMP_PATH, data, sizeof(data));
 }
 
 } // namespace

@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "bytes.h"
 #include "pairing_record.h" // crc32(): the same checksum as the pairing file
 #include "posix_tz.h"
 #include "tz_table.h"
@@ -21,17 +22,6 @@ constexpr size_t NAME_OFFSET = 8;
 constexpr size_t RULE_OFFSET = NAME_OFFSET + NAME_SIZE; // 56
 constexpr size_t CRC_OFFSET = RULE_OFFSET + RULE_SIZE;  // 120
 static_assert(CRC_OFFSET + 4 == SIZE, "record layout");
-
-void putU32(uint8_t *out, uint32_t value)
-{
-    for (size_t i = 0; i < 4; i++)
-        out[i] = (uint8_t)(value >> (8 * i));
-}
-
-uint32_t getU32(const uint8_t *in)
-{
-    return (uint32_t)in[0] | (uint32_t)in[1] << 8 | (uint32_t)in[2] << 16 | (uint32_t)in[3] << 24;
-}
 
 // False, with *record unchanged, if a text does not fit in its field.
 bool make(const char *name, const char *rule, Record *record)
@@ -87,7 +77,7 @@ void encode(const Record &record, uint8_t out[SIZE])
     out[CLOCK_OFFSET] = record.clockOff ? CLOCK_OFF : CLOCK_ON;
     memcpy(&out[NAME_OFFSET], record.name, strnlen(record.name, NAME_SIZE - 1));
     memcpy(&out[RULE_OFFSET], record.rule, strnlen(record.rule, RULE_SIZE - 1));
-    putU32(&out[CRC_OFFSET], pairing_record::crc32(out, CRC_OFFSET));
+    bytes::putU32(&out[CRC_OFFSET], pairing_record::crc32(out, CRC_OFFSET));
 }
 
 Status decode(const uint8_t *data, size_t length, Record *record)
@@ -98,7 +88,7 @@ Status decode(const uint8_t *data, size_t length, Record *record)
         return Status::WrongMagic;
     if (data[VERSION_OFFSET] != VERSION)
         return Status::WrongVersion;
-    if (getU32(&data[CRC_OFFSET]) != pairing_record::crc32(data, CRC_OFFSET))
+    if (bytes::getU32(&data[CRC_OFFSET]) != pairing_record::crc32(data, CRC_OFFSET))
         return Status::BadChecksum;
     const char *name = (const char *)&data[NAME_OFFSET];
     const char *rule = (const char *)&data[RULE_OFFSET];
