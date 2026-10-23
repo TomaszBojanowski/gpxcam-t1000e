@@ -290,6 +290,10 @@ test("a card without tz and a card that does not answer tz get different message
   assert.equal(page.tzProblemText("1.2.0", "state"), null);
 });
 
+test("hidden parts stay hidden whatever display their own rule gives", () => {
+  assert.match(html, /^\.hidden \{ display: none !important; \}/m);
+});
+
 test("the page fetches nothing: content security policy", () => {
   const policy = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(html);
   assert.ok(policy);

@@ -76,7 +76,7 @@ code { font: 13px ui-monospace, Menlo, Consolas, monospace; }
   box-shadow: var(--shadow);
   padding: 12px 14px;
 }
-.hidden { display: none; }
+.hidden { display: none !important; } /* wins over the display of .row, dl.state and others */
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 button {
