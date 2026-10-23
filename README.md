@@ -13,6 +13,19 @@ Status: pairing, everyday use with the camera and power saving all work and are 
 LUMIX S5II. The latest version is on the
 [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases) page.
 
+## What's new in 1.3.0
+
+- **[The card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/)** (Chrome or Edge on a
+  computer, card on USB): the card's state – battery, GPS, camera – pairing step by step with the
+  reason when it fails, the time zone, and the settings below. It replaces the time zone page of
+  1.2, whose address now leads to it.
+- **Leave the camera's clock alone:** the card can send only the position and keep out of the
+  camera's time and time zone, see [below](#leave-the-cameras-clock-alone-130).
+- **Sound: Loud, Quiet or Off**, see [Sounds and LED](#sounds-and-led). Off keeps only quiet
+  answers to a held button, so you still know when to let go.
+- Pairing again with the same camera: delete "T1000-E" in the camera's Bluetooth menu first (the
+  camera does not pair a card it already lists).
+
 ## What you need
 
 - **Seeed SenseCAP Card Tracker T1000-E for Meshtastic** – the card as sold for Meshtastic, with
