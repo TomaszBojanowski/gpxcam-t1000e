@@ -10,6 +10,7 @@
 
 #include "battery.h"
 #include "battery_log.h"
+#include "battery_rules.h"
 #include "bluetooth.h"
 #include "board.h"
 #include "button.h"
@@ -22,6 +23,7 @@
 #include "pairing_store.h"
 #include "power.h"
 #include "sound.h"
+#include "status_text.h"
 #include "tz_record.h"
 #include "tz_store.h"
 #include "version.h"
@@ -118,10 +120,35 @@ void logBattery(BatteryCheck check)
                             check == BatteryCheck::AtStart);
 }
 
+static_assert(status_text::LINE_SIZE == logger::LINE_MAX - 2, "a status line is one log line");
+
+// 'status': the state for the card page as key=value lines (status_text.h). Not in the
+// history: the page asks every few seconds.
+void logStatus()
+{
+    const battery::Status battery = battery::read();
+    status_text::State state = {};
+    state.version = FW_VERSION;
+    state.git = FW_GIT;
+    state.batteryMillivolts = battery.batteryMv;
+    state.batteryPercent = battery_rules::percentFromMillivolts(battery.batteryMv);
+    state.charger = battery.charger;
+    state.gpsOn = gps::isOn();
+    state.gpsFix = gps::hasFix();
+    state.gpsSatellites = (uint8_t)max(0, gps::satellites());
+    state.paired = pairing_store::ready() && pairing_store::record().paired;
+    state.link = link_control::state();
+    state.pairing = pairing::progress();
+    state.clockOn = tz_store::clockOn();
+    state.timeZone = tz_store::zoneText();
+    status_text::format(state, [](const char *line) { logger::transient("%s", line); });
+}
+
 void logHelp()
 {
     logger::transient("commands: v = version and reset reason,");
     logger::transient("          p = state of GPS, BLE, pairing, time zone, link and battery,");
+    logger::transient("          status = the same in short key=value lines, for the card page,");
     logger::transient("          dfu = UF2 bootloader (for flashing),");
     logger::transient("          off = System OFF after a 15 s countdown (refused with USB connected),");
     logger::transient("          log = last %lu log lines, also those from times without USB,",
@@ -287,6 +314,8 @@ void runCommand(char *cmd)
         pairing::logState();
         link_control::logState();
         logBattery(BatteryCheck::None);
+    } else if (strcmp(cmd, "status") == 0) {
+        logStatus();
     } else if (strcmp(cmd, "dfu") == 0) {
         rebootToUf2Bootloader();
     } else if (strcmp(cmd, "off") == 0) {
