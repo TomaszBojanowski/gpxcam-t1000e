@@ -714,6 +714,28 @@ const char *activityName(uint8_t value)
     return value < sizeof(NAMES) / sizeof(NAMES[0]) ? NAMES[value] : "?";
 }
 
+State state()
+{
+    switch (phase) {
+    case Phase::Off:
+        return State::Off;
+    case Phase::Searching:
+        return State::Searching;
+    case Phase::Introducing:
+    case Phase::GpsMode:
+    case Phase::FindingCccd:
+    case Phase::EnablingNotifications:
+        return State::Connecting;
+    case Phase::Connected:
+        return State::Connected;
+    case Phase::Pausing:
+        return State::Pausing;
+    case Phase::Rejected:
+        return State::Stopped;
+    }
+    return State::Off;
+}
+
 Indication indication()
 {
     if (phase == Phase::Connected)

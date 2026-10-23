@@ -26,6 +26,10 @@ void stop(bool keepGps);
 
 bool active();
 
+// What the link is doing, for 'status'. Stopped: the camera refused the card (see above).
+enum class State : uint8_t { Off, Searching, Connecting, Connected, Pausing, Stopped };
+State state();
+
 // What the LED shows (M5 decision).
 enum class Indication { Off, Searching, Connected };
 Indication indication();
