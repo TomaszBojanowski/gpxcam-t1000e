@@ -63,15 +63,17 @@ Chrome or Edge on Windows, macOS or Linux (Firefox, Safari and phones cannot tal
   every few seconds;
 - it pairs the card with the camera, step by step, and says why if pairing fails; it can also
   forget the paired camera;
-- it sets whether the card sets the camera's clock, and the time zone.
+- it sets whether the card sets the camera's clock, and the time zone;
+- it sets how loud the card is (see [Sounds and LED](#sounds-and-led)).
 
 1. Plug the card into the computer with a USB cable. Close serial monitors that use it.
 2. Open [the card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/).
 3. Click **Connect** and choose **T1000-E gpxcam**.
 
 The page runs only in the browser and sends nothing over the internet. It sends the card only `v`,
-`status`, `pair`, `pair off`, `unpair`, `clock on`, `clock off`, `tz` and `tz` with a zone from its
-list. With gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or newer.
+`status`, `pair`, `pair off`, `unpair`, `clock on`, `clock off`, `sound loud`, `sound quiet`,
+`sound off`, `tz` and `tz` with a zone from its list. With gpxcam 1.2 it only sets the time zone;
+the rest needs 1.3.0 or newer.
 
 On Linux, if the page says "Reading from the card failed" after a serial monitor (for example
 `pio device monitor`) used the card: unplug the card and plug it in again. Such programs leave the
@@ -245,6 +247,12 @@ The card never wakes a camera that is switched off.
 | two short rising beeps | connected to the camera |
 | two short falling beeps | connection ended |
 
+**Volume (1.3.0):** **Loud** (as up to 1.2), **Quiet**, or **Off** – choose under **Sound** on
+[the card page](#the-card-page), or send `sound loud`, `sound quiet` or `sound off`. Off keeps only
+the answers to a held button, quietly: switching on and off, pairing started, and two clicks when
+the card refuses to switch off or to pair. Without them you could not tell when to let go. The card
+keeps the setting through restarts and firmware updates.
+
 | LED (green) | Meaning |
 |---|---|
 | a short flash every second | on, not working with a camera (no camera paired, or `link off`) |
@@ -261,7 +269,7 @@ pio device monitor
 | Command | What it does |
 |---|---|
 | `v` | version (with the git commit) and the reason of the last reset |
-| `p` | state: radio, GPS, Bluetooth, pairing (card id, camera), time zone, link, battery |
+| `p` | state: radio, GPS, Bluetooth, pairing (card id, camera), time zone, sound, link, battery |
 | `status` | the same in short `key=value` lines without the card id and the camera, for the card page |
 | `log` | the last 32 events, also from times without USB |
 | `off` | power off after a 15 s countdown (refused with USB; a short press cancels) |
@@ -270,11 +278,12 @@ pio device monitor
 | `unpair` | forget the paired camera (the card id stays) |
 | `tz` / `tz NAME` / `tz RULE` | show / set the time zone, see [Set the time zone](#set-the-time-zone) |
 | `clock` / `clock on` / `clock off` | show / set whether the card sets the camera's clock, see [Leave the camera's clock alone](#leave-the-cameras-clock-alone-130) |
+| `sound` / `sound loud` / `sound quiet` / `sound off` | show / set how loud the card is, see [Sounds and LED](#sounds-and-led); a new Loud or Quiet plays two short beeps |
 | `link on` / `link off` | work with the paired camera; on by itself after start when a camera is paired |
 | `bat log on` / `bat log off` | battery log in flash: an entry every 10 min on the battery, up to 1024 |
 | `bat log` / `bat log clear` | show / delete the battery log |
 | `diag bat` | battery voltage at different settling times of the divider (about 4 s) |
-| `diag snd N` | all sounds at N % PWM duty (1–50), to choose the volume by ear |
+| `diag snd N` | all sounds at N % PWM duty (1–50), whatever the setting, to choose the volume by ear |
 
 **Privacy:** the log shows the camera's serial number and Bluetooth address and the card's id –
 do not publish it. GPS positions are never logged.
@@ -290,10 +299,10 @@ node --test test/web/card_page.test.mjs
 
 The modules without hardware dependencies – NMEA parser, LUMIX protocol (advertisement, byte
 formats, location), camera list, UTC calendar, time zone table, POSIX time zone rules (against the
-full tz database at every change of 2026–2031), time zone file, pairing record, the camera handles
-kept between connections, link and battery rules, the lines of `status` – are tested with made-up
-data and the vectors from `docs/PROTOCOL.md`. The second command (Node.js, tested with version 22)
-tests the card page with a simulated card.
+full tz database at every change of 2026–2031), time zone file, pairing record, settings file, the
+camera handles kept between connections, link, battery and sound rules, the lines of `status` – are
+tested with made-up data and the vectors from `docs/PROTOCOL.md`. The second command (Node.js,
+tested with version 22) tests the card page with a simulated card.
 
 ## Documentation
 
