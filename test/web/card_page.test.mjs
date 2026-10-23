@@ -322,6 +322,41 @@ test("a card without tz and a card that does not answer tz get different message
   assert.equal(page.tzProblemText("1.2.0", "state"), null);
 });
 
+// The colours of a theme from the page's style: light from :root, dark from the media query.
+function themeColours(dark) {
+  const style = /<style>([\s\S]*?)<\/style>/.exec(html)[1];
+  const darkStart = style.indexOf("@media (prefers-color-scheme: dark)");
+  const light = Object.fromEntries([...style.slice(0, darkStart).matchAll(/(--[a-z-]+): (#[0-9a-f]{6});/g)]
+    .map((match) => [match[1], match[2]]));
+  if (!dark) return light;
+  const darkBlock = style.slice(darkStart, style.indexOf("\n}\n", darkStart));
+  const darkColours = [...darkBlock.matchAll(/(--[a-z-]+): (#[0-9a-f]{6});/g)].map((match) => [match[1], match[2]]);
+  return { ...light, ...Object.fromEntries(darkColours) };
+}
+
+// WCAG 2 contrast ratio of two #rrggbb colours.
+function contrast(a, b) {
+  const luminance = (hex) => {
+    const [r, g, b2] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b2;
+  };
+  const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (high + 0.05) / (low + 0.05);
+}
+
+test("text and the edges of fields stand out enough in both themes", () => {
+  for (const dark of [false, true]) {
+    const c = themeColours(dark);
+    for (const ground of [c["--bg"], c["--panel"], c["--field"]]) {
+      assert.ok(contrast(c["--field-line"], ground) >= 3, `field edge on ${ground}, dark ${dark}`); // WCAG 1.4.11
+      assert.ok(contrast(c["--text"], ground) >= 4.5, `text on ${ground}, dark ${dark}`);
+      assert.ok(contrast(c["--muted"], ground) >= 4.5, `muted text on ${ground}, dark ${dark}`);
+      assert.ok(contrast(c["--link"], ground) >= 4.5, `red text on ${ground}, dark ${dark}`);
+    }
+  }
+});
+
 test("hidden parts stay hidden whatever display their own rule gives", () => {
   assert.match(html, /^\.hidden \{ display: none !important; \}/m);
 });
@@ -749,6 +784,7 @@ test("pairing from the page: the stages, the result, then forgetting the camera"
   assert.equal(ui["pair-progress"].className, "good"); // the result stays
 
   assert.equal(ui.unpair.hidden, false);
+  assert.equal(ui.unpair.className, "danger"); // forgetting cannot be undone: red text, not a red button
   await ui.unpair.fire("click");
   assert.equal(ui["unpair-confirm"].hidden, false);
   await ui["unpair-no"].fire("click");

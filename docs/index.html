@@ -28,7 +28,18 @@
   --disabled-text: #8a9099;
   --list-bg: #f6f7f8;
   --shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  --radius: 12px;
+  --field-line: #8c959f; /* edges of fields and secondary buttons: 3:1 against the page (WCAG 1.4.11) */
+  --radius: 12px;        /* panels */
+  --radius-s: 8px;       /* buttons, fields, boxes */
+  /* One scale: spacing 4/8/12/16/24, text 13/15/18 (and 24 for the name) */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --fs-small: 13px;
+  --fs: 15px;
+  --fs-h2: 18px;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -49,50 +60,58 @@
     --disabled-text: #6e7881;
     --list-bg: #171c20;
     --shadow: none;
+    --field-line: #5f6b75;
   }
 }
 * { box-sizing: border-box; }
 html { scrollbar-gutter: stable; } /* the page does not move sideways when its scroll bar comes and goes */
 body {
   margin: 0;
-  padding: 24px 16px 48px;
+  padding: var(--s5) var(--s4) 48px;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Cantarell, sans-serif;
+  font: var(--fs)/1.45 system-ui, -apple-system, "Segoe UI", Cantarell, sans-serif;
 }
 main { max-width: 42rem; margin: 0 auto; }
-h1 { margin: 0 0 8px; font-size: 24px; line-height: 1; font-weight: 400; color: var(--muted); }
+h1 { margin: 0 0 var(--s2); font-size: 24px; line-height: 1; font-weight: 400; color: var(--muted); }
 .logo { font-weight: 800; color: var(--text); }
 .logo span { color: var(--accent); }
-h2 { font-size: 16px; font-weight: 700; margin: 28px 0 8px; }
-p { margin: 8px 0; }
+h2 { font-size: var(--fs-h2); font-weight: 700; margin: var(--s5) 0 var(--s2); }
+p { margin: var(--s2) 0; }
 a { color: var(--link); }
-code { font: 13px ui-monospace, Menlo, Consolas, monospace; }
+code { font: var(--fs-small) ui-monospace, Menlo, Consolas, monospace; }
 .lead, .note, small { color: var(--muted); }
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 12px 14px;
+  padding: var(--s3) var(--s4);
 }
+.panel > :first-child { margin-top: 0; }
+.panel > :last-child { margin-bottom: 0; }
+.gap-top { margin-top: var(--s3); }
 .hidden { display: none !important; } /* wins over the display of .row, dl.state and others */
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 button {
   font: inherit;
   font-weight: 600;
-  padding: 8px 13px;
-  border-radius: 6px;
+  min-height: 40px;
+  padding: var(--s2) var(--s4);
+  border-radius: var(--radius-s);
   border: 1px solid var(--accent);
   background: var(--accent);
   color: var(--accent-text);
   cursor: pointer;
   white-space: nowrap;
 }
-button.secondary { background: transparent; color: var(--link); }
+/* Red for the main action only; the others neutral, and red text for what cannot be undone */
+button.secondary { background: transparent; color: var(--text); border-color: var(--field-line); }
+button.danger { background: transparent; color: var(--link); border-color: currentColor; }
 button:hover:not(:disabled) { filter: brightness(1.08); }
-button.secondary:hover:not(:disabled) { background: var(--accent-tint); filter: none; }
+button.secondary:hover:not(:disabled) { background: var(--hover); filter: none; }
+button.danger:hover:not(:disabled) { background: var(--accent-tint); filter: none; }
 button:disabled {
   background: var(--disabled-bg);
   border-color: var(--disabled-bg);
@@ -100,53 +119,60 @@ button:disabled {
   cursor: default;
 }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-label[for="search"] { display: block; margin: 0 0 4px; font-size: 13px; color: var(--muted); }
+label[for="search"] { display: block; margin: 0 0 var(--s1); font-size: var(--fs-small); color: var(--muted); }
 input[type="search"] {
   width: 100%;
   font: inherit;
-  padding: 8px 9px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-s);
+  border: 1px solid var(--field-line);
   background: var(--field);
   color: var(--text);
 }
 input[type="search"]:focus { border-color: var(--accent); }
 input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); }
-label.switch { display: flex; gap: 8px; align-items: center; font-weight: 600; cursor: pointer; }
+label.switch { display: flex; gap: var(--s2); align-items: center; font-weight: 600; cursor: pointer; }
 label.switch:has(input:disabled) { color: var(--muted); cursor: default; }
-label.choice { display: flex; gap: 8px; align-items: baseline; margin: 6px 0; cursor: pointer; }
+label.choice { display: flex; gap: var(--s2); align-items: baseline; margin: var(--s2) 0; cursor: pointer; }
 label.choice:has(input:disabled) { color: var(--muted); cursor: default; }
 input[type="checkbox"] { width: 18px; height: 18px; margin: 0; }
 fieldset:disabled { opacity: 0.55; }
-ol.steps { margin: 8px 0; padding-left: 22px; }
-ol.steps li { margin: 4px 0; }
+ol.steps { margin: var(--s2) 0; padding-left: 22px; }
+ol.steps li { margin: var(--s1) 0; }
 /* A panel of a fixed height, about four and a half results, so what follows does not move while
    typing and the empty part reads as part of the list */
 #results {
   list-style: none;
-  margin: 8px 0 0;
-  padding: 4px;
-  height: 15rem;
+  margin: var(--s2) 0 0;
+  padding: var(--s1);
+  height: 18rem;
   overflow-y: auto;
   background: var(--list-bg);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-s);
 }
 #results li { border-bottom: 1px solid var(--line); }
 #results li:last-child { border-bottom: 0; }
-#results label { display: flex; gap: 10px; align-items: baseline; padding: 6px 8px; cursor: pointer; border-radius: 6px; }
+#results label {
+  display: flex;
+  gap: var(--s3);
+  align-items: baseline;
+  padding: var(--s2);
+  cursor: pointer;
+  border-radius: var(--s1); /* inside the list's 8 px corner and 4 px padding */
+}
 #results label:hover { background: var(--hover); }
 #results label:has(input:checked) { background: var(--accent-tint); box-shadow: inset 3px 0 0 var(--accent); }
 #results .name { font-weight: 600; overflow-wrap: anywhere; }
-#results .detail { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
-#results .offset { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
+#results .detail { color: var(--muted); font-size: var(--fs-small); overflow-wrap: anywhere; }
+#results .offset { margin-left: auto; color: var(--muted); font-size: var(--fs-small); white-space: nowrap; }
 .card-lines {
-  margin: 8px 0 0;
-  padding: 10px;
+  margin: var(--s2) 0 0;
+  padding: var(--s2) var(--s3);
   background: var(--field);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  font: 12.5px/1.45 ui-monospace, Menlo, Consolas, monospace;
+  border-radius: var(--radius-s);
+  font: var(--fs-small)/1.45 ui-monospace, Menlo, Consolas, monospace;
   color: var(--muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -155,10 +181,10 @@ ol.steps li { margin: 4px 0; }
 .good { color: var(--good); font-weight: 600; }
 /* An error is told apart from the red accent not only by its colour: a framed box headed "Error". */
 p.bad {
-  padding: 8px 10px;
+  padding: var(--s2) var(--s3);
   border: 1px solid var(--error);
   border-left-width: 4px;
-  border-radius: 6px;
+  border-radius: var(--radius-s);
   background: var(--error-tint);
   color: var(--text);
 }
@@ -170,8 +196,8 @@ p.bad::before {
   font-weight: 700;
   color: var(--error);
 }
-.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-dl.state { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0 0; }
+.row { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; }
+dl.state { display: grid; grid-template-columns: max-content 1fr; gap: var(--s1) var(--s4); margin: var(--s2) 0 0; }
 dl.state dt { color: var(--muted); }
 dl.state dd { margin: 0; overflow-wrap: anywhere; }
 </style>
@@ -197,7 +223,7 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
       <button id="connect" type="button">Connect</button>
       <button id="disconnect" type="button" class="secondary" disabled>Disconnect</button>
     </div>
-    <div id="card" class="panel" style="margin-top: 12px">
+    <div id="card" class="panel gap-top">
       <p id="card-status" role="status">Not connected.</p>
       <dl id="state" class="state hidden">
         <dt>Firmware</dt><dd id="state-firmware"></dd>
@@ -208,7 +234,7 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
       </dl>
       <div id="card-lines" class="card-lines"></div>
       <p id="card-note" class="note hidden"></p>
-      <div id="refresh-row" class="row hidden" style="margin-top: 10px">
+      <div id="refresh-row" class="row gap-top hidden">
         <button id="refresh" type="button" class="secondary">Refresh</button>
         <small id="state-time"></small>
       </div>
@@ -229,10 +255,10 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
     <div id="pair-row" class="row">
       <button id="pair" type="button" disabled>Pair</button>
       <button id="pair-cancel" type="button" class="secondary hidden">Cancel</button>
-      <button id="unpair" type="button" class="secondary hidden">Forget the camera</button>
+      <button id="unpair" type="button" class="danger hidden">Forget the camera</button>
     </div>
     <p id="pair-progress" role="status"></p>
-    <div id="unpair-confirm" class="panel hidden" style="margin-top: 12px">
+    <div id="unpair-confirm" class="panel gap-top hidden">
       <p>Forget the paired camera? The card stops connecting to it until you pair them again. Before that, also
          delete T1000-E in the camera's Bluetooth menu.</p>
       <div class="row">
@@ -257,11 +283,11 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
         <ul id="results"></ul>
       </fieldset>
 
-      <div class="row" style="margin-top: 12px">
+      <div class="row gap-top">
         <button id="save" type="button" disabled>Save</button>
       </div>
     </fieldset>
-    <div id="save-answer" class="panel hidden" style="margin-top: 12px">
+    <div id="save-answer" class="panel gap-top hidden">
       <p id="save-status" role="status"></p>
       <div id="save-lines" class="card-lines"></div>
       <p id="save-note" class="note">The camera gets the new time zone the next time the card connects to it:
