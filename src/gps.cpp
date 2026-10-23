@@ -6,6 +6,7 @@
 #include "gps_setup.h"
 #include "log.h"
 #include "nmea.h"
+#include "sound.h"
 #include "utc.h"
 
 namespace {
@@ -312,6 +313,9 @@ void off()
 {
     if (!powered)
         return; // Serial1.end() would wait forever for events of a UART that never ran
+    // Backup mode takes about 2 s without loop(): a sound just started (two clicks when pairing
+    // is given up or the camera refused the card) would hold its first note that long.
+    sound::playToEnd();
     // The core's Uart::end() waits for the TXSTOPPED and RXTO events without a timeout;
     // they follow the STOP tasks within microseconds.
     gps_setup::stop();

@@ -54,6 +54,7 @@ constexpr uint32_t PWM_CLOCK_HZ = 16000000 / 16;
 // COUNTERTOP = PWM_CLOCK_HZ / f: 2702..5405 for 370..185 Hz, within its 15-bit range.
 
 constexpr size_t QUEUE_MAX = 13; // the longest sequence is the volume test
+constexpr uint32_t PLAY_TO_END_LIMIT_MS = 2000; // the longest melody takes about 0.5 s
 
 bool available = false;
 Setting currentSetting = Setting::Loud;
@@ -228,6 +229,16 @@ void poll()
 bool playing()
 {
     return isPlaying;
+}
+
+void playToEnd()
+{
+    const uint32_t start = millis();
+    while (isPlaying && millis() - start < PLAY_TO_END_LIMIT_MS) {
+        poll();
+        delay(1);
+    }
+    stop(); // when the limit ended the wait
 }
 
 void stop()

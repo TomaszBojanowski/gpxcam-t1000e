@@ -41,6 +41,10 @@ void poll();
 // True while a sound is playing.
 bool playing();
 
+// Plays the current sound to its end, at most 2 s, then stops it. For code that is about to
+// hold up loop(): poll() would not run meanwhile, and the note playing would last that long.
+void playToEnd();
+
 // Ends the current sound at once: PWM stopped, buzzer pin low, buzzer supply off.
 void stop();
 

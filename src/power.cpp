@@ -42,7 +42,6 @@ constexpr uint32_t SD_GPREGRET_ID = 0;
 constexpr uint32_t GPREGRET_ALL_BITS = 0xFF;
 
 constexpr uint32_t RELEASE_TIMEOUT_MS = 5000;   // give up powering off if the button stays pressed
-constexpr uint32_t MELODY_TIMEOUT_MS = 2000;    // the shutdown melody takes about 0.45 s
 constexpr uint32_t SYSTEM_OFF_GRACE_MS = 1000;  // reached only in emulated System OFF
 constexpr uint32_t COUNTDOWN_LOG_MS = 5000;
 
@@ -82,16 +81,6 @@ bool waitForRelease(uint32_t timeoutMs)
         delay(1);
     }
     return false;
-}
-
-void waitForSoundEnd()
-{
-    const uint32_t start = millis();
-    while (sound::playing() && millis() - start < MELODY_TIMEOUT_MS) {
-        sound::poll();
-        delay(1);
-    }
-    sound::stop(); // in case the timeout ended the wait
 }
 
 // Makes the button the wake-up source: pull-down (no resistor on the board) and SENSE
@@ -225,7 +214,7 @@ void checkBattery(uint32_t millivolts, bool usb, bool atStart)
                  (unsigned long)battery_rules::LOW_MV);
     battery_log::addPowerOffEntry(millivolts);
     sound::playRefuse(sound::Kind::Event);
-    waitForSoundEnd();
+    sound::playToEnd();
     enterSystemOff(); // refuses with USB, then the card simply goes on
 }
 
@@ -285,7 +274,7 @@ void powerOff()
         sound::playRefuse(sound::Kind::HoldAnswer);
         return;
     }
-    waitForSoundEnd();
+    sound::playToEnd();
     board::led(false);
     enterSystemOff();
     sound::playRefuse(sound::Kind::HoldAnswer); // reached only when enterSystemOff() refused
