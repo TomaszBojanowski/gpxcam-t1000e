@@ -17,7 +17,7 @@ const page = vm.runInContext(
     " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText, tzProblemText," +
     " startList, parseStatus, cameraTile, gpsTile, batteryTile, zoneTile, classifyClockAnswer, clockAnswerText," +
     " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText, SOUND_SETTINGS," +
-    " classifySoundAnswer, soundAnswerText, soundNoteText })",
+    " classifySoundAnswer, soundAnswerText, soundNoteText, soundText })",
   vm.createContext({ TextEncoder, TextDecoder, setTimeout, clearTimeout, console }),
 );
 
@@ -682,6 +682,8 @@ test("every pairing stage, result, link state and charger state of the firmware 
 test("the page offers every sound setting of the firmware, each with its own choice", () => {
   assert.deepEqual(json(page.SOUND_SETTINGS), firmwareValues("settingName", "sound_rules.cpp"));
   for (const setting of page.SOUND_SETTINGS) assert.match(html, new RegExp(`id="sound-${setting}" type="radio"`));
+  assert.match(html, /<fieldset id="sound" class="segmented">/);
+  assert.match(html, /<input id="clock" type="checkbox" class="toggle"/);
 });
 
 test("the answers to 'sound loud|quiet|off' are told apart and explained", async () => {
@@ -701,6 +703,10 @@ test("the answers to 'sound loud|quiet|off' are told apart and explained", async
   assert.equal(page.soundAnswerText("no-sound")[1], "bad");
   assert.match(page.soundNoteText(), /^Choosing Loud or Quiet plays two short beeps/);
   assert.match(page.soundNoteText("1.2.0"), /^gpxcam 1\.2\.0 always plays its sounds loud\./);
+  assert.equal(page.soundText("loud"), "All sounds.");
+  assert.equal(page.soundText("quiet"), "All sounds, quieter.");
+  assert.match(page.soundText("off"), /^Only quiet beeps when you hold the button/);
+  assert.equal(page.soundText(null), "How loud the card is.");
 });
 
 test("the sound choice follows the card", async () => {
@@ -713,6 +719,7 @@ test("the sound choice follows the card", async () => {
   assert.equal(ui["sound-note"].textContent, "Connect the card to change this setting.");
   await ui.connect.fire("click");
   assert.deepEqual(checked(), ["loud"]);
+  assert.equal(ui["sound-says"].textContent, "All sounds.");
   assert.equal(ui["sound-quiet"].disabled, false);
   assert.match(ui["sound-note"].textContent, /^Choosing Loud or Quiet/);
 
@@ -724,6 +731,7 @@ test("the sound choice follows the card", async () => {
   assert.equal(ui["sound-answer"].textContent, "Saved.");
   assert.equal(ui["sound-answer"].className, "good");
   assert.deepEqual(checked(), ["quiet"]);
+  assert.equal(ui["sound-says"].textContent, "All sounds, quieter.");
 
   answers["sound off"] = ["sound: could not write the settings file\r\n"]; // the card stays quiet
   ui["sound-off"].checked = true;
@@ -744,6 +752,7 @@ test("with gpxcam 1.2 the sound stays loud and cannot be changed", async () => {
   const ui = openPage(port);
   await ui.connect.fire("click");
   assert.equal(ui["sound-loud"].checked, true);
+  assert.equal(ui["sound-says"].textContent, "All sounds."); // 1.2 plays them loud
   assert.equal(ui["sound-loud"].disabled, true);
   assert.equal(ui["sound-off"].disabled, true);
   assert.match(ui["sound-note"].textContent, /^gpxcam 1\.2\.0 always plays its sounds loud\. Choosing needs/);
