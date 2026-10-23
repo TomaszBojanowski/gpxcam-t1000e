@@ -15,7 +15,7 @@ const page = vm.runInContext(
   scripts.join("\n") +
     "\n;({ TZ_DATA, BAUD_RATE, CARD_USB, MAX_RESULTS, findZone, searchZones, utcOffsetText, allowedCommand," +
     " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText, tzProblemText," +
-    " startList })",
+    " startList, parseStatus, batteryText, gpsText, cameraText, zoneText })",
   vm.createContext({ TextEncoder, TextDecoder, setTimeout, clearTimeout, console }),
 );
 
@@ -33,7 +33,22 @@ const TZ_SAVED = [
   "tz: America/New_York, rule EST5EDT,M3.2.0,M11.1.0 (tz database 2026e)\r\ntz: now UTC-04:00, the camera ",
   "gets -300 min + summer time\r\n",
 ];
+const VERSION_1_3 = ["gpxcam-t1000e 1.3.0 (git 1234567), uptime 12 s, log dropped 0\r\n"];
 const OLD_FIRMWARE = ["command: unknown 'tz'\r\n", "commands: v = version and reset reason,\r\n"];
+const STATUS_ANSWER = [
+  "status: format=1 fw=1.3.0 git=1234567\r\nstatus: battery_mv=4100 battery_pct=89 charger=charging\r\n",
+  "gps: fix yes, 11 sat, alt 157 m, 19:05:12 UTC 2027-07-01\r\n", // a log line in between
+  "status: gps=on gps_fix=1 gps_sat=11\r\nstatus: paired=1 link=connected\r\n",
+  "status: pair=idle pair_attempt=0 pair_result=none\r\nstatus: clock=on tz=Europe/Warsaw\r\nsta",
+  "tus: end\r\n",
+];
+const STATE = {
+  version: "1.3.0", git: "1234567", batteryMv: 4100, batteryPercent: 89, charger: "charging", gpsOn: true,
+  gpsFix: true, gpsSatellites: 11, paired: true, link: "connected", pair: "idle", pairAttempt: 0,
+  pairResult: "none", clockOn: true, timeZone: "Europe/Warsaw",
+};
+const NO_STATUS = ["command: unknown 'status'\r\n", "commands: v = version and reset reason,\r\n"];
+const statusLines = (text) => text.trim().split("\n");
 
 // A serial port that answers commands with chunks of text; it records what the page does.
 // readFails: reading fails at once, as in Chromium on Linux after a pyserial program.
@@ -65,6 +80,56 @@ function simulatedCard(answers, readFails = false) {
     async close() { port.closed = true; },
   };
   return port;
+}
+
+// ---- The page in a document made of stand-ins: what it shows, without a browser ----
+
+class FakeElement {
+  constructor(className = "") {
+    this.classes = new Set(className.split(/\s+/).filter(Boolean));
+    this.classList = {
+      add: (name) => this.classes.add(name),
+      remove: (name) => this.classes.delete(name),
+      contains: (name) => this.classes.has(name),
+    };
+    this.textContent = "";
+    this.disabled = false;
+    this.value = "";
+    this.checked = false;
+    this.children = [];
+    this.listeners = {};
+  }
+  get className() { return [...this.classes].join(" "); }
+  set className(value) {
+    this.classes.clear();
+    for (const name of String(value).split(/\s+/).filter(Boolean)) this.classes.add(name);
+  }
+  get hidden() { return this.classes.has("hidden"); }
+  addEventListener(type, listener) { (this.listeners[type] ||= []).push(listener); }
+  // Runs the listeners and waits for them (the page's are async).
+  fire(type) { return Promise.all((this.listeners[type] || []).map((listener) => listener({ target: this }))); }
+  replaceChildren(...children) { this.children = children; }
+  append(...children) { this.children.push(...children); }
+}
+
+// Starts the page with every element that has an id, with its classes from the HTML, and a
+// browser whose port chooser gives the simulated card.
+function openPage(port) {
+  const elements = {};
+  for (const [tag] of html.matchAll(/<[a-z]+\b[^>]*>/g)) {
+    const id = / id="([^"]+)"/.exec(tag);
+    if (id) elements[id[1]] = new FakeElement((/ class="([^"]*)"/.exec(tag) || [])[1]);
+  }
+  const document = {
+    getElementById: (id) => elements[id],
+    createElement: () => new FakeElement(),
+  };
+  const navigator = { serial: { requestPort: async () => port, addEventListener() {} } };
+  vm.runInContext(scripts.join("\n"), vm.createContext({
+    TextEncoder, TextDecoder, setTimeout, clearTimeout, console, document, navigator,
+    window: { isSecureContext: true },
+  }));
+  return elements;
 }
 
 async function openCard(answers, readFails = false) {
@@ -153,11 +218,11 @@ test("offsets come from the browser's own data", () => {
   assert.equal(page.utcOffsetText("Mars/Olympus_Mons", july), "");
 });
 
-test("only v, tz and tz with a name from the table can be sent", () => {
-  for (const allowed of ["v", "tz", "tz Europe/Warsaw", "tz Poland", "tz Etc/GMT+5"]) {
+test("only v, status, tz and tz with a name from the table can be sent", () => {
+  for (const allowed of ["v", "status", "tz", "tz Europe/Warsaw", "tz Poland", "tz Etc/GMT+5"]) {
     assert.equal(page.allowedCommand(allowed), true, allowed);
   }
-  const refused = ["dfu", "off", "pair", "unpair", "link off", "log", "bat log clear", "tz europe/warsaw",
+  const refused = ["dfu", "off", "pair", "unpair", "link off", "log", "bat log clear", "status ", "tz europe/warsaw",
     "tz Mars/Olympus_Mons", "tz <+0545>-5:45", "tz Europe/Warsaw\ndfu", "tz Europe/Warsaw ", "V", ""];
   for (const command of refused) assert.equal(page.allowedCommand(command), false, command);
   for (const [name] of page.TZ_DATA.zones) assert.equal(page.allowedCommand(`tz ${name}`), true, name);
@@ -220,7 +285,7 @@ test("firmware without tz is recognised", async () => {
 });
 
 test("a card without tz and a card that does not answer tz get different messages", () => {
-  assert.match(page.tzProblemText("1.1.0", "no-tz"), /^gpxcam 1\.1\.0 cannot set the time zone/);
+  assert.match(page.tzProblemText("1.1.0", "no-tz"), /^gpxcam 1\.1\.0 cannot be set up from this page/);
   assert.match(page.tzProblemText("1.2.0", "none"), /^No answer from the card to 'tz'/);
   assert.equal(page.tzProblemText("1.2.0", "state"), null);
 });
@@ -267,4 +332,105 @@ test("the old address of the time zone page leads here and fetches nothing", () 
   assert.match(old, /<meta http-equiv="Content-Security-Policy" content="default-src 'none'">/);
   assert.match(old, /<a href="\.\.\/">/);
   assert.doesNotMatch(old, /<script|https?:/);
+});
+
+test("the card's state is read from 'status', also in pieces and between log lines", async () => {
+  const { port, card } = await openCard({ status: STATUS_ANSWER });
+  const status = await card.status();
+  assert.deepEqual(port.written, ["status\n"]);
+  assert.equal(status.kind, "ok");
+  assert.deepEqual(json(status.state), STATE);
+});
+
+test("a card before 1.3.0, a missing line, no end and a newer format are told apart", async () => {
+  const { card } = await openCard({ status: NO_STATUS });
+  assert.equal((await card.status()).kind, "no-status");
+  const lines = statusLines(STATUS_ANSWER.join("").replace(/gps: .*\r\n/, "").replaceAll("\r", ""));
+  assert.equal(page.parseStatus(lines).kind, "ok");
+  assert.equal(page.parseStatus(lines.filter((line) => !line.includes("battery"))).kind, "none");
+  assert.equal(page.parseStatus(lines.slice(0, -1)).kind, "none"); // no "status: end"
+  assert.equal(page.parseStatus([]).kind, "none");
+  assert.equal(page.parseStatus(["status: format=2 fw=2.0.0", "status: end"]).kind, "newer");
+  // A key added later is skipped.
+  const more = [...lines.slice(0, -1), "status: storage=ok", "status: end"];
+  assert.deepEqual(json(page.parseStatus(more).state), STATE);
+});
+
+test("the state is shown in words", () => {
+  const state = (changes) => ({ ...STATE, ...changes });
+  assert.equal(page.batteryText(state({ charger: "no_usb" })), "89 % (4.10 V)");
+  assert.equal(page.batteryText(STATE), "charging, about 89 % (4.10 V)");
+  assert.equal(page.batteryText(state({ charger: "charged", batteryMv: 4180 })), "charged (4.18 V)");
+  assert.equal(page.batteryText(state({ charger: "not_charging" })), "on USB, not charging, about 89 % (4.10 V)");
+  assert.equal(page.gpsText(STATE), "fix, 11 satellites");
+  assert.equal(page.gpsText(state({ gpsOn: false })), "off, to save power");
+  assert.match(page.gpsText(state({ gpsFix: false, gpsSatellites: 1 })), /^no fix yet \(1 satellite\); outdoors/);
+  assert.equal(page.cameraText(STATE), "paired, connected");
+  assert.equal(page.cameraText(state({ paired: false, link: "off" })), "not paired");
+  assert.equal(page.cameraText(state({ link: "searching", gpsFix: false })),
+    "paired, looking for the camera; it connects once the GPS has a fix");
+  assert.equal(page.cameraText(state({ link: "searching" })), "paired, looking for the camera");
+  assert.match(page.cameraText(state({ link: "stopped" })), /refused the card: pair them again$/);
+  assert.equal(page.cameraText(state({ link: "off", pair: "searching" })), "pairing");
+  assert.match(page.zoneText(state({ timeZone: "Asia/Kolkata" })), /^Asia\/Kolkata, now UTC\+05:30$/);
+  assert.equal(page.zoneText(state({ timeZone: "<+0545>-5:45" })), "<+0545>-5:45"); // a rule: no offset
+});
+
+test("commands go one at a time: the next after the answer to the one before", async () => {
+  const { port, card } = await openCard({ v: VERSION_ANSWER, status: STATUS_ANSWER });
+  const version = card.version();
+  const status = card.status();
+  await new Promise((resolve) => setTimeout(resolve, 1));
+  assert.deepEqual(port.written, ["v\n"]);
+  assert.equal(await version, "1.2.0");
+  assert.equal((await status).kind, "ok");
+  assert.deepEqual(port.written, ["v\n", "status\n"]);
+  await assert.rejects(card.ask("dfu", () => true, 50));
+  assert.equal((await card.status()).kind, "ok"); // a refused command does not stop the queue
+});
+
+test("the page shows the state of a card with 'status'", async () => {
+  const port = simulatedCard({ v: VERSION_1_3, status: STATUS_ANSWER });
+  const ui = openPage(port);
+  assert.equal(ui.connect.disabled, false);
+  await ui.connect.fire("click");
+  assert.deepEqual(port.written, ["v\n", "status\n"]);
+  assert.equal(ui["card-status"].textContent, "Connected.");
+  assert.equal(ui["card-status"].className, "good");
+  assert.equal(ui.state.hidden, false);
+  assert.equal(ui["state-firmware"].textContent, "gpxcam 1.3.0 (git 1234567)");
+  assert.equal(ui["state-camera"].textContent, "paired, connected");
+  assert.match(ui["state-zone"].textContent, /^Europe\/Warsaw, now UTC\+0[12]:00$/);
+  assert.equal(ui["refresh-row"].hidden, false);
+  assert.equal(ui["card-note"].hidden, true);
+  await ui.refresh.fire("click");
+  assert.deepEqual(port.written, ["v\n", "status\n", "status\n"]);
+  await ui.disconnect.fire("click");
+  assert.equal(port.closed, true);
+  assert.equal(ui.state.hidden, true);
+  assert.equal(ui["card-status"].textContent, "Not connected.");
+});
+
+test("the page sets the time zone of a card with gpxcam 1.2 and says what 1.3.0 adds", async () => {
+  const port = simulatedCard({ v: VERSION_ANSWER, status: NO_STATUS, tz: TZ_STATE });
+  const ui = openPage(port);
+  await ui.connect.fire("click");
+  assert.deepEqual(port.written, ["v\n", "status\n", "tz\n"]);
+  assert.equal(ui["card-status"].textContent, "Connected: gpxcam 1.2.0. Its time zone now:");
+  assert.match(ui["card-lines"].textContent, /^tz: Europe\/Warsaw/);
+  assert.equal(ui.state.hidden, true);
+  assert.equal(ui["refresh-row"].hidden, true);
+  assert.match(ui["card-note"].textContent, /^gpxcam 1\.2\.0 can only set the time zone from this page/);
+  assert.equal(ui.save.disabled, false); // the computer's zone, or nothing, is selected
+  await ui.disconnect.fire("click");
+});
+
+test("a card that does not answer 'status' is closed with a message", async () => {
+  const port = simulatedCard({ v: VERSION_1_3 });
+  const ui = openPage(port);
+  await ui.connect.fire("click");
+  assert.equal(port.closed, true);
+  assert.match(ui["card-status"].textContent, /^No answer from the card to 'status'/);
+  assert.equal(ui["card-status"].className, "bad");
+  assert.equal(ui.connect.disabled, false);
 });

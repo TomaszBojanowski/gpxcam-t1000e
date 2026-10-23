@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
 <link rel="icon" href="data:,">
-<title>gpxcam time zone</title>
+<title>gpxcam card</title>
 <style>
 /* The look of the author's other programs: light colours of gpxfoto, dark colours of gpxfilm, and
    gpxfilm's red as the accent. Red text in the dark theme is lighter (--link), for contrast. */
@@ -163,23 +163,27 @@ p.bad::before {
   color: var(--error);
 }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+dl.state { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0 0; }
+dl.state dt { color: var(--muted); }
+dl.state dd { margin: 0; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
 <main>
-  <h1><span class="logo" translate="no">gpx<span>cam</span></span> time zone</h1>
-  <p class="lead">Set the time zone that a SenseCAP T1000-E card with gpxcam gives your LUMIX camera.</p>
+  <h1><span class="logo" translate="no">gpx<span>cam</span></span> card</h1>
+  <p class="lead">See the state of a SenseCAP T1000-E card with gpxcam and set the time zone that it gives
+     your LUMIX camera.</p>
 
   <div id="unsupported" class="panel hidden">
     <p class="bad"><strong>This browser cannot talk to the card.</strong></p>
     <p>Open this page in Chrome or Edge on a computer (Windows, macOS or Linux).
        Firefox, Safari and phones do not support Web Serial.</p>
-    <p>You can also set the time zone with a serial terminal, see the
+    <p>You can also use a serial terminal, see the
        <a href="https://github.com/TomaszBojanowski/gpxcam-t1000e#set-the-time-zone">README</a>.</p>
   </div>
 
   <div id="app">
-    <h2>1. Connect the card</h2>
+    <h2>The card</h2>
     <p>Plug the card into this computer with a USB cable, click <em>Connect</em> and choose
        <em>T1000-E gpxcam</em>. Close other programs that use the card first (a serial monitor).</p>
     <div class="row">
@@ -188,10 +192,22 @@ p.bad::before {
     </div>
     <div id="card" class="panel" style="margin-top: 12px">
       <p id="card-status" role="status">Not connected.</p>
+      <dl id="state" class="state hidden">
+        <dt>Firmware</dt><dd id="state-firmware"></dd>
+        <dt>Battery</dt><dd id="state-battery"></dd>
+        <dt>GPS</dt><dd id="state-gps"></dd>
+        <dt>Camera</dt><dd id="state-camera"></dd>
+        <dt>Time zone</dt><dd id="state-zone"></dd>
+      </dl>
       <div id="card-lines" class="card-lines"></div>
+      <p id="card-note" class="note hidden"></p>
+      <div id="refresh-row" class="row hidden" style="margin-top: 10px">
+        <button id="refresh" type="button" class="secondary">Refresh</button>
+        <small id="state-time"></small>
+      </div>
     </div>
 
-    <h2>2. Choose the time zone</h2>
+    <h2>Time zone of the camera's clock</h2>
     <label for="search">Search by country, city or zone name</label>
     <input id="search" type="search" placeholder="e.g. Poland, New York, Tokyo" autocomplete="off">
     <p id="selected" role="status">No time zone selected.</p>
@@ -200,8 +216,7 @@ p.bad::before {
       <ul id="results"></ul>
     </fieldset>
 
-    <h2>3. Save it on the card</h2>
-    <div class="row">
+    <div class="row" style="margin-top: 12px">
       <button id="save" type="button" disabled>Save</button>
     </div>
     <div id="save-answer" class="panel hidden" style="margin-top: 12px">
@@ -214,9 +229,9 @@ p.bad::before {
 
   <h2>About this page</h2>
   <p class="note">The page runs only in your browser and sends nothing over the internet. It talks to the card
-     over USB at 115200 baud and sends it only these commands: <code>v</code> (version), <code>tz</code> (show the
-     time zone) and <code>tz</code> with the zone you chose. Offsets shown in the list come from your browser and are
-     only a guide; the card uses its own copy of the tz database.</p>
+     over USB at 115200 baud and sends it only these commands: <code>v</code> (version), <code>status</code> (the
+     card's state), <code>tz</code> (show the time zone) and <code>tz</code> with the zone you chose. Offsets shown
+     in the list come from your browser and are only a guide; the card uses its own copy of the tz database.</p>
   <p class="note"><a href="https://github.com/TomaszBojanowski/gpxcam-t1000e">gpxcam-t1000e on GitHub</a></p>
 </main>
 
@@ -1087,6 +1102,8 @@ const TZ_DATA = {
 const BAUD_RATE = 115200; // any rate works over USB; only the bootloader's reset rate must never be used
 const CARD_USB = { usbVendorId: 0x2886, usbProductId: 0x8057 }; // Seeed, T1000-E running gpxcam (boards/t1000-e.json)
 const VERSION_TIMEOUT_MS = 3000;
+const STATUS_TIMEOUT_MS = 3000;
+const STATUS_PERIOD_MS = 5000; // the card's state on the page refreshes itself this often
 const TZ_TIMEOUT_MS = 6000; // saving writes flash: about 1 s, more the first time
 const ANSWER_QUIET_MS = 400; // an answer is complete after this long without another of its lines
 const MAX_RESULTS = 60;
@@ -1219,9 +1236,11 @@ function computerZone() {
 
 // ---- The card's console (pure functions) ----
 
-// The only commands the page may send: v, tz, and tz with a name exactly as the table spells it.
+// The only commands the page may send: v, status, tz, and tz with a name exactly as the table
+// spells it.
+const FIXED_COMMANDS = new Set(["v", "status", "tz"]);
 function allowedCommand(command) {
-  if (command === "v" || command === "tz") return true;
+  if (FIXED_COMMANDS.has(command)) return true;
   const match = /^tz ([A-Za-z0-9/_+-]{1,40})$/.exec(command);
   return match !== null && findZone(match[1]) !== null && findZone(match[1]).name === match[1];
 }
@@ -1280,9 +1299,101 @@ function noAnswerText(readError) {
 
 // What stops the page after the card's answer to 'tz' when connecting, or null if it can go on.
 function tzProblemText(version, answer) {
-  if (answer === "no-tz") return `gpxcam ${version} cannot set the time zone. Install gpxcam 1.2.0 or newer first.`;
+  if (answer === "no-tz") return `gpxcam ${version} cannot be set up from this page. Install the newest gpxcam first.`;
   if (answer === "none") return "No answer from the card to 'tz'. Unplug it, plug it in again and retry.";
   return null;
+}
+
+// ---- The card's state (pure functions) ----
+
+// The keys of the answer to 'status' in format 1 (src/status_text.h).
+const STATUS_KEYS = ["format", "fw", "git", "battery_mv", "battery_pct", "charger", "gps", "gps_fix", "gps_sat",
+  "paired", "link", "pair", "pair_attempt", "pair_result", "clock", "tz"];
+
+function isStatusAnswer(line) {
+  return line.startsWith("status: ") || line.startsWith("command: ");
+}
+
+function statusAnswerDone(lines) {
+  const last = lines[lines.length - 1];
+  return last === "status: end" || last.startsWith("command: ");
+}
+
+// The card's answer to 'status': "status: key=value ..." lines, then "status: end". Gives
+// { kind: "ok", state }, or the kind alone: "no-status" (gpxcam before 1.3.0), "newer" (a
+// format this page does not know) or "none" (no answer, or lines missing).
+function parseStatus(lines) {
+  if (lines.some((line) => line.startsWith("command: unknown"))) return { kind: "no-status" };
+  if (lines.length === 0 || lines[lines.length - 1] !== "status: end") return { kind: "none" };
+  const values = {};
+  for (const line of lines.slice(0, -1)) {
+    for (const pair of line.slice("status: ".length).split(" ")) {
+      const at = pair.indexOf("=");
+      if (at > 0) values[pair.slice(0, at)] = pair.slice(at + 1);
+    }
+  }
+  if ("format" in values && values.format !== "1") return { kind: "newer" };
+  if (!STATUS_KEYS.every((key) => key in values)) return { kind: "none" };
+  return {
+    kind: "ok",
+    state: {
+      version: values.fw,
+      git: values.git,
+      batteryMv: Number(values.battery_mv),
+      batteryPercent: Number(values.battery_pct),
+      charger: values.charger,
+      gpsOn: values.gps === "on",
+      gpsFix: values.gps_fix === "1",
+      gpsSatellites: Number(values.gps_sat),
+      paired: values.paired === "1",
+      link: values.link,
+      pair: values.pair,
+      pairAttempt: Number(values.pair_attempt),
+      pairResult: values.pair_result,
+      clockOn: values.clock === "on",
+      timeZone: values.tz,
+    },
+  };
+}
+
+// On USB the battery reads higher than it is, so the percent is only about.
+function batteryText(state) {
+  const volts = `${(state.batteryMv / 1000).toFixed(2)} V`;
+  switch (state.charger) {
+    case "no_usb": return `${state.batteryPercent} % (${volts})`;
+    case "charging": return `charging, about ${state.batteryPercent} % (${volts})`;
+    case "charged": return `charged (${volts})`;
+    default: return `on USB, not charging, about ${state.batteryPercent} % (${volts})`;
+  }
+}
+
+function gpsText(state) {
+  if (!state.gpsOn) return "off, to save power";
+  const satellites = state.gpsSatellites === 1 ? "1 satellite" : `${state.gpsSatellites} satellites`;
+  if (state.gpsFix) return `fix, ${satellites}`;
+  return `no fix yet (${satellites}); outdoors or by a window the first fix takes 1-3 minutes`;
+}
+
+// The card connects to the camera only with a GPS fix: the camera gets the time from it.
+function cameraText(state) {
+  if (state.pair !== "idle") return "pairing";
+  if (!state.paired) return "not paired";
+  switch (state.link) {
+    case "connected": return "paired, connected";
+    case "connecting": return "paired, connecting";
+    case "searching": return state.gpsFix ? "paired, looking for the camera" :
+      "paired, looking for the camera; it connects once the GPS has a fix";
+    case "pausing": return "paired, looking again in a moment";
+    case "stopped": return "paired, but the camera refused the card: pair them again";
+    default: return "paired, the link is off ('link on' in a serial terminal)";
+  }
+}
+
+// The zone and, for a name the browser knows, its offset now.
+function zoneText(state) {
+  const found = findZone(state.timeZone);
+  const offset = found ? utcOffsetText(found.zone) : "";
+  return offset ? `${state.timeZone}, now ${offset}` : state.timeZone;
 }
 
 // ---- The connection to the card ----
@@ -1295,6 +1406,7 @@ class Card {
     this.reader = null;
     this.readError = null; // why reading ended, if it failed
     this.onClosed = null; // called once when reading ends (unplugged, closed)
+    this.queue = Promise.resolve(); // one command at a time: answers are told apart only by their lines
   }
 
   async open() {
@@ -1335,9 +1447,16 @@ class Card {
     }
   }
 
-  // Sends a command and collects the lines that belong to its answer: until done(lines) says
-  // so, ANSWER_QUIET_MS after the last such line, or timeoutMs without any.
+  // Sends a command, after the answers to the commands before it, and collects the lines that
+  // belong to its answer: until done(lines) says so, ANSWER_QUIET_MS after the last such line,
+  // or timeoutMs without any.
   ask(command, belongs, timeoutMs, done = () => false) {
+    const asked = this.queue.then(() => this.askNow(command, belongs, timeoutMs, done));
+    this.queue = asked.catch(() => {});
+    return asked;
+  }
+
+  askNow(command, belongs, timeoutMs, done) {
     return new Promise((resolve, reject) => {
       const lines = [];
       let quiet = null;
@@ -1369,6 +1488,10 @@ class Card {
     return lines.length ? parseVersion(lines[0]) : null;
   }
 
+  async status() {
+    return parseStatus(await this.ask("status", isStatusAnswer, STATUS_TIMEOUT_MS, statusAnswerDone));
+  }
+
   timeZone(name) {
     const command = name ? tzCommand(name) : "tz";
     if (!command) return Promise.reject(new Error(`unknown time zone: ${name}`));
@@ -1397,7 +1520,17 @@ function startPage() {
     connect: element("connect"),
     disconnect: element("disconnect"),
     cardStatus: element("card-status"),
+    state: element("state"),
+    stateFirmware: element("state-firmware"),
+    stateBattery: element("state-battery"),
+    stateGps: element("state-gps"),
+    stateCamera: element("state-camera"),
+    stateZone: element("state-zone"),
     cardLines: element("card-lines"),
+    cardNote: element("card-note"),
+    refreshRow: element("refresh-row"),
+    refresh: element("refresh"),
+    stateTime: element("state-time"),
     search: element("search"),
     selected: element("selected"),
     results: element("results"),
@@ -1410,6 +1543,8 @@ function startPage() {
   const computer = computerZone();
   let selected = computer;
   let busy = false;
+  let refreshTimer = null;
+  let refreshing = false;
 
   if (!("serial" in navigator) || !window.isSecureContext) {
     element("unsupported").classList.remove("hidden");
@@ -1425,6 +1560,40 @@ function startPage() {
     ui.connect.disabled = card !== null || busy || !("serial" in navigator);
     ui.disconnect.disabled = card === null || busy;
     ui.save.disabled = card === null || busy || selected === null;
+    ui.refresh.disabled = card === null || refreshing;
+  };
+
+  const showState = (state) => {
+    ui.stateFirmware.textContent = `gpxcam ${state.version} (git ${state.git})`;
+    ui.stateBattery.textContent = batteryText(state);
+    ui.stateGps.textContent = gpsText(state);
+    ui.stateCamera.textContent = cameraText(state);
+    ui.stateZone.textContent = zoneText(state);
+    ui.stateTime.textContent = `Updated ${new Date().toLocaleTimeString()}.`;
+    ui.state.classList.remove("hidden");
+    ui.refreshRow.classList.remove("hidden");
+  };
+
+  // Asks the card for its state now and then every STATUS_PERIOD_MS while it stays connected.
+  const refresh = async () => {
+    const asked = card;
+    if (!asked || refreshing) return;
+    clearTimeout(refreshTimer);
+    refreshing = true;
+    refreshButtons();
+    const status = await asked.status().catch(() => ({ kind: "none" }));
+    refreshing = false;
+    if (card !== asked) return;
+    if (status.kind === "ok") showState(status.state);
+    else ui.stateTime.textContent = `No answer from the card at ${new Date().toLocaleTimeString()}; trying again.`;
+    refreshButtons();
+    refreshTimer = setTimeout(refresh, STATUS_PERIOD_MS);
+  };
+
+  const hideCard = () => {
+    clearTimeout(refreshTimer);
+    for (const part of [ui.state, ui.cardNote, ui.refreshRow]) part.classList.add("hidden");
+    ui.cardLines.textContent = "";
   };
 
   const showSelected = () => {
@@ -1473,8 +1642,27 @@ function startPage() {
   const disconnected = (message, kind) => {
     card = null;
     busy = false;
+    hideCard();
     setStatus(ui.cardStatus, message, kind);
     refreshButtons();
+  };
+
+  // A card before gpxcam 1.3.0 answers 'tz' but not 'status'. Null if the page can go on.
+  const connectOldCard = async (opened, version) => {
+    const lines = await opened.timeZone().catch(() => []);
+    const problem = tzProblemText(version, classifyTzAnswer(lines));
+    if (problem) return problem;
+    setStatus(ui.cardStatus, `Connected: gpxcam ${version}. Its time zone now:`, "good");
+    ui.cardLines.textContent = lines.join("\n");
+    ui.cardNote.textContent = `gpxcam ${version} can only set the time zone from this page. From version 1.3.0 ` +
+      "it also shows the card's state here.";
+    ui.cardNote.classList.remove("hidden");
+    return null;
+  };
+
+  const statusProblemText = {
+    none: "No answer from the card to 'status'. Unplug it, plug it in again and retry.",
+    newer: "The card's gpxcam is newer than this page. Reload the page.",
   };
 
   const connect = async () => {
@@ -1500,8 +1688,8 @@ function startPage() {
       disconnected(noAnswerText(opened.readError), "bad");
       return;
     }
-    const lines = await opened.timeZone().catch(() => []);
-    const problem = tzProblemText(version, classifyTzAnswer(lines));
+    const status = await opened.status().catch(() => ({ kind: "none" }));
+    const problem = status.kind === "no-status" ? await connectOldCard(opened, version) : statusProblemText[status.kind];
     if (problem) {
       await opened.close();
       disconnected(problem, "bad");
@@ -1513,8 +1701,11 @@ function startPage() {
       if (card === opened) disconnected(`The connection to the card ended${why}.`, "bad");
     };
     busy = false;
-    setStatus(ui.cardStatus, `Connected: gpxcam ${version}. Its time zone now:`, "good");
-    ui.cardLines.textContent = lines.join("\n");
+    if (status.kind === "ok") {
+      setStatus(ui.cardStatus, "Connected.", "good");
+      showState(status.state);
+      refreshTimer = setTimeout(refresh, STATUS_PERIOD_MS);
+    }
     refreshButtons();
   };
 
@@ -1525,7 +1716,6 @@ function startPage() {
     refreshButtons();
     await closing.close();
     disconnected("Not connected.");
-    ui.cardLines.textContent = "";
   };
 
   const save = async () => {
@@ -1553,11 +1743,13 @@ function startPage() {
     ui.saveLines.textContent = lines.join("\n");
     busy = false;
     refreshButtons();
+    if (!ui.state.classList.contains("hidden")) refresh(); // the new zone in the card's state
   };
 
   ui.connect.addEventListener("click", connect);
   ui.disconnect.addEventListener("click", disconnect);
   ui.save.addEventListener("click", save);
+  ui.refresh.addEventListener("click", refresh);
   ui.search.addEventListener("input", showResults);
   if ("serial" in navigator) {
     navigator.serial.addEventListener("disconnect", (event) => {
