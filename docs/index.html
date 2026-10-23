@@ -183,10 +183,9 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
      how it sets the camera's clock and how loud it is.</p>
 
   <div id="unsupported" class="panel hidden">
-    <p class="bad"><strong>This browser cannot talk to the card.</strong></p>
-    <p>Open this page in Chrome or Edge on a computer (Windows, macOS or Linux).
-       Firefox, Safari and phones do not support Web Serial.</p>
-    <p>You can also use a serial terminal, see the
+    <p class="bad"><strong>This browser cannot talk to the card.</strong> Open this page in Chrome or Edge on a
+       computer (Windows, macOS or Linux): Firefox, Safari and phones do not support Web Serial. A serial terminal
+       works too, see the
        <a href="https://github.com/TomaszBojanowski/gpxcam-t1000e#with-a-serial-terminal">README</a>.</p>
   </div>
 
@@ -217,7 +216,9 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
 
     <h2>The camera</h2>
     <p id="camera-note">Connect the card to pair it with your camera.</p>
-    <ol class="steps">
+    <p id="camera-old" class="hidden">Pairing from this page needs gpxcam 1.3.0. With gpxcam 1.2, pair with the
+       card's button, see <a href="https://github.com/TomaszBojanowski/gpxcam-t1000e#pairing-once">the README</a>.</p>
+    <ol id="pair-steps" class="steps">
       <li>Put the card where its GPS gets a fix, outdoors or by a window: pairing needs the time from it.</li>
       <li>On the camera, start pairing in its Bluetooth menu (the screen that waits for a new device). If the camera
           lists T1000-E from an earlier pairing, delete it there first: the camera does not pair a card it already
@@ -225,7 +226,7 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
       <li>Click <em>Pair</em>. The card waits up to 2 minutes for GPS time, then looks for the camera for up to
           1 minute, and tries up to 3 times.</li>
     </ol>
-    <div class="row">
+    <div id="pair-row" class="row">
       <button id="pair" type="button" disabled>Pair</button>
       <button id="pair-cancel" type="button" class="secondary hidden">Cancel</button>
       <button id="unpair" type="button" class="secondary hidden">Forget the camera</button>
@@ -263,7 +264,7 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
     <div id="save-answer" class="panel hidden" style="margin-top: 12px">
       <p id="save-status" role="status"></p>
       <div id="save-lines" class="card-lines"></div>
-      <p class="note">The camera gets the new time zone the next time the card connects to it:
+      <p id="save-note" class="note">The camera gets the new time zone the next time the card connects to it:
          switch the camera off and on. The card connects only when its GPS has a fix.</p>
     </div>
 
@@ -1745,6 +1746,9 @@ function startPage() {
     refresh: element("refresh"),
     stateTime: element("state-time"),
     cameraNote: element("camera-note"),
+    cameraOld: element("camera-old"),
+    pairSteps: element("pair-steps"),
+    pairRow: element("pair-row"),
     pair: element("pair"),
     pairCancel: element("pair-cancel"),
     unpair: element("unpair"),
@@ -1763,6 +1767,7 @@ function startPage() {
     saveAnswer: element("save-answer"),
     saveStatus: element("save-status"),
     saveLines: element("save-lines"),
+    saveNote: element("save-note"),
     soundNote: element("sound-note"),
     soundAnswer: element("sound-answer"),
   };
@@ -1782,6 +1787,7 @@ function startPage() {
 
   if (!("serial" in navigator) || !window.isSecureContext) {
     element("unsupported").classList.remove("hidden");
+    element("app").classList.add("hidden"); // nothing here would work
     ui.connect.disabled = true;
   }
 
@@ -1806,9 +1812,9 @@ function startPage() {
   const showPairing = () => {
     const pairing = lastState !== null && lastState.pair !== "idle";
     const paired = lastState !== null && lastState.paired;
+    for (const part of [ui.cameraNote, ui.pairSteps, ui.pairRow]) part.classList.toggle("hidden", oldVersion !== null);
+    ui.cameraOld.classList.toggle("hidden", oldVersion === null);
     if (card === null) ui.cameraNote.textContent = "Connect the card to pair it with your camera.";
-    else if (oldVersion) ui.cameraNote.textContent = `Pairing from this page needs gpxcam 1.3.0. With gpxcam ` +
-      `${oldVersion}, pair with the card's button (see the README).`;
     else ui.cameraNote.textContent = paired ? "The card is paired with a camera. Pairing again replaces it " +
       "(with the same camera: delete T1000-E in the camera's Bluetooth menu first)." :
       "The card is not paired with a camera yet.";
@@ -1930,7 +1936,10 @@ function startPage() {
       const text = document.createElement("span");
       const name = document.createElement("span");
       name.className = "name";
-      name.textContent = result.name;
+      result.name.split("/").forEach((part, i) => { // breaks after a "/", not inside a word
+        if (i > 0) name.append("/", document.createElement("wbr"));
+        name.append(part);
+      });
       const detail = document.createElement("div");
       detail.className = "detail";
       detail.textContent = result.detail;
@@ -2034,6 +2043,7 @@ function startPage() {
     refreshButtons();
     ui.saveAnswer.classList.remove("hidden");
     setStatus(ui.saveStatus, `Saving ${name}...`);
+    ui.saveNote.classList.add("hidden");
     ui.saveLines.textContent = "";
     let lines = [];
     try {
@@ -2050,6 +2060,7 @@ function startPage() {
     };
     const [text, kind] = messages[classifyTzAnswer(lines)] || ["The card answered:", ""];
     setStatus(ui.saveStatus, text, kind);
+    ui.saveNote.classList.toggle("hidden", kind !== "good");
     ui.saveLines.textContent = lines.join("\n");
     busy = false;
     refreshButtons();

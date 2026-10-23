@@ -133,8 +133,8 @@ class FakeElement {
 }
 
 // Starts the page with every element that has an id, with its classes from the HTML, and a
-// browser whose port chooser gives the simulated card.
-function openPage(port) {
+// browser whose port chooser gives the simulated card (serial: false - a browser without Web Serial).
+function openPage(port, { serial = true } = {}) {
   const elements = {};
   for (const [tag] of html.matchAll(/<[a-z]+\b[^>]*>/g)) {
     const id = / id="([^"]+)"/.exec(tag);
@@ -144,12 +144,21 @@ function openPage(port) {
     getElementById: (id) => elements[id],
     createElement: () => new FakeElement(),
   };
-  const navigator = { serial: { requestPort: async () => port, addEventListener() {} } };
+  const navigator = serial ? { serial: { requestPort: async () => port, addEventListener() {} } } : {};
   vm.runInContext(scripts.join("\n"), vm.createContext({
     TextEncoder, TextDecoder, setTimeout, clearTimeout, console, document, navigator,
     window: { isSecureContext: true },
   }));
   return elements;
+}
+
+// Chooses a zone in the list as a click does; returns its name element.
+async function chooseZone(ui, zone) {
+  const item = ui.results.children.find((li) => li.children[0].children[0].value === zone);
+  const [radio, text] = item.children[0].children;
+  radio.checked = true;
+  await radio.fire("change");
+  return text.children[0];
 }
 
 async function openCard(answers, readFails = false) {
@@ -452,6 +461,42 @@ test("the page sets the time zone of a card with gpxcam 1.2 and says what 1.3.0 
   await ui.disconnect.fire("click");
 });
 
+test("a browser without Web Serial gets only the explanation", () => {
+  const ui = openPage(simulatedCard({}), { serial: false });
+  assert.equal(ui.unsupported.hidden, false);
+  assert.equal(ui.app.hidden, true);
+  assert.equal(ui.connect.disabled, true);
+});
+
+test("zone names break after a slash, not inside a word", () => {
+  const ui = openPage(simulatedCard({}));
+  const name = ui.results.children.find((li) => li.children[0].children[0].value === "America/Argentina/Rio_Gallegos")
+    .children[0].children[1].children[0];
+  assert.equal(name.children.filter((part) => typeof part === "string").join(""), "America/Argentina/Rio_Gallegos");
+  assert.equal(name.children.filter((part) => typeof part !== "string").length, 2); // a <wbr> after each "/"
+  assert.equal(name.children.indexOf("/") + 1, name.children.findIndex((part) => typeof part !== "string"));
+});
+
+test("saving a zone: the note about the next connection only when it was saved", async () => {
+  const answers = { v: VERSION_1_3, status: STATUS_ANSWER, "tz America/New_York": TZ_SAVED };
+  const port = simulatedCard(answers);
+  const ui = openPage(port);
+  await ui.connect.fire("click");
+  await chooseZone(ui, "America/New_York");
+  const statusAfterSave = () => new Promise((resolve) => setTimeout(resolve, 100)); // the page asks for its state
+  await ui.save.fire("click");
+  assert.ok(port.written.includes("tz America/New_York\n"));
+  assert.equal(ui["save-status"].textContent, "Saved: America/New_York.");
+  assert.equal(ui["save-note"].hidden, false);
+  await statusAfterSave();
+  answers["tz America/New_York"] = ["tz: could not write the time zone file\r\n"];
+  await ui.save.fire("click");
+  assert.equal(ui["save-status"].className, "bad");
+  assert.equal(ui["save-note"].hidden, true);
+  await statusAfterSave();
+  await ui.disconnect.fire("click");
+});
+
 test("a card that does not answer 'status' is closed with a message", async () => {
   const port = simulatedCard({ v: VERSION_1_3 });
   const ui = openPage(port);
@@ -745,6 +790,11 @@ test("with gpxcam 1.2 pairing is left to the card's button", async () => {
   await ui.connect.fire("click");
   assert.equal(ui.pair.disabled, true);
   assert.equal(ui.unpair.hidden, true);
-  assert.match(ui["camera-note"].textContent, /^Pairing from this page needs gpxcam 1\.3\.0\. With gpxcam 1\.2\.0, pair/);
+  for (const id of ["camera-note", "pair-steps", "pair-row"]) assert.equal(ui[id].hidden, true, id);
+  assert.equal(ui["camera-old"].hidden, false); // pair with the button, with a link to the README
+  const readme = '<a href="https://github.com/TomaszBojanowski/gpxcam-t1000e#pairing-once">the README</a>';
+  assert.ok(html.includes(readme));
   await ui.disconnect.fire("click");
+  for (const id of ["camera-note", "pair-steps", "pair-row"]) assert.equal(ui[id].hidden, false, id);
+  assert.equal(ui["camera-old"].hidden, true);
 });
