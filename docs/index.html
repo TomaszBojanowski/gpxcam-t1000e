@@ -116,6 +116,8 @@ label.switch { display: flex; gap: 8px; align-items: center; font-weight: 600; c
 label.switch:has(input:disabled) { color: var(--muted); cursor: default; }
 input[type="checkbox"] { width: 18px; height: 18px; margin: 0; }
 fieldset:disabled { opacity: 0.55; }
+ol.steps { margin: 8px 0; padding-left: 22px; }
+ol.steps li { margin: 4px 0; }
 /* A panel of a fixed height, about four and a half results, so what follows does not move while
    typing and the empty part reads as part of the list */
 #results {
@@ -175,8 +177,8 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
 <body>
 <main>
   <h1><span class="logo" translate="no">gpx<span>cam</span></span> card</h1>
-  <p class="lead">See the state of a SenseCAP T1000-E card with gpxcam and choose how it sets the clock of your
-     LUMIX camera.</p>
+  <p class="lead">See the state of a SenseCAP T1000-E card with gpxcam, pair it with your LUMIX camera and choose
+     how it sets the camera's clock.</p>
 
   <div id="unsupported" class="panel hidden">
     <p class="bad"><strong>This browser cannot talk to the card.</strong></p>
@@ -211,6 +213,28 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
       </div>
     </div>
 
+    <h2>The camera</h2>
+    <p id="camera-note">Connect the card to pair it with your camera.</p>
+    <ol class="steps">
+      <li>Put the card where its GPS gets a fix, outdoors or by a window: pairing needs the time from it.</li>
+      <li>On the camera, start pairing in its Bluetooth menu (the screen that waits for a new device).</li>
+      <li>Click <em>Pair</em>. The card waits up to 2 minutes for GPS time, then looks for the camera for up to
+          1 minute, and tries up to 3 times.</li>
+    </ol>
+    <div class="row">
+      <button id="pair" type="button" disabled>Pair</button>
+      <button id="pair-cancel" type="button" class="secondary hidden">Cancel</button>
+      <button id="unpair" type="button" class="secondary hidden">Forget the camera</button>
+    </div>
+    <p id="pair-progress" role="status"></p>
+    <div id="unpair-confirm" class="panel hidden" style="margin-top: 12px">
+      <p>Forget the paired camera? The card stops connecting to it until you pair them again.</p>
+      <div class="row">
+        <button id="unpair-yes" type="button">Forget</button>
+        <button id="unpair-no" type="button" class="secondary">Keep</button>
+      </div>
+    </div>
+
     <h2>The camera's clock</h2>
     <label class="switch"><input id="clock" type="checkbox" disabled> The card sets the camera's clock and time
       zone</label>
@@ -242,9 +266,10 @@ dl.state dd { margin: 0; overflow-wrap: anywhere; }
   <h2>About this page</h2>
   <p class="note">The page runs only in your browser and sends nothing over the internet. It talks to the card
      over USB at 115200 baud and sends it only these commands: <code>v</code> (version), <code>status</code> (the
-     card's state), <code>clock on</code> and <code>clock off</code> (whether the card sets the camera's clock),
-     <code>tz</code> (show the time zone) and <code>tz</code> with the zone you chose. Offsets shown in the list
-     come from your browser and are only a guide; the card uses its own copy of the tz database.</p>
+     card's state), <code>pair</code> and <code>pair off</code> (start and cancel pairing), <code>unpair</code>
+     (forget the camera), <code>clock on</code> and <code>clock off</code> (whether the card sets the camera's
+     clock), <code>tz</code> (show the time zone) and <code>tz</code> with the zone you chose. Offsets shown in the
+     list come from your browser and are only a guide; the card uses its own copy of the tz database.</p>
   <p class="note"><a href="https://github.com/TomaszBojanowski/gpxcam-t1000e">gpxcam-t1000e on GitHub</a></p>
 </main>
 
@@ -1117,6 +1142,13 @@ const CARD_USB = { usbVendorId: 0x2886, usbProductId: 0x8057 }; // Seeed, T1000-
 const VERSION_TIMEOUT_MS = 3000;
 const STATUS_TIMEOUT_MS = 3000;
 const STATUS_PERIOD_MS = 5000; // the card's state on the page refreshes itself this often
+const PAIRING_STATUS_PERIOD_MS = 2000; // ... and this often while the card pairs
+const PAIR_TIMEOUT_MS = 3000;
+const UNPAIR_TIMEOUT_MS = 10000; // the card first puts its GPS to sleep (up to 7.5 s), then writes flash
+// Pairing as the card does it (src/pairing.cpp): the limits the page tells.
+const PAIR_ATTEMPTS = 3;
+const PAIR_FIX_WAIT_TEXT = "2 minutes";
+const PAIR_SEARCH_TEXT = "1 minute";
 const TZ_TIMEOUT_MS = 6000; // saving writes flash: about 1 s, more the first time
 const CLOCK_TIMEOUT_MS = 6000; // the clock setting is saved in the same file as the time zone
 const ANSWER_QUIET_MS = 400; // an answer is complete after this long without another of its lines
@@ -1250,9 +1282,9 @@ function computerZone() {
 
 // ---- The card's console (pure functions) ----
 
-// The only commands the page may send: v, status, clock on, clock off, tz, and tz with a name
-// exactly as the table spells it.
-const FIXED_COMMANDS = new Set(["v", "status", "clock on", "clock off", "tz"]);
+// The only commands the page may send: v, status, pair, pair off, unpair, clock on, clock off,
+// tz, and tz with a name exactly as the table spells it.
+const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "unpair", "clock on", "clock off", "tz"]);
 function allowedCommand(command) {
   if (FIXED_COMMANDS.has(command)) return true;
   const match = /^tz ([A-Za-z0-9/_+-]{1,40})$/.exec(command);
@@ -1320,6 +1352,28 @@ function clockNoteText(clockOn, version = null) {
   if (clockOn) return "Each time it connects, the card sets the camera's clock from its GPS, in the time zone below.";
   return "The card leaves the camera's clock alone: set the time and the time zone in the camera's menu. " +
     "Pairing still sets the clock once.";
+}
+
+function isPairAnswer(line) {
+  return line.startsWith("pair: ") || line.startsWith("command: ");
+}
+
+// What the card answered to 'unpair' (src/main.cpp forgetCamera()).
+function classifyUnpairAnswer(lines) {
+  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
+  if (lines.length === 0) return "none";
+  if (has("pair: camera forgotten")) return "forgotten";
+  if (has("pair: no camera paired")) return "not-paired";
+  return "failed"; // "could not write the pairing file", "not available"
+}
+
+function unpairAnswerText(answer) {
+  switch (answer) {
+    case "forgotten": return ["The camera is forgotten.", "good"];
+    case "not-paired": return ["No camera was paired.", "good"];
+    case "failed": return ["The card could not forget the camera. Try again.", "bad"];
+    default: return ["No answer from the card. Try again.", "bad"];
+  }
 }
 
 // Splits the card's output into lines; a line may come in several pieces.
@@ -1438,6 +1492,40 @@ function cameraText(state) {
   }
 }
 
+// What the card does while it pairs ('status': pair, pair_attempt).
+function pairingText(state) {
+  const satellites = state.gpsSatellites === 1 ? "1 satellite" : `${state.gpsSatellites} satellites`;
+  switch (state.pair) {
+    case "waiting_gps": return `Waiting for GPS time, up to ${PAIR_FIX_WAIT_TEXT} (${satellites} so far)...`;
+    case "searching": return state.pairAttempt === 0 ?
+      `Looking for a camera in pairing mode, up to ${PAIR_SEARCH_TEXT}...` :
+      `Looking for the camera again (attempt ${state.pairAttempt + 1} of ${PAIR_ATTEMPTS})...`;
+    case "connecting": return `Talking to the camera (attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS})...`;
+    case "pausing": return `Attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS} did not work; trying again in a moment...`;
+    default: return "Pairing...";
+  }
+}
+
+// [text, kind] for how a pairing ended ('status': pair_result), or null for none.
+function pairResultText(result) {
+  switch (result) {
+    case "none": return null;
+    case "paired": return ["Paired. From now on the card connects to the camera by itself.", "good"];
+    case "not_saved": return ["The camera took the card, but the card could not save the pairing. Try again.", "bad"];
+    case "not_possible": return ["The card cannot pair now: its Bluetooth or its storage is not ready.", "bad"];
+    case "no_gps_fix": return [`No GPS time within ${PAIR_FIX_WAIT_TEXT}. Put the card outdoors or by a window ` +
+      "and try again.", "bad"];
+    case "no_camera": return [`No camera in pairing mode within ${PAIR_SEARCH_TEXT}. Start pairing on the camera ` +
+      "and try again.", "bad"];
+    case "not_in_pairing_mode": return ["The card saw a LUMIX camera, but not in pairing mode. Start pairing in the " +
+      "camera's Bluetooth menu and try again.", "bad"];
+    case "failed": return [`The camera did not take the card in ${PAIR_ATTEMPTS} attempts. Start pairing on the ` +
+      "camera again and retry.", "bad"];
+    case "cancelled": return ["Pairing cancelled.", ""];
+    default: return [`Pairing ended: ${result}.`, ""];
+  }
+}
+
 // The zone and, for a name the browser knows, its offset now.
 function zoneText(state) {
   if (!state.clockOn) return `${state.timeZone}; the card leaves the camera's clock alone`;
@@ -1542,6 +1630,18 @@ class Card {
     return parseStatus(await this.ask("status", isStatusAnswer, STATUS_TIMEOUT_MS, statusAnswerDone));
   }
 
+  pair() {
+    return this.ask("pair", isPairAnswer, PAIR_TIMEOUT_MS, () => true);
+  }
+
+  cancelPairing() {
+    return this.ask("pair off", isPairAnswer, PAIR_TIMEOUT_MS, () => true);
+  }
+
+  unpair() {
+    return this.ask("unpair", isPairAnswer, UNPAIR_TIMEOUT_MS, () => true);
+  }
+
   clock(on) {
     return this.ask(on ? "clock on" : "clock off", isClockAnswer, CLOCK_TIMEOUT_MS);
   }
@@ -1585,6 +1685,14 @@ function startPage() {
     refreshRow: element("refresh-row"),
     refresh: element("refresh"),
     stateTime: element("state-time"),
+    cameraNote: element("camera-note"),
+    pair: element("pair"),
+    pairCancel: element("pair-cancel"),
+    unpair: element("unpair"),
+    pairProgress: element("pair-progress"),
+    unpairConfirm: element("unpair-confirm"),
+    unpairYes: element("unpair-yes"),
+    unpairNo: element("unpair-no"),
     clock: element("clock"),
     clockNote: element("clock-note"),
     clockAnswer: element("clock-answer"),
@@ -1604,7 +1712,10 @@ function startPage() {
   let refreshTimer = null;
   let refreshing = false;
   let clockOn = null; // as the card has it; null: not connected, or it cannot be changed
-  let clockVersion = null; // gpxcam that always sets the clock
+  let oldVersion = null; // gpxcam before 1.3.0: the page only sets its time zone
+  let lastState = null; // the card's last answer to 'status'
+  let watchingPairing = false; // a pairing ran since the last answer: its result is shown when it ends
+  let pairMessage = null; // [text, kind] of the last pairing or unpairing
 
   if (!("serial" in navigator) || !window.isSecureContext) {
     element("unsupported").classList.remove("hidden");
@@ -1622,13 +1733,46 @@ function startPage() {
     ui.save.disabled = card === null || busy || selected === null;
     ui.refresh.disabled = card === null || refreshing;
     ui.clock.disabled = card === null || busy || clockOn === null;
+    const pairing = lastState !== null && lastState.pair !== "idle";
+    ui.pair.disabled = card === null || busy || lastState === null || pairing;
+    for (const button of [ui.pairCancel, ui.unpair, ui.unpairYes]) button.disabled = card === null || busy;
+  };
+
+  // The camera section from the card's last state: what to do, the stage or the result.
+  const showPairing = () => {
+    const pairing = lastState !== null && lastState.pair !== "idle";
+    const paired = lastState !== null && lastState.paired;
+    if (card === null) ui.cameraNote.textContent = "Connect the card to pair it with your camera.";
+    else if (oldVersion) ui.cameraNote.textContent = `Pairing from this page needs gpxcam 1.3.0. With gpxcam ` +
+      `${oldVersion}, pair with the card's button (see the README).`;
+    else ui.cameraNote.textContent = paired ? "The card is paired with a camera. Pairing again replaces it." :
+      "The card is not paired with a camera yet.";
+    ui.pair.textContent = paired ? "Pair again" : "Pair";
+    ui.pair.classList.toggle("secondary", paired); // pairing again ends the link to the paired camera
+    ui.pairCancel.classList.toggle("hidden", !pairing);
+    ui.unpair.classList.toggle("hidden", !paired || pairing);
+    if (!paired || pairing) ui.unpairConfirm.classList.add("hidden");
+    const [text, kind] = pairing ? [pairingText(lastState), ""] : pairMessage || ["", ""];
+    setStatus(ui.pairProgress, text, kind);
+    refreshButtons();
+  };
+
+  // Follows a pairing, also one started with the card's button, to its result.
+  const followPairing = (state) => {
+    if (state.pair !== "idle") {
+      watchingPairing = true;
+      pairMessage = null;
+    } else if (watchingPairing) {
+      watchingPairing = false;
+      pairMessage = pairResultText(state.pairResult);
+    }
   };
 
   // The switch as the card has it; the time zone can be chosen unless the clock is off.
   const showClock = () => {
-    ui.clock.checked = clockOn === true || clockVersion !== null; // gpxcam 1.2 always sets it
+    ui.clock.checked = clockOn === true || oldVersion !== null; // gpxcam 1.2 always sets it
     ui.clockNote.textContent = card === null ? "Connect the card to change this setting." :
-      clockNoteText(clockOn !== false, clockVersion);
+      clockNoteText(clockOn !== false, oldVersion);
     ui.zones.disabled = clockOn === false;
     refreshButtons();
   };
@@ -1646,6 +1790,9 @@ function startPage() {
       clockOn = state.clockOn;
       showClock();
     }
+    lastState = state;
+    followPairing(state);
+    showPairing();
   };
 
   // Asks the card for its state now and then every STATUS_PERIOD_MS while it stays connected.
@@ -1661,7 +1808,8 @@ function startPage() {
     if (status.kind === "ok") showState(status.state);
     else ui.stateTime.textContent = `No answer from the card at ${new Date().toLocaleTimeString()}; trying again.`;
     refreshButtons();
-    refreshTimer = setTimeout(refresh, STATUS_PERIOD_MS);
+    const pairing = lastState !== null && lastState.pair !== "idle";
+    refreshTimer = setTimeout(refresh, pairing ? PAIRING_STATUS_PERIOD_MS : STATUS_PERIOD_MS);
   };
 
   const hideCard = () => {
@@ -1669,8 +1817,11 @@ function startPage() {
     for (const part of [ui.state, ui.cardNote, ui.refreshRow]) part.classList.add("hidden");
     ui.cardLines.textContent = "";
     clockOn = null;
-    clockVersion = null;
+    oldVersion = null;
     setStatus(ui.clockAnswer, "");
+    lastState = null;
+    watchingPairing = false;
+    pairMessage = null;
   };
 
   const showSelected = () => {
@@ -1722,6 +1873,7 @@ function startPage() {
     hideCard();
     setStatus(ui.cardStatus, message, kind);
     showClock();
+    showPairing();
   };
 
   // A card before gpxcam 1.3.0 answers 'tz' but not 'status'. Null if the page can go on.
@@ -1734,7 +1886,7 @@ function startPage() {
     ui.cardNote.textContent = `gpxcam ${version} can only set the time zone from this page. From version 1.3.0 ` +
       "it also shows the card's state here.";
     ui.cardNote.classList.remove("hidden");
-    clockVersion = version;
+    oldVersion = version;
     return null;
   };
 
@@ -1785,6 +1937,7 @@ function startPage() {
       refreshTimer = setTimeout(refresh, STATUS_PERIOD_MS);
     }
     showClock();
+    showPairing();
   };
 
   const disconnect = async () => {
@@ -1841,6 +1994,44 @@ function startPage() {
     showClock();
   };
 
+  // Sends a pairing command and then shows the card's state; the stages and the result come
+  // with it (showPairing()).
+  const pairCommand = async (send) => {
+    const asked = card;
+    if (!asked) return;
+    busy = true;
+    ui.unpairConfirm.classList.add("hidden");
+    pairMessage = null;
+    showPairing();
+    const lines = await send(asked).catch(() => []);
+    if (card !== asked) return;
+    busy = false;
+    if (lines.length === 0) pairMessage = ["No answer from the card. Try again.", "bad"];
+    else watchingPairing = true; // also when the card refused at once: the result says why
+    await refresh();
+    showPairing();
+  };
+
+  const forgetCamera = async () => {
+    const asked = card;
+    if (!asked) return;
+    busy = true;
+    refreshButtons();
+    setStatus(ui.pairProgress, "Forgetting the camera...");
+    const answer = classifyUnpairAnswer(await asked.unpair().catch(() => []));
+    if (card !== asked) return;
+    busy = false;
+    ui.unpairConfirm.classList.add("hidden");
+    pairMessage = unpairAnswerText(answer);
+    await refresh();
+    showPairing();
+  };
+
+  ui.pair.addEventListener("click", () => pairCommand((asked) => asked.pair()));
+  ui.pairCancel.addEventListener("click", () => pairCommand((asked) => asked.cancelPairing()));
+  ui.unpair.addEventListener("click", () => ui.unpairConfirm.classList.remove("hidden"));
+  ui.unpairNo.addEventListener("click", () => ui.unpairConfirm.classList.add("hidden"));
+  ui.unpairYes.addEventListener("click", forgetCamera);
   ui.connect.addEventListener("click", connect);
   ui.disconnect.addEventListener("click", disconnect);
   ui.save.addEventListener("click", save);
@@ -1855,6 +2046,7 @@ function startPage() {
   showSelected();
   showResults();
   showClock();
+  showPairing();
 }
 
 if (typeof document !== "undefined") startPage();

@@ -16,7 +16,7 @@ const page = vm.runInContext(
     "\n;({ TZ_DATA, BAUD_RATE, CARD_USB, MAX_RESULTS, findZone, searchZones, utcOffsetText, allowedCommand," +
     " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText, tzProblemText," +
     " startList, parseStatus, batteryText, gpsText, cameraText, zoneText, classifyClockAnswer, clockAnswerText," +
-    " clockNoteText })",
+    " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText })",
   vm.createContext({ TextEncoder, TextDecoder, setTimeout, clearTimeout, console }),
 );
 
@@ -56,6 +56,12 @@ const CLOCK_OFF_SAVED = [
   "clock: off - the card leaves the camera's clock alone; set it in the camera's menu\r\n",
 ];
 const CLOCK_NOT_SAVED = ["clock: could not write the time zone file\r\n"];
+// STATUS_ANSWER with other values, e.g. statusWith({ paired: 0, link: "off" }).
+const statusWith = (changes) => [Object.entries(changes).reduce(
+  (text, [key, value]) => text.replace(new RegExp(` ${key}=\\S+`), ` ${key}=${value}`), STATUS_ANSWER.join(""))];
+const NOT_PAIRED = { paired: 0, link: "off" };
+const PAIR_STARTED = ["link: off\r\n", "pair: started - waiting for GPS time (up to 120 s)\r\n"];
+const FORGOTTEN = ["link: off\r\n", "pair: camera forgotten (the card id stays)\r\n"];
 
 // A serial port that answers commands with chunks of text; it records what the page does.
 // readFails: reading fails at once, as in Chromium on Linux after a pyserial program.
@@ -98,6 +104,7 @@ class FakeElement {
       add: (name) => this.classes.add(name),
       remove: (name) => this.classes.delete(name),
       contains: (name) => this.classes.has(name),
+      toggle: (name, on) => (on ? this.classes.add(name) : this.classes.delete(name)),
     };
     this.textContent = "";
     this.disabled = false;
@@ -225,13 +232,13 @@ test("offsets come from the browser's own data", () => {
   assert.equal(page.utcOffsetText("Mars/Olympus_Mons", july), "");
 });
 
-test("only v, status, clock on/off, tz and tz with a name from the table can be sent", () => {
-  for (const allowed of ["v", "status", "clock on", "clock off", "tz", "tz Europe/Warsaw", "tz Poland",
-    "tz Etc/GMT+5"]) {
+test("only v, status, pair, pair off, unpair, clock on/off, tz and tz NAME can be sent", () => {
+  for (const allowed of ["v", "status", "pair", "pair off", "unpair", "clock on", "clock off", "tz",
+    "tz Europe/Warsaw", "tz Poland", "tz Etc/GMT+5"]) {
     assert.equal(page.allowedCommand(allowed), true, allowed);
   }
-  const refused = ["dfu", "off", "pair", "unpair", "link off", "log", "bat log clear", "status ", "clock",
-    "clock  on", "Clock off", "tz europe/warsaw",
+  const refused = ["dfu", "off", "link off", "link on", "log", "bat log clear", "status ", "clock",
+    "clock  on", "Clock off", "pair on", "Pair", "unpair now", "tz europe/warsaw",
     "tz Mars/Olympus_Mons", "tz <+0545>-5:45", "tz Europe/Warsaw\ndfu", "tz Europe/Warsaw ", "V", ""];
   for (const command of refused) assert.equal(page.allowedCommand(command), false, command);
   for (const [name] of page.TZ_DATA.zones) assert.equal(page.allowedCommand(`tz ${name}`), true, name);
@@ -515,5 +522,149 @@ test("with gpxcam 1.2 the clock switch stays on and cannot be changed", async ()
   assert.equal(ui.clock.disabled, true);
   assert.equal(ui.zones.disabled, false);
   assert.match(ui["clock-note"].textContent, /^gpxcam 1\.2\.0 always sets the camera's clock\. Switching it off needs/);
+  await ui.disconnect.fire("click");
+});
+
+// The values the firmware gives (src/status_text.cpp), read from its source.
+function firmwareValues(functionName) {
+  const source = readFileSync(new URL("../../src/status_text.cpp", import.meta.url), "utf8");
+  const body = new RegExp(`const char \\*${functionName}\\([^)]*\\)\\n\\{([\\s\\S]*?)\\n\\}`).exec(source);
+  assert.ok(body, functionName);
+  return [...body[1].matchAll(/return "([a-z_]+)";/g)].map((match) => match[1]).filter((value) => value !== "unknown");
+}
+
+test("every pairing stage, result, link state and charger state of the firmware has its own words", () => {
+  const phases = firmwareValues("pairPhaseValue");
+  assert.deepEqual(phases, ["idle", "waiting_gps", "searching", "connecting", "pausing"]);
+  for (const phase of phases.slice(1)) {
+    assert.notEqual(page.pairingText({ ...STATE, pair: phase }), "Pairing...", phase);
+  }
+  const results = firmwareValues("pairResultValue");
+  assert.equal(results.length, 9);
+  for (const result of results.slice(1)) assert.doesNotMatch(page.pairResultText(result)[0], /^Pairing ended/, result);
+  assert.equal(page.pairResultText("none"), null);
+  const links = firmwareValues("linkValue");
+  assert.equal(links.length, 6);
+  const linkTexts = links.map((link) => page.cameraText({ ...STATE, link }));
+  assert.equal(new Set(linkTexts).size, links.length); // none falls to another one's words
+  const chargers = firmwareValues("chargerValue");
+  const chargerTexts = chargers.map((charger) => page.batteryText({ ...STATE, charger }));
+  assert.equal(new Set(chargerTexts).size, chargers.length);
+});
+
+test("the pairing stages and results are explained", () => {
+  const pairing = (pair, pairAttempt, gpsSatellites = 3) => page.pairingText({ ...STATE, pair, pairAttempt, gpsSatellites });
+  assert.equal(pairing("waiting_gps", 0), "Waiting for GPS time, up to 2 minutes (3 satellites so far)...");
+  assert.equal(pairing("searching", 0), "Looking for a camera in pairing mode, up to 1 minute...");
+  assert.equal(pairing("searching", 1), "Looking for the camera again (attempt 2 of 3)...");
+  assert.equal(pairing("connecting", 2), "Talking to the camera (attempt 2 of 3)...");
+  assert.equal(pairing("pausing", 1), "Attempt 1 of 3 did not work; trying again in a moment...");
+  assert.deepEqual(json(page.pairResultText("paired")),
+    ["Paired. From now on the card connects to the camera by itself.", "good"]);
+  assert.match(page.pairResultText("no_gps_fix")[0], /^No GPS time within 2 minutes\. Put the card outdoors/);
+  assert.match(page.pairResultText("not_in_pairing_mode")[0], /^The card saw a LUMIX camera, but not in pairing mode/);
+  assert.equal(page.pairResultText("failed")[1], "bad");
+  assert.deepEqual(json(page.pairResultText("cancelled")), ["Pairing cancelled.", ""]);
+  assert.equal(page.classifyUnpairAnswer(["link: off", "pair: camera forgotten (the card id stays)"]), "forgotten");
+  assert.equal(page.classifyUnpairAnswer(["pair: no camera paired"]), "not-paired");
+  assert.equal(page.classifyUnpairAnswer(["pair: could not write the pairing file"]), "failed");
+  assert.equal(page.classifyUnpairAnswer(["pair: not available"]), "failed");
+  assert.equal(page.classifyUnpairAnswer([]), "none");
+  assert.equal(page.unpairAnswerText("failed")[1], "bad");
+});
+
+test("pairing from the page: the stages, the result, then forgetting the camera", async () => {
+  const answers = { v: VERSION_1_3, status: statusWith(NOT_PAIRED) };
+  const port = simulatedCard(answers);
+  const ui = openPage(port);
+  assert.equal(ui.pair.disabled, true); // not connected
+  await ui.connect.fire("click");
+  assert.equal(ui["camera-note"].textContent, "The card is not paired with a camera yet.");
+  assert.equal(ui.pair.textContent, "Pair");
+  assert.equal(ui.pair.disabled, false);
+  assert.equal(ui.unpair.hidden, true);
+  assert.equal(ui["pair-cancel"].hidden, true);
+
+  answers.pair = PAIR_STARTED;
+  answers.status = statusWith({ ...NOT_PAIRED, pair: "waiting_gps", gps_fix: 0, gps_sat: 3 });
+  await ui.pair.fire("click");
+  assert.deepEqual(port.written.slice(-2), ["pair\n", "status\n"]);
+  assert.equal(ui["pair-progress"].textContent, "Waiting for GPS time, up to 2 minutes (3 satellites so far)...");
+  assert.equal(ui.pair.disabled, true);
+  assert.equal(ui["pair-cancel"].hidden, false);
+  assert.equal(ui["state-camera"].textContent, "pairing");
+
+  answers.status = statusWith({ ...NOT_PAIRED, pair: "connecting", pair_attempt: 1 });
+  await ui.refresh.fire("click");
+  assert.equal(ui["pair-progress"].textContent, "Talking to the camera (attempt 1 of 3)...");
+
+  answers.status = statusWith({ link: "searching", pair_result: "paired" });
+  await ui.refresh.fire("click");
+  assert.equal(ui["pair-progress"].textContent, "Paired. From now on the card connects to the camera by itself.");
+  assert.equal(ui["pair-progress"].className, "good");
+  assert.equal(ui["pair-cancel"].hidden, true);
+  assert.equal(ui.pair.textContent, "Pair again");
+  assert.equal(ui.pair.className, "secondary");
+  assert.equal(ui["camera-note"].textContent, "The card is paired with a camera. Pairing again replaces it.");
+  await ui.refresh.fire("click");
+  assert.equal(ui["pair-progress"].className, "good"); // the result stays
+
+  assert.equal(ui.unpair.hidden, false);
+  await ui.unpair.fire("click");
+  assert.equal(ui["unpair-confirm"].hidden, false);
+  await ui["unpair-no"].fire("click");
+  assert.equal(ui["unpair-confirm"].hidden, true);
+  assert.equal(port.written.includes("unpair\n"), false);
+
+  answers.unpair = FORGOTTEN;
+  answers.status = statusWith({ ...NOT_PAIRED, pair_result: "paired" }); // the result stays until a new pairing
+  await ui.unpair.fire("click");
+  await ui["unpair-yes"].fire("click");
+  assert.deepEqual(port.written.slice(-2), ["unpair\n", "status\n"]);
+  assert.equal(ui["pair-progress"].textContent, "The camera is forgotten.");
+  assert.equal(ui["unpair-confirm"].hidden, true);
+  assert.equal(ui.unpair.hidden, true);
+  assert.equal(ui.pair.textContent, "Pair");
+  await ui.disconnect.fire("click");
+  assert.equal(ui["pair-progress"].textContent, "");
+  assert.equal(ui["camera-note"].textContent, "Connect the card to pair it with your camera.");
+});
+
+test("a cancelled pairing, one refused at once and one started with the card's button", async () => {
+  const answers = { v: VERSION_1_3, status: statusWith(NOT_PAIRED), pair: PAIR_STARTED };
+  const port = simulatedCard(answers);
+  const ui = openPage(port);
+  await ui.connect.fire("click");
+
+  answers.status = statusWith({ ...NOT_PAIRED, pair: "searching" });
+  await ui.pair.fire("click");
+  answers["pair off"] = ["pair: cancelled\r\n"];
+  answers.status = statusWith({ ...NOT_PAIRED, pair_result: "cancelled" });
+  await ui["pair-cancel"].fire("click");
+  assert.deepEqual(port.written.slice(-2), ["pair off\n", "status\n"]);
+  assert.equal(ui["pair-progress"].textContent, "Pairing cancelled.");
+
+  answers.pair = ["pair: not possible - BLE or the pairing file is not available\r\n"];
+  answers.status = statusWith({ ...NOT_PAIRED, pair_result: "not_possible" });
+  await ui.pair.fire("click");
+  assert.match(ui["pair-progress"].textContent, /^The card cannot pair now/);
+  assert.equal(ui["pair-progress"].className, "bad");
+
+  answers.status = statusWith({ ...NOT_PAIRED, pair: "searching" }); // click + hold on the card
+  await ui.refresh.fire("click");
+  assert.match(ui["pair-progress"].textContent, /^Looking for a camera in pairing mode/);
+  answers.status = statusWith({ ...NOT_PAIRED, pair_result: "not_in_pairing_mode" });
+  await ui.refresh.fire("click");
+  assert.match(ui["pair-progress"].textContent, /^The card saw a LUMIX camera, but not in pairing mode/);
+  await ui.disconnect.fire("click");
+});
+
+test("with gpxcam 1.2 pairing is left to the card's button", async () => {
+  const port = simulatedCard({ v: VERSION_ANSWER, status: NO_STATUS, tz: TZ_STATE });
+  const ui = openPage(port);
+  await ui.connect.fire("click");
+  assert.equal(ui.pair.disabled, true);
+  assert.equal(ui.unpair.hidden, true);
+  assert.match(ui["camera-note"].textContent, /^Pairing from this page needs gpxcam 1\.3\.0\. With gpxcam 1\.2\.0, pair/);
   await ui.disconnect.fire("click");
 });
