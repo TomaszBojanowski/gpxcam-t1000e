@@ -134,13 +134,19 @@ void hang()
 #ifdef GPXCAM_TEST_COMMANDS
 void breakFileSystem()
 {
-    constexpr uint32_t FIRST_PAGE = 0xED000; // LFS_FLASH_ADDR in the core's InternalFileSystem.cpp
-    logger::line("diag: TEST - erasing 0x%05lX, the first page of the file system, and restarting",
-                 (unsigned long)FIRST_PAGE);
-    if (!flash_nrf5x_erase(FIRST_PAGE)) {
-        logger::line("diag: erasing failed");
-        return;
+    // littlefs 1.7 keeps its superblock in blocks 0 and 1 (lfs_mount() fetches the pair {0, 1}),
+    // 128 B each from LFS_FLASH_ADDR (the core's InternalFileSystem.cpp). Erasing the first page
+    // would not do: a young file system fits in it, and the area would then be empty.
+    constexpr uint32_t SUPERBLOCK_COPIES[] = {0xED000, 0xED080};
+    constexpr uint8_t ZEROS[16] = {}; // breaks each block's revision, size and CRC
+    logger::line("diag: TEST - zeroing both copies of the file system's superblock and restarting");
+    for (uint32_t address : SUPERBLOCK_COPIES) {
+        if (flash_nrf5x_write(address, ZEROS, sizeof(ZEROS)) != (int)sizeof(ZEROS)) {
+            logger::line("diag: writing 0x%05lX failed", (unsigned long)address);
+            return;
+        }
     }
+    flash_nrf5x_flush();
     delay(100); // lets the log line leave
     NVIC_SystemReset();
 }

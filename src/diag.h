@@ -31,9 +31,10 @@ void checkClock(uint32_t delayS);
 void poll();
 
 #ifdef GPXCAM_TEST_COMMANDS
-// Test builds only (platformio.ini, env t1000e_test): erases the first page of the file system
-// (0xED000, with littlefs's superblock), so that it no longer mounts, and restarts. This is the
-// damage of 2026-10-24, for testing storage.h and pairing_copy.h on the card.
+// Test builds only (platformio.ini, env t1000e_test): zeroes the start of both copies of
+// littlefs's superblock, so that the file system no longer mounts, and restarts. The rest of the
+// area keeps its data, so it is not the empty area of a new card (storage.h): the damage of
+// 2026-10-24, for testing storage.h and pairing_copy.h on the card.
 void breakFileSystem();
 #endif
 
