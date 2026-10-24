@@ -62,9 +62,12 @@ fn close_card(open: State<'_, OpenCard>) {
 }
 
 /// The window shows only the app's own page: tauri://localhost on Linux and macOS,
-/// http://tauri.localhost on Windows. A link to another site does nothing.
-fn own_page(url: &Url) -> bool {
-    url.scheme() == "tauri" || url.host_str() == Some("tauri.localhost")
+/// http://tauri.localhost on Windows, and in a development build (`cargo tauri dev`) the page
+/// server of the Tauri CLI at `dev_url`. A link to another site does nothing.
+fn own_page(url: &Url, dev_url: Option<&Url>) -> bool {
+    url.scheme() == "tauri"
+        || url.host_str() == Some("tauri.localhost")
+        || dev_url.is_some_and(|dev| dev.origin() == url.origin())
 }
 
 /// Starts the app: one window with the page from app/dist (tools/app_frontend.py).
@@ -81,8 +84,11 @@ pub fn run() {
                 .first()
                 .ok_or("no window in tauri.conf.json")?
                 .clone();
+            // `cargo tauri dev` serves app/dist itself and sets build.devUrl to its address
+            // (http://127.0.0.1:1430/); a release build loads the page from inside the app.
+            let dev_url = app.config().build.dev_url.clone().filter(|_| cfg!(dev));
             tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
-                .on_navigation(own_page)
+                .on_navigation(move |url| own_page(url, dev_url.as_ref()))
                 .build()?;
             Ok(())
         })
@@ -101,15 +107,35 @@ mod tests {
             "http://tauri.localhost/",
             "https://tauri.localhost/index.html",
         ] {
-            assert!(own_page(&Url::parse(own).unwrap()), "{own}");
+            assert!(own_page(&Url::parse(own).unwrap(), None), "{own}");
         }
         for other in [
             "https://github.com/TomaszBojanowski/gpxcam-t1000e",
-            "http://localhost:1420/",
+            "http://127.0.0.1:1430/",
             "file:///etc/passwd",
             "https://tauri.localhost.example.com/",
         ] {
-            assert!(!own_page(&Url::parse(other).unwrap()), "{other}");
+            assert!(!own_page(&Url::parse(other).unwrap(), None), "{other}");
+        }
+    }
+
+    #[test]
+    fn a_development_build_also_shows_the_page_of_the_tauri_cli() {
+        let dev = Url::parse("http://127.0.0.1:1430/").unwrap();
+        for own in [
+            "http://127.0.0.1:1430/",
+            "http://127.0.0.1:1430/index.html",
+            "tauri://localhost/",
+        ] {
+            assert!(own_page(&Url::parse(own).unwrap(), Some(&dev)), "{own}");
+        }
+        for other in [
+            "http://127.0.0.1:1431/",
+            "http://localhost:1430/",
+            "https://127.0.0.1:1430/",
+            "https://github.com/TomaszBojanowski/gpxcam-t1000e",
+        ] {
+            assert!(!own_page(&Url::parse(other).unwrap(), Some(&dev)), "{other}");
         }
     }
 }
