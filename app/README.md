@@ -10,6 +10,37 @@ pairing, the camera's clock and time zone, location updates and sound.
   checks them, and the app's Rust side checks them again.
 - It sends nothing over the internet, and it has no Tauri plugins.
 
+## Install
+
+Take the file for your computer from the app's release on GitHub (tag `app-vX.Y.Z`). `SHA256SUMS`
+next to it lets you check the download (`sha256sum -c SHA256SUMS` on Linux).
+
+**Linux** – Fedora: `sudo dnf install ./gpxcam-card-*.x86_64.rpm`; Debian, Ubuntu:
+`sudo apt install ./gpxcam-card_*_amd64.deb`. The card's port belongs to the `dialout` group.
+Add yourself to it once, then log out and in again:
+
+```
+sudo usermod -aG dialout $USER
+```
+
+**macOS** (Intel or Apple processor) – open the `.dmg` and drag "gpxcam card"
+to Applications. The app is not signed by an Apple developer, so macOS stops it the first time:
+open it once, then in System Settings → Privacy & Security click "Open Anyway" next to "gpxcam card"
+and confirm. If macOS says the app is damaged, remove the download mark in Terminal and open it
+again:
+
+```
+xattr -dr com.apple.quarantine "/Applications/gpxcam card.app"
+```
+
+**Windows** 10 or 11 (64-bit) – run the `-setup.exe` (or the `.msi`). The installer
+is not signed, so Windows SmartScreen may say "Windows protected your PC": click "More info", then
+"Run anyway". The app uses Microsoft Edge WebView2, which Windows 10 and 11 usually have; if it is
+missing, the installer downloads it.
+
+The macOS and Windows versions are built automatically and have not been tried with a card yet.
+If something does not work there, please open an issue on GitHub.
+
 ## How it is made
 
 - `../docs/index.html` is the page. `tools/app_frontend.py` copies it to `dist/index.html` with two
@@ -31,12 +62,7 @@ cargo tauri dev
 `cargo tauri dev` builds the app and opens its window. The first build takes a few minutes.
 `cargo tauri build` makes the installers in `src-tauri/target/release/bundle/`.
 
-On Linux the card's port belongs to the `dialout` group. Add yourself to it once, then log out and
-in again:
-
-```
-sudo usermod -aG dialout $USER
-```
+On Linux add yourself to the `dialout` group, as under Install.
 
 ## Versions
 
