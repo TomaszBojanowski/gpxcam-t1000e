@@ -73,6 +73,11 @@ const char *updatesName(Updates updates); // "normal", "frequent"
 // A setting from its name (lower case); false if there is none.
 bool updatesFromName(const char *name, Updates *updates);
 
+inline const LocationTiming &timingOf(Updates updates)
+{
+    return updates == Updates::Frequent ? FREQUENT_TIMING : NORMAL_TIMING;
+}
+
 enum class Send { No, First, Periodic, Moved, Asked };
 
 // What to do now. sentBefore: a location was sent in this connection; msSinceLast: since
@@ -99,11 +104,9 @@ public:
     // The connection ended; closedByCamera: HCI 0x13 (the camera switched off).
     void connectionEnded(bool closedByCamera);
 
-    // The timing to use now: frequent only when chosen and not slowed down.
-    const LocationTiming &timing(Updates chosen) const
-    {
-        return chosen == Updates::Frequent && !slow ? FREQUENT_TIMING : NORMAL_TIMING;
-    }
+    // The setting in effect now: frequent only when chosen and not slowed down.
+    Updates inEffect(Updates chosen) const { return slow ? Updates::Normal : chosen; }
+    const LocationTiming &timing(Updates chosen) const { return timingOf(inEffect(chosen)); }
     bool slowedDown() const { return slow; }
     uint8_t lateAnswers() const { return late; }
 

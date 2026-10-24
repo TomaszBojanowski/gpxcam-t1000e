@@ -18,6 +18,7 @@
 #include "diag.h"
 #include "gps.h"
 #include "link_control.h"
+#include "link_policy.h"
 #include "log.h"
 #include "pairing.h"
 #include "pairing_store.h"
@@ -143,13 +144,14 @@ void logStatus()
     state.clockOn = tz_store::clockOn();
     state.timeZone = tz_store::zoneText();
     state.sound = settings_store::sound();
+    state.updates = settings_store::updates();
     status_text::format(state, [](const char *line) { logger::transient("%s", line); });
 }
 
 void logHelp()
 {
     logger::transient("commands: v = version and reset reason,");
-    logger::transient("          p = state of GPS, BLE, pairing, time zone, sound, link and battery,");
+    logger::transient("          p = state of GPS, BLE, pairing, time zone, settings, link and battery,");
     logger::transient("          status = the same in short key=value lines, for the card page,");
     logger::transient("          dfu = UF2 bootloader (for flashing),");
     logger::transient("          off = System OFF after a 15 s countdown (refused with USB connected),");
@@ -164,6 +166,8 @@ void logHelp()
     logger::transient("          clock alone shows it");
     logger::transient("          sound loud / sound quiet / sound off = how loud the card is (off: it only answers");
     logger::transient("          a held button, quietly), sound alone shows it");
+    logger::transient("          updates normal / updates frequent = locations every 25 s or every 5 s (frequent:");
+    logger::transient("          for photos on the move), updates alone shows it");
     logger::transient("          bat log on / bat log off = battery log in flash every 10 min on the battery,");
     logger::transient("          bat log = show it, bat log clear = delete it");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
@@ -283,7 +287,7 @@ void logSoundOffNote()
 
 void logSound()
 {
-    settings_store::logState();
+    settings_store::logSound();
     if (settings_store::sound() == sound_rules::Setting::Off)
         logSoundOffNote();
 }
@@ -313,6 +317,40 @@ void setSound(const char *name)
         logSoundOffNote();
     else
         sound::playConnected(); // the sample: two short beeps
+}
+
+constexpr const char *UPDATES_SET_COMMAND = "updates ";
+
+void logUpdates()
+{
+    settings_store::logUpdates();
+    if (settings_store::updates() == link_policy::Updates::Frequent)
+        logger::transient("updates: normal for the rest of a connection with %u camera answers over %lu ms, "
+                          "and for the one after a broken one",
+                          (unsigned)link_policy::LATE_ANSWERS_TO_SLOW_DOWN, (unsigned long)link_policy::LATE_ANSWER_MS);
+}
+
+// "updates normal|frequent": saved at once and in effect for the next location, also in the
+// connection under way.
+void setUpdates(const char *name)
+{
+    link_policy::Updates updates;
+    if (!link_policy::updatesFromName(name, &updates)) {
+        logger::line("updates: unknown setting '%s' - updates normal or updates frequent", name);
+        return;
+    }
+    switch (settings_store::setUpdates(updates)) {
+    case settings_store::SetResult::Saved:
+        logger::line("updates: %s saved", name);
+        break;
+    case settings_store::SetResult::Unchanged:
+        logger::line("updates: already %s", name);
+        break;
+    case settings_store::SetResult::NotSaved:
+        logger::line("updates: could not write the settings file");
+        return;
+    }
+    logUpdates();
 }
 
 void toLowerCase(char *text)
@@ -395,6 +433,10 @@ void runCommand(char *cmd)
         logSound();
     } else if (strncmp(cmd, SOUND_SET_COMMAND, strlen(SOUND_SET_COMMAND)) == 0) {
         setSound(cmd + strlen(SOUND_SET_COMMAND));
+    } else if (strcmp(cmd, "updates") == 0) {
+        logUpdates();
+    } else if (strncmp(cmd, UPDATES_SET_COMMAND, strlen(UPDATES_SET_COMMAND)) == 0) {
+        setUpdates(cmd + strlen(UPDATES_SET_COMMAND));
     } else if (strcmp(cmd, "bat log on") == 0) {
         battery_log::start();
     } else if (strcmp(cmd, "bat log off") == 0) {

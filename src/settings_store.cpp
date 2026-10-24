@@ -23,6 +23,24 @@ bool writeFile(const settings_record::Record &record)
     return record_file::write(PATH, TEMP_PATH, data, sizeof(data));
 }
 
+// Saves wanted and puts it in effect. sameSetting: the changed setting already has this value;
+// then nothing is written if the file holds it too.
+settings_store::SetResult save(const settings_record::Record &wanted, bool sameSetting)
+{
+    if (savedInFile && sameSetting)
+        return settings_store::SetResult::Unchanged;
+    if (!fileSystemReady || !writeFile(wanted))
+        return settings_store::SetResult::NotSaved;
+    current = wanted;
+    savedInFile = true;
+    return settings_store::SetResult::Saved;
+}
+
+const char *defaultMark()
+{
+    return savedInFile ? "" : " (default)";
+}
+
 } // namespace
 
 namespace settings_store {
@@ -53,22 +71,44 @@ sound_rules::Setting sound()
     return current.sound;
 }
 
+link_policy::Updates updates()
+{
+    return current.updates;
+}
+
 SetResult setSound(sound_rules::Setting setting)
 {
-    if (savedInFile && setting == current.sound)
-        return SetResult::Unchanged;
     settings_record::Record wanted = current;
     wanted.sound = setting;
-    if (!fileSystemReady || !writeFile(wanted))
-        return SetResult::NotSaved;
-    current = wanted;
-    savedInFile = true;
-    return SetResult::Saved;
+    return save(wanted, setting == current.sound);
+}
+
+SetResult setUpdates(link_policy::Updates updates)
+{
+    settings_record::Record wanted = current;
+    wanted.updates = updates;
+    return save(wanted, updates == current.updates);
+}
+
+void logSound()
+{
+    logger::transient("sound: %s%s", sound_rules::settingName(current.sound), defaultMark());
+}
+
+void logUpdates()
+{
+    const link_policy::LocationTiming &timing = link_policy::timingOf(current.updates);
+    logger::transient("updates: %s%s - a location every %lu s, sooner after %lu m or when the camera asks "
+                      "(at most every %lu s)",
+                      link_policy::updatesName(current.updates), defaultMark(),
+                      (unsigned long)(timing.periodMs / 1000), (unsigned long)timing.moveMetres,
+                      (unsigned long)(timing.minGapMs / 1000));
 }
 
 void logState()
 {
-    logger::transient("sound: %s%s", sound_rules::settingName(current.sound), savedInFile ? "" : " (default)");
+    logSound();
+    logUpdates();
 }
 
 } // namespace settings_store

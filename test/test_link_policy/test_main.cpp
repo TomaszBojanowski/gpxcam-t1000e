@@ -151,6 +151,8 @@ void test_updates_names()
     TEST_ASSERT_FALSE(link_policy::updatesFromName("fast", &updates));
     TEST_ASSERT_FALSE(link_policy::updatesFromName("", &updates));
     TEST_ASSERT_EQUAL(Updates::Frequent, updates); // unchanged
+    TEST_ASSERT_EQUAL_UINT32(25000, link_policy::timingOf(Updates::Normal).periodMs);
+    TEST_ASSERT_EQUAL_UINT32(5000, link_policy::timingOf(Updates::Frequent).periodMs);
 }
 
 // The guard: two late answers in one connection slow it down to its end; on-time ones never
@@ -169,6 +171,7 @@ void test_rate_guard()
     TEST_ASSERT_FALSE(guard.answered(90));
     TEST_ASSERT_TRUE(guard.answered(2500)); // the second late one: slows down, said once
     TEST_ASSERT_TRUE(guard.slowedDown());
+    TEST_ASSERT_EQUAL(Updates::Normal, guard.inEffect(Updates::Frequent));
     TEST_ASSERT_EQUAL_UINT32(25000, guard.timing(Updates::Frequent).periodMs);
     TEST_ASSERT_FALSE(guard.answered(3000)); // already slow
     TEST_ASSERT_EQUAL_UINT8(3, guard.lateAnswers());
@@ -202,10 +205,12 @@ void test_rate_guard_with_normal_chosen()
     guard.answered(1500);
     guard.answered(1500);
     TEST_ASSERT_EQUAL_UINT32(25000, guard.timing(Updates::Normal).periodMs);
+    TEST_ASSERT_EQUAL(Updates::Normal, guard.inEffect(Updates::Normal));
     guard.connectionEnded(true);
     guard.connectionStarted();
     TEST_ASSERT_EQUAL_UINT32(25000, guard.timing(Updates::Normal).periodMs);
     TEST_ASSERT_EQUAL_UINT32(5000, guard.timing(Updates::Frequent).periodMs); // chosen during a connection
+    TEST_ASSERT_EQUAL(Updates::Frequent, guard.inEffect(Updates::Frequent));
 }
 
 // With the time written, only its refusal says the camera does not know the card (gpxcam

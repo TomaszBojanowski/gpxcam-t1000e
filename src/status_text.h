@@ -10,6 +10,7 @@
 //   status: pair=idle pair_attempt=0 pair_result=none
 //   status: clock=on tz=Europe/Warsaw
 //   status: sound=loud
+//   status: updates=normal
 //   status: end
 //
 // Values hold no spaces; 'end' tells that the answer is complete. A later version may add
@@ -21,6 +22,7 @@
 
 #include "battery.h"
 #include "link_control.h"
+#include "link_policy.h"
 #include "pairing.h"
 #include "sound_rules.h"
 
@@ -47,6 +49,7 @@ struct State {
     bool clockOn;
     const char *timeZone; // tz_store::zoneText()
     sound_rules::Setting sound;
+    link_policy::Updates updates; // as chosen; the guard may use normal for a while
 };
 
 // Calls emit for every line, 'status: end' last.

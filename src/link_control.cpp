@@ -14,6 +14,7 @@
 #include "lumix.h"
 #include "pairing.h"
 #include "pairing_store.h"
+#include "settings_store.h"
 #include "sound.h"
 
 namespace {
@@ -57,6 +58,7 @@ uint16_t serviceEnd = 0;
 
 // Locations of the current connection.
 bool sentBefore = false;
+link_policy::RateGuard rateGuard; // frequent locations ('updates'), normal while the camera lags
 uint8_t earlyEndsInARow = 0; // connections that ended before the camera took a location
 uint32_t lastSentMs = 0;
 int32_t lastLatitudeE7 = 0;
@@ -223,9 +225,27 @@ bool connectionOpen()
            phase == Phase::Connected;
 }
 
-void pause(const char *why)
+// The setting chosen with 'updates' and the one the guard lets through now.
+bool frequentChosen()
+{
+    return settings_store::updates() == link_policy::Updates::Frequent;
+}
+
+const char *timingText()
+{
+    return link_policy::updatesName(rateGuard.inEffect(settings_store::updates()));
+}
+
+const link_policy::LocationTiming &timing()
+{
+    return rateGuard.timing(settings_store::updates());
+}
+
+// closedByCamera: the camera ended the connection itself (HCI 0x13), as when it is switched off.
+void pause(const char *why, bool closedByCamera = false)
 {
     if (connectionOpen()) {
+        rateGuard.connectionEnded(closedByCamera);
         sound::playDisconnected();
         cameraSeen = true; // the connection showed it until now
         cameraSeenMs = millis();
@@ -323,7 +343,7 @@ void afterGpsMode()
 {
     if (notifyHandle == 0 || notifyHandle >= serviceEnd) { // no room for a descriptor
         logger::line("link: the camera offers no notifications - sending every %lu s only",
-                     (unsigned long)(link_policy::NORMAL_TIMING.periodMs / 1000));
+                     (unsigned long)(timing().periodMs / 1000));
         enterConnected();
         return;
     }
@@ -350,6 +370,9 @@ void onAccepted()
     }
     connectedAt = millis();
     logger::line("link: connected to camera %s (MTU %u)", serialText, found.mtu);
+    rateGuard.connectionStarted();
+    if (rateGuard.slowedDown() && frequentChosen())
+        logger::line("link: the last connection did not end by the camera's own close - normal timing for this one");
     sound::playConnected();
     const uint8_t gpsOn[] = {lumix::GPS_MODE_ON};
     if (writeTo(gpsModeHandle, gpsOn, sizeof(gpsOn)))
@@ -373,7 +396,7 @@ void onDisconnected(uint16_t reason)
     char why[logger::LINE_MAX];
     snprintf(why, sizeof(why), "disconnected from camera %s after %lu s (HCI 0x%02x)", serialText,
              (unsigned long)(lasted / 1000), reason);
-    pause(why);
+    pause(why, reason == BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
 }
 
 // Events of an open connection, in any phase after the introduction. True if handled.
@@ -403,6 +426,10 @@ bool handleConnectionEvent(const camera_link::Event &event)
 void onLocationWritten(const camera_link::Event &event)
 {
     writePending = false;
+    const uint32_t answerMs = millis() - writeStartMs;
+    if (rateGuard.answered(answerMs) && frequentChosen())
+        logger::line("link: %u answers later than %lu ms - normal timing until the end of this connection",
+                     (unsigned)rateGuard.lateAnswers(), (unsigned long)link_policy::LATE_ANSWER_MS);
     if (event.status != BLE_GATT_STATUS_SUCCESS && !sentBefore &&
         link_policy::refusalMeansUnknownCard(link_policy::IntroductionWrite::FirstLocation,
                                              camera_session::writesTime())) {
@@ -411,16 +438,18 @@ void onLocationWritten(const camera_link::Event &event)
     }
     if (event.status != BLE_GATT_STATUS_SUCCESS) {
         failedCount++;
-        logger::transient("link: location refused (GATT 0x%04x)", event.status);
+        logger::transient("link: location refused (GATT 0x%04x), answer %lu ms", event.status, (unsigned long)answerMs);
         camera_session::forgetHandles("location refused");
         return;
     }
     sentCount++;
     earlyEndsInARow = 0;
     if (!sentBefore)
-        logger::line("link: first location sent to camera %s", serialText);
+        logger::line("link: first location sent to camera %s, answer %lu ms, %s", serialText,
+                     (unsigned long)answerMs, timingText());
     else
-        logger::transient("link: location %lu sent (%s)", (unsigned long)sentCount, reasonText(pendingReason));
+        logger::transient("link: location %lu sent (%s), answer %lu ms, %s", (unsigned long)sentCount,
+                          reasonText(pendingReason), (unsigned long)answerMs, timingText());
     sentBefore = true;
     everSent = true;
     lastSentMs = writeStartMs;
@@ -449,8 +478,7 @@ void sendLocationIfDue(uint32_t now)
     }
     const uint32_t moved =
         sentBefore ? link_policy::distanceMetres(lastLatitudeE7, lastLongitudeE7, latitudeE7, longitudeE7) : 0;
-    const link_policy::Send due =
-        link_policy::locationDue(link_policy::NORMAL_TIMING, sentBefore, now - lastSentMs, moved, cameraAsked);
+    const link_policy::Send due = link_policy::locationDue(timing(), sentBefore, now - lastSentMs, moved, cameraAsked);
     if (due == link_policy::Send::No)
         return;
     uint8_t data[lumix::LOCATION_LENGTH];
@@ -523,7 +551,7 @@ void settingUp(uint32_t now)
         } else if (phase == Phase::EnablingNotifications && event.type == camera_link::EventType::WriteDone) {
             if (event.status != BLE_GATT_STATUS_SUCCESS) {
                 logger::line("link: notifications refused (GATT 0x%04x) - sending every %lu s only", event.status,
-                             (unsigned long)(link_policy::NORMAL_TIMING.periodMs / 1000));
+                             (unsigned long)(timing().periodMs / 1000));
                 camera_session::forgetHandles("notifications refused");
             }
             enterConnected();
@@ -751,9 +779,10 @@ void logState()
     if (everSent)
         snprintf(last, sizeof(last), "%lu s ago", (unsigned long)((now - everSentMs) / 1000));
     if (phase == Phase::Connected)
-        logger::transient("link: connected to camera %s for %lu s, last location %s, %lu sent, %lu refused", serialText,
-                     (unsigned long)((now - connectedAt) / 1000), last, (unsigned long)sentCount,
-                     (unsigned long)failedCount);
+        logger::transient("link: connected to camera %s for %lu s, last location %s, %lu sent, %lu refused, "
+                          "%s timing, %u late",
+                          serialText, (unsigned long)((now - connectedAt) / 1000), last, (unsigned long)sentCount,
+                          (unsigned long)failedCount, timingText(), (unsigned)rateGuard.lateAnswers());
     else if (phase == Phase::Pausing)
         logger::transient("link: pause, looking again in %lu s; last location %s, %lu sent",
                      (unsigned long)((pauseLength - min(pauseLength, now - phaseStart)) / 1000), last,
