@@ -17,7 +17,8 @@ fn main() {
 
 fn write_zone_names() {
     println!("cargo:rerun-if-changed={PAGE}");
-    let page = fs::read_to_string(PAGE).expect("docs/index.html");
+    // A Windows checkout may have CRLF line ends (git's core.autocrlf); TABLE_END has LF.
+    let page = fs::read_to_string(PAGE).expect("docs/index.html").replace("\r\n", "\n");
     let start = page.find(TABLE_START).expect("TZ_DATA in docs/index.html") + TABLE_START.len();
     let end = page.find(TABLE_END).expect("the end of TZ_DATA") + 2; // with its closing brace
     let table: serde_json::Value =
