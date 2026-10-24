@@ -1,14 +1,34 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <!-- The app's icon: a lens seen from the front with a location pin in its glass. The greys and the
-       red are the card page's (docs/index.html), the blues GNOME's palette. The icons in src-tauri/icons
-       are made from it with 'cargo tauri icon ../icon.svg -o <folder>' in src-tauri; only the seven
-       desktop files kept there are copied back. -->
-  <circle cx="64" cy="70" r="55" fill="#3d434a"/>
-  <circle cx="64" cy="64" r="55" fill="#5f6670"/>
-  <circle cx="64" cy="64" r="48" fill="#3d434a"/>
-  <circle cx="64" cy="64" r="42" fill="#1a5fb4"/>
-  <path d="M34 50a32 32 0 0 1 22-22" fill="none" stroke="#62a0ea" stroke-width="5" stroke-linecap="round"/>
-  <path d="M64 98c-10-13-22-24-22-38a22 22 0 0 1 44 0c0 14-12 25-22 38z" fill="#e5202e" stroke="#fff"
-        stroke-width="5" stroke-linejoin="round"/>
-  <circle cx="64" cy="60" r="8" fill="#fff"/>
+  <!-- The app's icon: a camera and a location pin. The greys and the red are the card page's
+       (docs/index.html), the silver and blues GNOME's palette. The Linux packages install this file
+       as the scalable icon (tauri.linux.conf.json); the icons in src-tauri/icons are made from it
+       with 'cargo tauri icon ../icon.svg -o <folder>' in src-tauri, and only the seven desktop files
+       kept there are copied back. -->
+  <defs>
+    <linearGradient id="silver" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6f5f4"/>
+      <stop offset="1" stop-color="#9a9996"/>
+    </linearGradient>
+    <radialGradient id="glass" cx="0.5" cy="0.42" r="0.55">
+      <stop offset="0" stop-color="#0b2557"/>
+      <stop offset="0.65" stop-color="#1a5fb4"/>
+      <stop offset="1" stop-color="#2a7ad8"/>
+    </radialGradient>
+  </defs>
+  <!-- the camera: a dark body with a silver top plate and viewfinder -->
+  <rect x="8" y="44" width="112" height="70" rx="12" fill="#241f31"/>
+  <rect x="8" y="38" width="112" height="70" rx="12" fill="#3d434a"/>
+  <path d="M20 38h88a12 12 0 0 1 12 12v8H8v-8a12 12 0 0 1 12-12z" fill="url(#silver)"/>
+  <rect x="20" y="28" width="30" height="14" rx="4" fill="#c0bfbc"/>
+  <!-- the lens: a silver ring, a black ring and glass with a highlight and a coating glint -->
+  <circle cx="64" cy="76" r="31" fill="url(#silver)"/>
+  <circle cx="64" cy="76" r="26" fill="#1e2126"/>
+  <circle cx="64" cy="76" r="20" fill="url(#glass)"/>
+  <path d="M50 72a15 15 0 0 1 9-10" fill="none" stroke="#fff" stroke-opacity="0.75" stroke-width="3.5"
+        stroke-linecap="round"/>
+  <path d="M78 82a15 15 0 0 1-6 7" fill="none" stroke="#c061cb" stroke-width="3" stroke-linecap="round"/>
+  <!-- the location pin -->
+  <path d="M100 66c-7.3-11.5-17-21.6-17-36a17 17 0 0 1 34 0c0 14.4-9.7 24.5-17 36z" fill="#e5202e"
+        stroke="#fff" stroke-width="4" stroke-linejoin="round"/>
+  <circle cx="100" cy="30" r="6" fill="#fff"/>
 </svg>
