@@ -145,6 +145,7 @@ void logStatus()
     state.timeZone = tz_store::zoneText();
     state.sound = settings_store::sound();
     state.updates = settings_store::updates();
+    state.updatesNow = link_control::updatesNow();
     status_text::format(state, [](const char *line) { logger::transient("%s", line); });
 }
 

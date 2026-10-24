@@ -109,7 +109,8 @@ void format(const State &state, void (*emit)(const char *line))
     emit(line);
     snprintf(line, sizeof(line), "status: sound=%s", sound_rules::settingName(state.sound));
     emit(line);
-    snprintf(line, sizeof(line), "status: updates=%s", link_policy::updatesName(state.updates));
+    snprintf(line, sizeof(line), "status: updates=%s updates_now=%s", link_policy::updatesName(state.updates),
+             link_policy::updatesName(state.updatesNow));
     emit(line);
     emit("status: end");
 }

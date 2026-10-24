@@ -38,6 +38,7 @@ State someState()
     state.timeZone = "Europe/Warsaw";
     state.sound = sound_rules::Setting::Loud;
     state.updates = link_policy::Updates::Normal;
+    state.updatesNow = link_policy::Updates::Normal;
     return state;
 }
 
@@ -62,7 +63,7 @@ void test_all_lines()
     TEST_ASSERT_EQUAL_STRING("status: pair=idle pair_attempt=0 pair_result=none", lines[4]);
     TEST_ASSERT_EQUAL_STRING("status: clock=on tz=Europe/Warsaw", lines[5]);
     TEST_ASSERT_EQUAL_STRING("status: sound=loud", lines[6]);
-    TEST_ASSERT_EQUAL_STRING("status: updates=normal", lines[7]);
+    TEST_ASSERT_EQUAL_STRING("status: updates=normal updates_now=normal", lines[7]);
     TEST_ASSERT_EQUAL_STRING("status: end", lines[8]);
 }
 
@@ -82,6 +83,7 @@ void test_other_values()
     state.timeZone = "<+0545>-5:45"; // a rule given directly
     state.sound = sound_rules::Setting::Off;
     state.updates = link_policy::Updates::Frequent;
+    state.updatesNow = link_policy::Updates::Normal; // the guard slowed the connection down
     status_text::format(state, collect);
     TEST_ASSERT_EQUAL_STRING("status: battery_mv=3400 battery_pct=0 charger=no_usb", lines[1]);
     TEST_ASSERT_EQUAL_STRING("status: gps=off gps_fix=0 gps_sat=0", lines[2]);
@@ -89,7 +91,16 @@ void test_other_values()
     TEST_ASSERT_EQUAL_STRING("status: pair=pausing pair_attempt=2 pair_result=none", lines[4]);
     TEST_ASSERT_EQUAL_STRING("status: clock=off tz=<+0545>-5:45", lines[5]);
     TEST_ASSERT_EQUAL_STRING("status: sound=off", lines[6]);
-    TEST_ASSERT_EQUAL_STRING("status: updates=frequent", lines[7]);
+    TEST_ASSERT_EQUAL_STRING("status: updates=frequent updates_now=normal", lines[7]);
+}
+
+void test_frequent_in_effect()
+{
+    State state = someState();
+    state.updates = link_policy::Updates::Frequent;
+    state.updatesNow = link_policy::Updates::Frequent;
+    status_text::format(state, collect);
+    TEST_ASSERT_EQUAL_STRING("status: updates=frequent updates_now=frequent", lines[7]);
 }
 
 void test_pairing_results()
@@ -123,6 +134,7 @@ int main(int, char **)
     UNITY_BEGIN();
     RUN_TEST(test_all_lines);
     RUN_TEST(test_other_values);
+    RUN_TEST(test_frequent_in_effect);
     RUN_TEST(test_pairing_results);
     RUN_TEST(test_longest_lines_fit);
     return UNITY_END();

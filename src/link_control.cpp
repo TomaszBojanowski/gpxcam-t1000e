@@ -225,7 +225,7 @@ bool connectionOpen()
            phase == Phase::Connected;
 }
 
-// The setting chosen with 'updates' and the one the guard lets through now.
+// The setting chosen with 'updates', and the one in effect (link_control::updatesNow()).
 bool frequentChosen()
 {
     return settings_store::updates() == link_policy::Updates::Frequent;
@@ -233,7 +233,7 @@ bool frequentChosen()
 
 const char *timingText()
 {
-    return link_policy::updatesName(rateGuard.inEffect(settings_store::updates()));
+    return link_policy::updatesName(link_control::updatesNow());
 }
 
 const link_policy::LocationTiming &timing()
@@ -763,6 +763,12 @@ State state()
         return State::Stopped;
     }
     return State::Off;
+}
+
+link_policy::Updates updatesNow()
+{
+    const link_policy::Updates chosen = settings_store::updates();
+    return connectionOpen() ? rateGuard.inEffect(chosen) : chosen;
 }
 
 Indication indication()
