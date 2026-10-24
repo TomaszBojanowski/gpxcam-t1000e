@@ -97,7 +97,8 @@ The file holds only the application: the bootloader and the SoftDevice stay as t
 ## The card page
 
 [The card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/) talks to the card over USB from
-Chrome or Edge on Windows, macOS or Linux (Firefox, Safari and phones cannot talk to the card):
+Chrome or Edge on Windows, macOS or Linux (Firefox, Safari and phones cannot talk to the card; on a
+computer without Chrome or Edge use [the desktop app](#the-desktop-app)):
 - it shows the card's state: firmware, battery, GPS, the camera link and the time zone, refreshed
   every few seconds;
 - it pairs the card with the camera, step by step, and says why if pairing fails; it can also
@@ -118,6 +119,16 @@ gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or newer, the locati
 On Linux, if the page says "Reading from the card failed" after a serial monitor (for example
 `pio device monitor`) used the card: unplug the card and plug it in again. Such programs leave the
 port with a setting that Chrome does not handle, and plugging in again resets it.
+
+## The desktop app
+
+gpxcam card is the card page as an app for Linux, macOS and Windows, for computers without Chrome or
+Edge. It does the same as the page and, like it, sends nothing over the internet. It has its own
+version numbers and releases: tags `app-vX.Y.Z`, named "gpxcam card" in
+[Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases).
+[app/README.md](app/README.md#install) says how to install it, how to open it the first time and
+which gpxcam versions it works with. The macOS and Windows versions have not been tried with a card
+yet.
 
 ## Set the time zone
 
