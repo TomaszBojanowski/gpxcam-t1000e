@@ -28,6 +28,7 @@
 #include "status_text.h"
 #include "tz_record.h"
 #include "tz_store.h"
+#include "usb_power.h"
 #include "version.h"
 #include "watchdog.h"
 
@@ -189,6 +190,7 @@ void rebootToUf2Bootloader()
 }
 
 constexpr const char *SOUND_TEST_COMMAND = "diag snd ";
+
 
 // "diag snd N": plays all sounds at N % PWM duty to choose the volume by ear.
 void runSoundTest(const char *argument)
@@ -404,6 +406,7 @@ void runCommand(char *cmd)
         pairing::logState();
         link_control::logState();
         watchdog::logState();
+        usb_power::logState();
         logBattery(BatteryCheck::None);
     } else if (strcmp(cmd, "status") == 0) {
         logStatus();
