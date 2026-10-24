@@ -1,0 +1,14 @@
+{{!-- The menu entry of the Linux packages. tauri.linux.conf.json sets productName to gpxcam-card,
+so the package and .desktop file names have no spaces; the menu still shows "gpxcam card".
+Tauri's own template (tauri-bundler, freedesktop/main.desktop) with Name fixed. --~}}
+[Desktop Entry]
+Categories={{categories}}
+{{#if comment}}
+Comment={{comment}}
+{{/if}}
+Exec={{exec}}
+StartupWMClass={{exec}}
+Icon={{icon}}
+Name=gpxcam card
+Terminal=false
+Type=Application

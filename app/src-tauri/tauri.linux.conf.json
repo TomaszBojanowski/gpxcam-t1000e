@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "gpxcam-card",
+  "bundle": {
+    "linux": {
+      "deb": { "desktopTemplate": "gpxcam-card.desktop" },
+      "rpm": { "desktopTemplate": "gpxcam-card.desktop" }
+    }
+  }
+}
