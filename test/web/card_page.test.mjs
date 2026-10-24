@@ -863,7 +863,9 @@ test("the state says when the card cannot read what it saved", () => {
   assert.equal(page.parseStatus(lines("ok")).state.storage, "ok");
   assert.equal(page.parseStatus(statusLines(STATUS_ANSWER.join("").replace(/gps: .*\r\n/, "").replaceAll("\r", "")))
     .state.storage, null); // gpxcam 1.3
-  assert.match(page.storageNoteText({ ...STATE, storage: "damaged" }), /^The card cannot read what it saved/);
+  assert.match(page.storageNoteText({ ...STATE, storage: "damaged" }), /the pairing comes from its copy/i);
+  assert.match(page.storageNoteText({ ...STATE, storage: "damaged", paired: false }),
+    /It has no pairing and cannot connect to the camera\./);
   for (const storage of ["ok", null]) assert.equal(page.storageNoteText({ ...STATE, storage }), null);
 });
 
@@ -873,7 +875,7 @@ test("a note on the page while the card cannot read what it saved", async () => 
   assert.equal(ui["storage-note"].hidden, true);
   await ui.connect.fire("click");
   assert.equal(ui["storage-note"].hidden, false);
-  assert.match(ui["storage-note"].textContent, /cannot connect to the camera/);
+  assert.match(ui["storage-note"].textContent, /^The card cannot read its saved settings/);
   answers.status = [STATUS_1_4.join("").replace("status: end", "status: storage=ok\r\nstatus: end")];
   await ui.refresh.fire("click");
   assert.equal(ui["storage-note"].hidden, true);

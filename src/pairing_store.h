@@ -6,26 +6,31 @@
 
 namespace pairing_store {
 
-// Loads the record. If it is missing or damaged (logged), creates one with a new random
-// card UUID and no camera. Call once in setup() after bluetooth::begin() succeeded: the
-// random numbers come from the SoftDevice. Without the file system (storage::ready()) there is
-// no record and nothing is written. The very first call writes flash (the data area,
-// 0xED000-0xF4000). Returns false if the record could not be loaded or created.
+// Loads the record from /gpxcam/pairing.bin and keeps its copy (pairing_copy.h) the same. If the
+// file is missing or damaged (logged), the copy brings it back; with no copy either, a record
+// with a new random card UUID and no camera is made. Without the file system (storage::ready())
+// the copy alone is used and nothing is written. Call once in setup() after bluetooth::begin()
+// succeeded: the random numbers come from the SoftDevice. The very first call writes flash.
+// Returns false if there is no record.
 bool begin();
 
 // False until begin() succeeded.
 bool ready();
 
+// The pairing can be changed: ready and the file system works (not a pairing from the copy alone).
+bool writable();
+
 const pairing_record::Record &record();
 
-// Stores the camera that accepted the card (replacing an earlier one). False if not
-// ready or not written.
+// Stores the camera that accepted the card (replacing an earlier one), in the file and then in
+// its copy. False if not writable or the file was not written.
 bool saveCamera(const uint8_t serial[lumix::SERIAL_LENGTH]);
 
-// Removes the paired camera, keeps the card UUID. False if not ready or not written.
+// Removes the paired camera, keeps the card UUID; the file, then its copy. False if not writable or
+// the file was not written.
 bool forgetCamera();
 
-// Logs the card UUID and the paired camera, for the 'p' command.
+// Logs the card UUID, the paired camera and the copy's pages, for the 'p' command.
 void logState();
 
 } // namespace pairing_store

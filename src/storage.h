@@ -10,8 +10,9 @@
 //  - the area is empty (all bytes 0xFF, a new card): it is formatted, nothing is lost;
 //  - anything else: it is left as it is, and a small file system in RAM is mounted in its place
 //    for Bluefruit's bond directories (the card does not bond). The card then works with the
-//    default settings and no pairing, says so in the log, in 'p' and in 'status', and only
-//    'storage format yes' erases the area (the card restarts and starts with an empty one).
+//    default settings and the pairing from its copy (pairing_copy.h), says so in the log, in 'p'
+//    and in 'status', and only 'storage format yes' erases the area (the card restarts with an
+//    empty one, and the pairing comes back from the copy).
 // Loop task only, except begin() in setup().
 #pragma once
 

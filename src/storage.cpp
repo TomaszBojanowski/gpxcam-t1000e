@@ -161,8 +161,9 @@ void logState()
         logger::line("storage: DAMAGED - the file system 0x%05lX-0x%05lX does not mount; left as it is%s",
                      (unsigned long)AREA_START, (unsigned long)(AREA_START + AREA_SIZE),
                      state == State::NoRamStandIn ? ", BLE not started" : "");
-        logger::line("storage: the card uses the default settings and has no pairing;");
-        logger::line("storage: 'storage format yes' erases it (pairing, time zone, settings, battery log)");
+        logger::line("storage: the card uses the default settings; the pairing comes from its copy, if any;");
+        logger::line("storage: 'storage format yes' erases it (time zone, settings, battery log; the pairing "
+                     "comes back from its copy)");
         return;
     }
 }

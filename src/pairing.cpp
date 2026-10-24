@@ -214,6 +214,12 @@ void start()
         lastResult = Result::NotPossible;
         return;
     }
+    if (!pairing_store::writable()) { // a pairing from its copy alone: it could not be saved
+        logger::line("pair: not possible - the file system is damaged ('storage format yes' first)");
+        sound::playRefuse(sound::Kind::HoldAnswer);
+        lastResult = Result::NotPossible;
+        return;
+    }
     linkWasOn = link_control::active();
     if (linkWasOn)
         link_control::stop(true); // keeps the GPS on

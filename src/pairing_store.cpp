@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "log.h"
+#include "pairing_copy.h"
 #include "storage.h"
 
 // Sources: InternalFileSytem and Adafruit_LittleFS in the core (littlefs 1.7). littlefs
@@ -24,6 +25,12 @@ constexpr uint32_t RANDOM_WAIT_MS = 100; // the SoftDevice fills its pool within
 
 bool loaded = false;
 pairing_record::Record current = {};
+
+bool sameRecord(const pairing_record::Record &a, const pairing_record::Record &b)
+{
+    return memcmp(a.uuid, b.uuid, sizeof(a.uuid)) == 0 && a.paired == b.paired &&
+           memcmp(a.serial, b.serial, sizeof(a.serial)) == 0;
+}
 
 // False if the file is missing; otherwise *status says whether *record was read.
 bool readFile(pairing_record::Record *record, pairing_record::Status *status)
@@ -56,9 +63,7 @@ bool writeFile(const pairing_record::Record &record)
         return false;
     pairing_record::Record check;
     pairing_record::Status status;
-    return readFile(&check, &status) && status == pairing_record::Status::Ok &&
-           memcmp(check.uuid, record.uuid, sizeof(check.uuid)) == 0 && check.paired == record.paired &&
-           memcmp(check.serial, record.serial, sizeof(check.serial)) == 0;
+    return readFile(&check, &status) && status == pairing_record::Status::Ok && sameRecord(check, record);
 }
 
 // Hardware random numbers through the SoftDevice, which owns the RNG while it runs.
@@ -88,6 +93,7 @@ bool createRecord()
         logger::line("pair: could not write %s", PATH);
         return false;
     }
+    pairing_copy::write(fresh);
     current = fresh;
     char uuid[pairing_record::UUID_TEXT_LENGTH + 1];
     pairing_record::formatUuid(current.uuid, uuid, sizeof(uuid));
@@ -101,16 +107,37 @@ namespace pairing_store {
 
 bool begin()
 {
+    pairing_copy::begin();
+    pairing_record::Record copy;
+    const bool haveCopy = pairing_copy::read(&copy);
     if (!storage::ready()) {
-        logger::line("pair: no pairing - the file system is damaged (see 'storage' in 'p')");
-        return false;
-    }
-    pairing_record::Status status = pairing_record::Status::Ok;
-    if (readFile(&current, &status) && status == pairing_record::Status::Ok) {
+        if (!haveCopy) {
+            logger::line("pair: no pairing - the file system is damaged and there is no copy");
+            return false;
+        }
+        current = copy;
         loaded = true;
+        logger::line("pair: the file system is damaged - the pairing comes from its copy");
         return true;
     }
-    if (status != pairing_record::Status::Ok)
+    pairing_record::Status status = pairing_record::Status::Ok;
+    const bool found = readFile(&current, &status);
+    if (found && status == pairing_record::Status::Ok) {
+        loaded = true;
+        if (!haveCopy || !sameRecord(copy, current))
+            pairing_copy::write(current); // the first start with a copy, or a copy older than the file
+        return true;
+    }
+    if (haveCopy) { // after 'storage format yes', or a damaged file
+        logger::line("pair: %s %s - restored from its copy", PATH,
+                     found ? pairing_record::statusText(status) : "missing");
+        current = copy;
+        loaded = true;
+        if (!writeFile(current))
+            logger::line("pair: could not write %s - the copy is used", PATH);
+        return true;
+    }
+    if (found)
         logger::line("pair: %s is damaged (%s) - new card id, pair the camera again", PATH,
                      pairing_record::statusText(status));
     loaded = createRecord();
@@ -122,6 +149,11 @@ bool ready()
     return loaded;
 }
 
+bool writable()
+{
+    return loaded && storage::ready();
+}
+
 const pairing_record::Record &record()
 {
     return current;
@@ -129,26 +161,28 @@ const pairing_record::Record &record()
 
 bool saveCamera(const uint8_t serial[lumix::SERIAL_LENGTH])
 {
-    if (!loaded)
+    if (!writable())
         return false;
     pairing_record::Record changed = current;
     changed.paired = true;
     memcpy(changed.serial, serial, sizeof(changed.serial));
     if (!writeFile(changed))
         return false;
+    pairing_copy::write(changed); // after the file: a copy older than the file is replaced at start
     current = changed;
     return true;
 }
 
 bool forgetCamera()
 {
-    if (!loaded)
+    if (!writable())
         return false;
     pairing_record::Record changed = current;
     changed.paired = false;
     memset(changed.serial, 0, sizeof(changed.serial));
     if (!writeFile(changed))
         return false;
+    pairing_copy::write(changed);
     current = changed;
     return true;
 }
@@ -163,11 +197,12 @@ void logState()
     pairing_record::formatUuid(current.uuid, uuid, sizeof(uuid));
     if (!current.paired) {
         logger::transient("pair: card id %s, no camera paired", uuid);
-        return;
+    } else {
+        char serial[2 * lumix::SERIAL_LENGTH + 1];
+        lumix::formatSerial(current.serial, serial, sizeof(serial));
+        logger::transient("pair: card id %s, camera %s", uuid, serial);
     }
-    char serial[2 * lumix::SERIAL_LENGTH + 1];
-    lumix::formatSerial(current.serial, serial, sizeof(serial));
-    logger::transient("pair: card id %s, camera %s", uuid, serial);
+    pairing_copy::logState();
 }
 
 } // namespace pairing_store

@@ -176,8 +176,8 @@ void logHelp()
     logger::transient("          for photos on the move), updates alone shows it");
     logger::transient("          bat log on / bat log off = battery log in flash every 10 min on the battery,");
     logger::transient("          bat log = show it, bat log clear = delete it");
-    logger::transient("          storage format yes = erase a damaged file system ('p' says when; pairing and");
-    logger::transient("          settings are lost, the card restarts)");
+    logger::transient("          storage format yes = erase a damaged file system ('p' says when; the settings are");
+    logger::transient("          lost, the pairing comes back from its copy; the card restarts)");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty),");
     logger::transient("             diag hang (test of the watchdog: the card restarts after %lu s),",
                       (unsigned long)watchdog::TIMEOUT_S);
@@ -232,6 +232,10 @@ void forgetCamera()
     }
     if (!pairing_store::record().paired) {
         logger::line("pair: no camera paired");
+        return;
+    }
+    if (!pairing_store::writable()) {
+        logger::line("pair: not possible - the file system is damaged ('storage format yes' first)");
         return;
     }
     link_control::stop(false); // it would go on with the forgotten camera

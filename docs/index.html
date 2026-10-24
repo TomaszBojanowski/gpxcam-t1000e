@@ -1770,12 +1770,15 @@ function updatesNowText(state) {
     "off and on.";
 }
 
-// When the card cannot mount its file system (src/storage.h): it works with the defaults and has no
-// pairing, and only the console command 'storage format yes' erases what is there. Null otherwise.
+// When the card cannot mount its file system (src/storage.h): it works with the default settings and
+// the pairing from its copy, if it has one (src/pairing_copy.h); only the console command
+// 'storage format yes' erases what is there. Null otherwise.
 function storageNoteText(state) {
   if (state.storage !== "damaged") return null;
-  return "The card cannot read what it saved: the pairing, time zone and settings. It works with the " +
-    "defaults and cannot connect to the camera. Repairing erases what it saved; the README says how.";
+  const pairing = state.paired ? "The pairing comes from its copy, so it still connects to the camera."
+    : "It has no pairing and cannot connect to the camera.";
+  return `The card cannot read its saved settings and works with the defaults. ${pairing} Repairing erases ` +
+    "the saved settings; the README says how.";
 }
 
 function isPairAnswer(line) {
