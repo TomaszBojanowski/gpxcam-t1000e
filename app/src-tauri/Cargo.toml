@@ -1,0 +1,19 @@
+[package]
+name = "gpxcam-card"
+version = "1.4.0"
+description = "Sets up a SenseCAP T1000-E running gpxcam over USB"
+authors = ["Tomasz Bojanowski"]
+license-file = "../../LICENSE"
+repository = "https://github.com/TomaszBojanowski/gpxcam-t1000e"
+edition = "2024"
+rust-version = "1.85"
+
+[lib]
+name = "gpxcam_card_lib"
+crate-type = ["rlib"] # desktop only: no mobile library
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+tauri = { version = "2.12.5", features = [] }

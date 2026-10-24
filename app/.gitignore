@@ -1,0 +1,5 @@
+# Made by tools/app_frontend.py from docs/index.html
+/dist/
+# Cargo and tauri-build output
+/src-tauri/target/
+/src-tauri/gen/

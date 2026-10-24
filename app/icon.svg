@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- The mark of the card page (docs/index.html), in fixed colours, on a light rounded square -->
+  <rect width="48" height="48" rx="10" fill="#f3f4f6"/>
+  <g transform="translate(24 24) scale(0.92) translate(-24.5 -23)">
+    <rect x="3" y="15" width="32" height="23" rx="5" fill="#5f6670"/>
+    <path d="M10 15l3-5h12l3 5z" fill="#5f6670"/>
+    <circle cx="19" cy="26.5" r="7" fill="#ffffff"/>
+    <circle cx="19" cy="26.5" r="4" fill="#5f6670"/>
+    <path d="M38 30c-3-5-8-9-8-14a8 8 0 1 1 16 0c0 5-5 9-8 14z" fill="#e5202e"/>
+    <circle cx="38" cy="16" r="3" fill="#ffffff"/>
+  </g>
+</svg>
