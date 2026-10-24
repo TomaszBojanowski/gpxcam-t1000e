@@ -538,6 +538,7 @@ void setup()
     sound::setSetting(settings_store::sound());
     const bool soundReady = sound::begin();
     sound::playStart(); // right away: after a wake-up it tells the user to let go
+    battery_log::begin(bleReady); // the size of its file; before the battery check below
 
     Serial.begin(115200); // USB CDC: the baud rate is ignored
     // Without USB no terminal can connect, so there is nothing to wait for.
