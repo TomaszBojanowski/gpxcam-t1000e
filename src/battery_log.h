@@ -5,9 +5,8 @@
 // time zone and settings. Entries: battery_rules::Entry. They wait in RAM and go to the file
 // battery_batch::BATCH_ENTRIES at a time (1 h), when the cable has been plugged in for
 // battery_batch::USB_STABLE_MS (not on the pulses of a bouncing cable), on 'bat log off' and
-// before System OFF; at most battery_batch::MAX_ENTRIES. On USB no entries are added, so once
-// the cable has been in for USB_STABLE_MS RAM holds none ('dfu' earlier would lose them).
-// Loop task only.
+// before System OFF and 'dfu'; at most battery_batch::MAX_ENTRIES. On USB no entries are
+// added. Loop task only.
 #pragma once
 
 #include <stdint.h>
@@ -34,8 +33,8 @@ void clear();
 // Call from loop(): an entry when the card goes on the battery and every PERIOD_MS then.
 void poll();
 
-// Writes the entries in RAM now: before System OFF. Nothing to do before begin(): the log
-// has no entries then.
+// Writes the entries in RAM now: before System OFF and 'dfu'. Nothing to do before begin():
+// the log has no entries then.
 void save();
 
 // The last entry before a low-battery power-off, written at once (also when the log is off:

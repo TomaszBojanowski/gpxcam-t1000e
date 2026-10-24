@@ -182,6 +182,9 @@ void logHelp()
 
 void rebootToUf2Bootloader()
 {
+    // The command came over USB, so USB works: a safe moment for the entries still in RAM,
+    // which wait for USB_STABLE_MS after the cable is plugged in.
+    battery_log::save();
     logger::line("dfu: rebooting to the UF2 bootloader (drive T1000-E)");
     delay(DFU_MESSAGE_DELAY_MS);
     // Core (cores/nRF5/wiring.c): disables the SoftDevice, sets GPREGRET to
