@@ -1,6 +1,9 @@
 #include "diag.h"
 
 #include <Arduino.h>
+#ifdef GPXCAM_TEST_COMMANDS
+#include <flash/flash_nrf5x.h>
+#endif
 #include <nrf_clock.h>
 #include <nrf_sdm.h>
 #include <nrf_soc.h>
@@ -127,6 +130,21 @@ void hang()
         delay(1); // lets the USB task send the log; the loop does not feed the watchdog
     logger::line("diag: the watchdog did not restart the card in %lu s", (unsigned long)HANG_LIMIT_S);
 }
+
+#ifdef GPXCAM_TEST_COMMANDS
+void breakFileSystem()
+{
+    constexpr uint32_t FIRST_PAGE = 0xED000; // LFS_FLASH_ADDR in the core's InternalFileSystem.cpp
+    logger::line("diag: TEST - erasing 0x%05lX, the first page of the file system, and restarting",
+                 (unsigned long)FIRST_PAGE);
+    if (!flash_nrf5x_erase(FIRST_PAGE)) {
+        logger::line("diag: erasing failed");
+        return;
+    }
+    delay(100); // lets the log line leave
+    NVIC_SystemReset();
+}
+#endif
 
 void checkClock(uint32_t delayS)
 {

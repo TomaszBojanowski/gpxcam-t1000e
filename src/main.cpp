@@ -477,6 +477,10 @@ void runCommand(char *cmd)
         battery_log::stop();
     } else if (strcmp(cmd, "bat log") == 0) {
         battery_log::dump();
+#ifdef GPXCAM_TEST_COMMANDS
+    } else if (strcmp(cmd, "diag storage break yes") == 0) {
+        diag::breakFileSystem();
+#endif
     } else if (strcmp(cmd, "storage format yes") == 0) {
         storage::formatDamaged();
     } else if (strcmp(cmd, "storage format") == 0) {

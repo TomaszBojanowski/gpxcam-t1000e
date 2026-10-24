@@ -30,4 +30,11 @@ void checkClock(uint32_t delayS);
 // Runs a crystal check that is due. Call from loop().
 void poll();
 
+#ifdef GPXCAM_TEST_COMMANDS
+// Test builds only (platformio.ini, env t1000e_test): erases the first page of the file system
+// (0xED000, with littlefs's superblock), so that it no longer mounts, and restarts. This is the
+// damage of 2026-10-24, for testing storage.h and pairing_copy.h on the card.
+void breakFileSystem();
+#endif
+
 } // namespace diag
