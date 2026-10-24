@@ -2,7 +2,7 @@
 /* Source: meshtastic/firmware src/platform/nrf52/nrf52840_s140_v7.ld
  * @ 6d41e279f1f51bd59f687b9d441c1bf47b1594fc.
  * Change: FLASH ends at 0xEA000 (was 0xED000) = USER_FLASH_END of the T1000-E UF2 bootloader
- * (0xF4000 - 40 KB app data reserve); see docs/SPRZET.md. */
+ * (0xF4000 - 40 KB app data reserve); see docs/HARDWARE.md. */
 
 SEARCH_DIR(.)
 GROUP(-lgcc -lc -lnosys)
