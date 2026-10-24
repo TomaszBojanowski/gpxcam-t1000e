@@ -3,8 +3,14 @@
   "productName": "gpxcam-card",
   "bundle": {
     "linux": {
-      "deb": { "desktopTemplate": "gpxcam-card.desktop" },
-      "rpm": { "desktopTemplate": "gpxcam-card.desktop" }
+      "deb": {
+        "desktopTemplate": "gpxcam-card.desktop",
+        "files": { "/usr/share/icons/hicolor/scalable/apps/gpxcam-card.svg": "../icon.svg" }
+      },
+      "rpm": {
+        "desktopTemplate": "gpxcam-card.desktop",
+        "files": { "/usr/share/icons/hicolor/scalable/apps/gpxcam-card.svg": "../icon.svg" }
+      }
     }
   }
 }
