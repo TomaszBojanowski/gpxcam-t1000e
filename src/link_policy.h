@@ -49,17 +49,69 @@ uint32_t pauseMs(uint32_t failuresInARow);
 // A connection that lasted this long starts the pause sequence again.
 constexpr uint32_t STABLE_CONNECTION_MS = 60000;
 
-// Locations (M5 decisions, as the gpxcam app): every 25 s; earlier after moving more than
-// 20 m or when the camera asks, but not more often than every 5 s.
-constexpr uint32_t PERIOD_MS = 25000;
-constexpr uint32_t MIN_GAP_MS = 5000;
-constexpr uint32_t MOVE_METRES = 20;
+// When locations go to the camera: at least every periodMs; earlier after moving more than
+// moveMetres or when the camera asks, but never more often than every minGapMs.
+struct LocationTiming {
+    uint32_t periodMs;
+    uint32_t minGapMs;
+    uint32_t moveMetres;
+};
+
+// M5 decisions, as the gpxcam app: every 25 s, after 20 m, at most every 5 s.
+constexpr LocationTiming NORMAL_TIMING = {25000, 5000, 20};
+// Every 5 s, after 5 m (GPS noise is 2-5 m), at most every 2 s (the GPS gives a fix every
+// second; 2 s halves the writes a car would cause). Endurance test with the S5II on
+// 2026-10-24: 8 h in one connection, about 5950 locations, answers 58-244 ms.
+constexpr LocationTiming FREQUENT_TIMING = {5000, 2000, 5};
+
+// The 'updates' setting: the timing the card asks for. Stored as a byte in the settings file:
+// keep the values.
+enum class Updates : uint8_t { Normal = 0, Frequent = 1 };
+
+const char *updatesName(Updates updates); // "normal", "frequent"
+
+// A setting from its name (lower case); false if there is none.
+bool updatesFromName(const char *name, Updates *updates);
 
 enum class Send { No, First, Periodic, Moved, Asked };
 
 // What to do now. sentBefore: a location was sent in this connection; msSinceLast: since
 // that one; metresMoved: from the position sent then; cameraAsked: a notification came.
-Send locationDue(bool sentBefore, uint32_t msSinceLast, uint32_t metresMoved, bool cameraAsked);
+Send locationDue(const LocationTiming &timing, bool sentBefore, uint32_t msSinceLast, uint32_t metresMoved,
+                 bool cameraAsked);
+
+// The guard of the frequent timing. The camera answers a location write in 1-2 connection
+// events (about 50-100 ms); an answer later than LATE_ANSWER_MS counts as late. After
+// LATE_ANSWERS_TO_SLOW_DOWN late answers in one connection the card goes back to the normal
+// timing until the end of that connection. A connection that ends other than by the camera's
+// own close (HCI 0x13: switched off) cannot go on, so the next one uses the normal timing, to
+// its end. With the old connection parameters such ends (HCI 0x08) came along with the hangs
+// of the camera's Bluetooth after 2-4 h; this keeps a lagging camera from more load.
+constexpr uint32_t LATE_ANSWER_MS = 1000;
+constexpr uint8_t LATE_ANSWERS_TO_SLOW_DOWN = 2;
+
+class RateGuard {
+public:
+    // A connection is ready for locations: not slowed down, unless the one before ended badly.
+    void connectionStarted();
+    // The camera answered a location write after answerMs; true when this made it slow down.
+    bool answered(uint32_t answerMs);
+    // The connection ended; closedByCamera: HCI 0x13 (the camera switched off).
+    void connectionEnded(bool closedByCamera);
+
+    // The timing to use now: frequent only when chosen and not slowed down.
+    const LocationTiming &timing(Updates chosen) const
+    {
+        return chosen == Updates::Frequent && !slow ? FREQUENT_TIMING : NORMAL_TIMING;
+    }
+    bool slowedDown() const { return slow; }
+    uint8_t lateAnswers() const { return late; }
+
+private:
+    uint8_t late = 0;
+    bool slow = false;
+    bool nextSlow = false;
+};
 
 // The writes of the introduction (camera_session) and the first ones of the link, in order.
 enum class IntroductionWrite { Identifier, AppName, DeviceName, Time, GpsMode, FirstLocation };

@@ -10,6 +10,8 @@ namespace {
 constexpr uint32_t PAUSES_MS[] = {5000, 15000, 60000};
 constexpr size_t PAUSE_STEPS = sizeof(PAUSES_MS) / sizeof(PAUSES_MS[0]);
 
+constexpr Updates UPDATES[] = {Updates::Normal, Updates::Frequent};
+
 constexpr double EARTH_RADIUS_M = 6371000.0; // mean radius
 constexpr double E7 = 1e7;
 constexpr double RADIANS_PER_DEGREE = 3.14159265358979323846 / 180.0; // not PI: Arduino.h defines it
@@ -55,19 +57,66 @@ uint32_t pauseMs(uint32_t failuresInARow)
     return PAUSES_MS[failuresInARow < PAUSE_STEPS ? failuresInARow - 1 : PAUSE_STEPS - 1];
 }
 
-Send locationDue(bool sentBefore, uint32_t msSinceLast, uint32_t metresMoved, bool cameraAsked)
+const char *updatesName(Updates updates)
+{
+    switch (updates) {
+    case Updates::Normal:
+        return "normal";
+    case Updates::Frequent:
+        return "frequent";
+    }
+    return "?";
+}
+
+bool updatesFromName(const char *name, Updates *updates)
+{
+    for (Updates candidate : UPDATES) {
+        if (strcmp(name, updatesName(candidate)) == 0) {
+            *updates = candidate;
+            return true;
+        }
+    }
+    return false;
+}
+
+Send locationDue(const LocationTiming &timing, bool sentBefore, uint32_t msSinceLast, uint32_t metresMoved,
+                 bool cameraAsked)
 {
     if (!sentBefore)
         return Send::First;
-    if (msSinceLast >= PERIOD_MS)
+    if (msSinceLast >= timing.periodMs)
         return Send::Periodic;
-    if (msSinceLast < MIN_GAP_MS)
+    if (msSinceLast < timing.minGapMs)
         return Send::No;
-    if (metresMoved > MOVE_METRES)
+    if (metresMoved > timing.moveMetres)
         return Send::Moved;
     if (cameraAsked)
         return Send::Asked;
     return Send::No;
+}
+
+void RateGuard::connectionStarted()
+{
+    slow = nextSlow;
+    nextSlow = false;
+    late = 0;
+}
+
+bool RateGuard::answered(uint32_t answerMs)
+{
+    if (answerMs <= LATE_ANSWER_MS)
+        return false;
+    if (late < UINT8_MAX)
+        late++;
+    if (slow || late < LATE_ANSWERS_TO_SLOW_DOWN)
+        return false;
+    slow = true;
+    return true;
+}
+
+void RateGuard::connectionEnded(bool closedByCamera)
+{
+    nextSlow = !closedByCamera;
 }
 
 uint32_t distanceMetres(int32_t latitude1E7, int32_t longitude1E7, int32_t latitude2E7, int32_t longitude2E7)

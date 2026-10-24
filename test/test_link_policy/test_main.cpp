@@ -112,14 +112,100 @@ void test_pause_sequence()
 
 void test_location_due()
 {
-    TEST_ASSERT_EQUAL(Send::First, link_policy::locationDue(false, 0, 0, false));
-    TEST_ASSERT_EQUAL(Send::No, link_policy::locationDue(true, 24999, 0, false));
-    TEST_ASSERT_EQUAL(Send::Periodic, link_policy::locationDue(true, 25000, 0, false));
-    TEST_ASSERT_EQUAL(Send::Moved, link_policy::locationDue(true, 5000, 21, false));
-    TEST_ASSERT_EQUAL(Send::No, link_policy::locationDue(true, 5000, 20, false)); // not more than 20 m
-    TEST_ASSERT_EQUAL(Send::No, link_policy::locationDue(true, 4999, 500, true)); // too soon after the last
-    TEST_ASSERT_EQUAL(Send::Asked, link_policy::locationDue(true, 5000, 0, true));
-    TEST_ASSERT_EQUAL(Send::Periodic, link_policy::locationDue(true, 30000, 500, true));
+    const link_policy::LocationTiming &normal = link_policy::NORMAL_TIMING;
+    TEST_ASSERT_EQUAL(Send::First, link_policy::locationDue(normal, false, 0, 0, false));
+    TEST_ASSERT_EQUAL(Send::No, link_policy::locationDue(normal, true, 24999, 0, false));
+    TEST_ASSERT_EQUAL(Send::Periodic, link_policy::locationDue(normal, true, 25000, 0, false));
+    TEST_ASSERT_EQUAL(Send::Moved, link_policy::locationDue(normal, true, 5000, 21, false));
+    TEST_ASSERT_EQUAL(Send::No, link_policy::locationDue(normal, true, 5000, 20, false)); // not more than 20 m
+    TEST_ASSERT_EQUAL(Send::No, link_policy::locationDue(normal, true, 4999, 500, true)); // too soon after the last
+    TEST_ASSERT_EQUAL(Send::Asked, link_policy::locationDue(normal, true, 5000, 0, true));
+    TEST_ASSERT_EQUAL(Send::Periodic, link_policy::locationDue(normal, true, 30000, 500, true));
+}
+
+// Frequent: every 5 s, after more than 5 m, never within 2 s of the last.
+void test_location_due_frequent()
+{
+    const link_policy::LocationTiming &frequent = link_policy::FREQUENT_TIMING;
+    TEST_ASSERT_EQUAL(Send::First, link_policy::locationDue(frequent, false, 0, 0, false));
+    TEST_ASSERT_EQUAL(Send::No, link_policy::locationDue(frequent, true, 4999, 0, false));
+    TEST_ASSERT_EQUAL(Send::Periodic, link_policy::locationDue(frequent, true, 5000, 0, false));
+    TEST_ASSERT_EQUAL(Send::Moved, link_policy::locationDue(frequent, true, 2000, 6, false));
+    TEST_ASSERT_EQUAL(Send::No, link_policy::locationDue(frequent, true, 2000, 5, false)); // not more than 5 m
+    TEST_ASSERT_EQUAL(Send::No, link_policy::locationDue(frequent, true, 1999, 500, true)); // too soon after the last
+    TEST_ASSERT_EQUAL(Send::Asked, link_policy::locationDue(frequent, true, 2000, 0, true));
+}
+
+void test_updates_names()
+{
+    using link_policy::Updates;
+    TEST_ASSERT_EQUAL_STRING("normal", link_policy::updatesName(Updates::Normal));
+    TEST_ASSERT_EQUAL_STRING("frequent", link_policy::updatesName(Updates::Frequent));
+    Updates updates = Updates::Normal;
+    TEST_ASSERT_TRUE(link_policy::updatesFromName("frequent", &updates));
+    TEST_ASSERT_EQUAL(Updates::Frequent, updates);
+    TEST_ASSERT_TRUE(link_policy::updatesFromName("normal", &updates));
+    TEST_ASSERT_EQUAL(Updates::Normal, updates);
+    updates = Updates::Frequent;
+    TEST_ASSERT_FALSE(link_policy::updatesFromName("Frequent", &updates)); // the console lowers the case first
+    TEST_ASSERT_FALSE(link_policy::updatesFromName("fast", &updates));
+    TEST_ASSERT_FALSE(link_policy::updatesFromName("", &updates));
+    TEST_ASSERT_EQUAL(Updates::Frequent, updates); // unchanged
+}
+
+// The guard: two late answers in one connection slow it down to its end; on-time ones never
+// count; the next connection is frequent again, unless the last one did not end by HCI 0x13.
+void test_rate_guard()
+{
+    using link_policy::Updates;
+    link_policy::RateGuard guard;
+    guard.connectionStarted();
+    TEST_ASSERT_FALSE(guard.slowedDown());
+    TEST_ASSERT_EQUAL_UINT32(5000, guard.timing(Updates::Frequent).periodMs);
+    TEST_ASSERT_FALSE(guard.answered(80));
+    TEST_ASSERT_FALSE(guard.answered(link_policy::LATE_ANSWER_MS)); // exactly the limit: not late
+    TEST_ASSERT_FALSE(guard.answered(1001));                        // the first late one
+    TEST_ASSERT_FALSE(guard.slowedDown());
+    TEST_ASSERT_FALSE(guard.answered(90));
+    TEST_ASSERT_TRUE(guard.answered(2500)); // the second late one: slows down, said once
+    TEST_ASSERT_TRUE(guard.slowedDown());
+    TEST_ASSERT_EQUAL_UINT32(25000, guard.timing(Updates::Frequent).periodMs);
+    TEST_ASSERT_FALSE(guard.answered(3000)); // already slow
+    TEST_ASSERT_EQUAL_UINT8(3, guard.lateAnswers());
+
+    guard.connectionEnded(true); // the camera switched off: the next connection is frequent
+    guard.connectionStarted();
+    TEST_ASSERT_FALSE(guard.slowedDown());
+    TEST_ASSERT_EQUAL_UINT8(0, guard.lateAnswers());
+    TEST_ASSERT_FALSE(guard.answered(1500)); // one late answer per connection is not enough
+    guard.connectionEnded(true);
+    guard.connectionStarted();
+    TEST_ASSERT_FALSE(guard.answered(1500));
+    TEST_ASSERT_FALSE(guard.slowedDown());
+
+    guard.connectionEnded(false); // out of range, a time limit, an error: the next one is normal
+    guard.connectionStarted();
+    TEST_ASSERT_TRUE(guard.slowedDown());
+    TEST_ASSERT_EQUAL_UINT32(5000, guard.timing(Updates::Frequent).minGapMs); // normal: at most every 5 s
+    guard.connectionEnded(true); // that one ended well: frequent again
+    guard.connectionStarted();
+    TEST_ASSERT_FALSE(guard.slowedDown());
+}
+
+// With normal chosen the guard changes nothing: always the normal timing.
+void test_rate_guard_with_normal_chosen()
+{
+    using link_policy::Updates;
+    link_policy::RateGuard guard;
+    guard.connectionStarted();
+    TEST_ASSERT_EQUAL_UINT32(25000, guard.timing(Updates::Normal).periodMs);
+    guard.answered(1500);
+    guard.answered(1500);
+    TEST_ASSERT_EQUAL_UINT32(25000, guard.timing(Updates::Normal).periodMs);
+    guard.connectionEnded(true);
+    guard.connectionStarted();
+    TEST_ASSERT_EQUAL_UINT32(25000, guard.timing(Updates::Normal).periodMs);
+    TEST_ASSERT_EQUAL_UINT32(5000, guard.timing(Updates::Frequent).periodMs); // chosen during a connection
 }
 
 // With the time written, only its refusal says the camera does not know the card (gpxcam
@@ -182,6 +268,10 @@ int main(int, char **)
     RUN_TEST(test_gps_needed);
     RUN_TEST(test_pause_sequence);
     RUN_TEST(test_location_due);
+    RUN_TEST(test_location_due_frequent);
+    RUN_TEST(test_updates_names);
+    RUN_TEST(test_rate_guard);
+    RUN_TEST(test_rate_guard_with_normal_chosen);
     RUN_TEST(test_refusal_means_unknown_card);
     RUN_TEST(test_early_ends_mean_unknown_card);
     RUN_TEST(test_distance);

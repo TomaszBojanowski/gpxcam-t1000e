@@ -323,7 +323,7 @@ void afterGpsMode()
 {
     if (notifyHandle == 0 || notifyHandle >= serviceEnd) { // no room for a descriptor
         logger::line("link: the camera offers no notifications - sending every %lu s only",
-                     (unsigned long)(link_policy::PERIOD_MS / 1000));
+                     (unsigned long)(link_policy::NORMAL_TIMING.periodMs / 1000));
         enterConnected();
         return;
     }
@@ -449,7 +449,8 @@ void sendLocationIfDue(uint32_t now)
     }
     const uint32_t moved =
         sentBefore ? link_policy::distanceMetres(lastLatitudeE7, lastLongitudeE7, latitudeE7, longitudeE7) : 0;
-    const link_policy::Send due = link_policy::locationDue(sentBefore, now - lastSentMs, moved, cameraAsked);
+    const link_policy::Send due =
+        link_policy::locationDue(link_policy::NORMAL_TIMING, sentBefore, now - lastSentMs, moved, cameraAsked);
     if (due == link_policy::Send::No)
         return;
     uint8_t data[lumix::LOCATION_LENGTH];
@@ -522,7 +523,7 @@ void settingUp(uint32_t now)
         } else if (phase == Phase::EnablingNotifications && event.type == camera_link::EventType::WriteDone) {
             if (event.status != BLE_GATT_STATUS_SUCCESS) {
                 logger::line("link: notifications refused (GATT 0x%04x) - sending every %lu s only", event.status,
-                             (unsigned long)(link_policy::PERIOD_MS / 1000));
+                             (unsigned long)(link_policy::NORMAL_TIMING.periodMs / 1000));
                 camera_session::forgetHandles("notifications refused");
             }
             enterConnected();
