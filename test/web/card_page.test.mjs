@@ -19,7 +19,7 @@ const page = vm.runInContext(
     " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText, SOUND_SETTINGS," +
     " classifySoundAnswer, soundAnswerText, soundNoteText, soundText, UPDATES_SETTINGS, classifyUpdatesAnswer," +
     " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText, chooseTransport," +
-    " openProblemText })",
+    " openProblemText, FIXED_COMMANDS })",
   vm.createContext({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console }),
 );
 
@@ -294,19 +294,18 @@ test("offsets come from the browser's own data", () => {
   assert.equal(page.utcOffsetText("Mars/Olympus_Mons", july), "");
 });
 
-test("only v, status, pair, pair off, unpair, clock on/off, updates normal/frequent, sound loud/quiet/off, tz and " +
-  "tz NAME can be sent", () => {
-  for (const allowed of ["v", "status", "pair", "pair off", "unpair", "clock on", "clock off", "updates normal",
-    "updates frequent", "sound loud", "sound quiet", "sound off", "tz", "tz Europe/Warsaw", "tz Poland",
-    "tz Etc/GMT+5"]) {
+// The same vectors as the desktop app's Rust side (cargo test).
+const COMMANDS = JSON.parse(readFileSync(new URL("../commands.json", import.meta.url), "utf8"));
+
+test("only the commands of test/commands.json can be sent, and About names each fixed one", () => {
+  assert.deepEqual([...page.FIXED_COMMANDS].sort(), [...COMMANDS.fixed].sort());
+  for (const allowed of [...COMMANDS.fixed, ...COMMANDS.allowed]) {
     assert.equal(page.allowedCommand(allowed), true, allowed);
   }
-  const refused = ["dfu", "off", "link off", "link on", "log", "bat log clear", "status ", "clock",
-    "clock  on", "Clock off", "sound", "sound on", "sound  off", "Sound loud", "diag snd 10", "pair on", "Pair",
-    "unpair now", "updates", "updates fast", "updates  normal", "Updates frequent", "updates frequent ",
-    "tz europe/warsaw",
-    "tz Mars/Olympus_Mons", "tz <+0545>-5:45", "tz Europe/Warsaw\ndfu", "tz Europe/Warsaw ", "V", ""];
-  for (const command of refused) assert.equal(page.allowedCommand(command), false, command);
+  for (const command of COMMANDS.refused) assert.equal(page.allowedCommand(command), false, JSON.stringify(command));
+  const about = /<details class="about">([\s\S]*?)<\/details>/.exec(html)[1];
+  const named = new Set([...about.matchAll(/<code>([^<]+)<\/code>/g)].map((match) => match[1]));
+  assert.deepEqual([...named].sort(), [...COMMANDS.fixed].sort());
   for (const [name] of page.TZ_DATA.zones) assert.equal(page.allowedCommand(`tz ${name}`), true, name);
   for (const alias of Object.keys(page.TZ_DATA.aliases)) assert.equal(page.allowedCommand(`tz ${alias}`), true, alias);
   assert.equal(page.tzCommand("america/new_york"), "tz America/New_York");
