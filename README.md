@@ -13,6 +13,29 @@ Status: pairing, everyday use with the camera and power saving all work and are 
 LUMIX S5II. The latest version is on the
 [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases) page.
 
+## What's new in 1.4.0
+
+- **Location updates: Normal or Frequent.** Normal sends the position every 25 s, sooner after
+  20 m, as before. Frequent sends it every 5 s and after 5 m, for photos on the move. Choose it on
+  [the card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/) or send `updates frequent`.
+  If the camera answers slowly, the card goes back to every 25 s until the camera is switched off
+  and on, and the page says so. Tested with the S5II for 8 hours in one connection.
+- **The card protects its settings better.** A USB cable with a contact that kept breaking hung
+  the card once, and at the next start its stored settings and pairing were gone (details in
+  [docs/HARDWARE.md](docs/HARDWARE.md#reliability-140)). Now:
+  - a watchdog restarts the card when it hangs, after 30 s;
+  - the handling of USB plug-in, where the hang most likely started, has time limits. The hang
+    could not be reproduced, so this has not been tested with a bouncing cable;
+  - the battery log writes only when the cable has been in for 10 s;
+  - the card never erases its stored settings by itself: if it cannot read them, it works with
+    the defaults and says so, see [If the card forgot its settings](#if-the-card-forgot-its-settings);
+  - the pairing is also kept in a copy of its own, so the card stays paired with the camera even
+    then.
+- **Bluetooth transmit power +8 dBm** instead of 0 dBm, for a steadier connection when the camera
+  is a few metres away. How much further the connection reaches has not been measured yet.
+- **Battery log:** the entries are written six at a time (fewer flash writes), in
+  `/log/battery.bin`.
+
 ## What's new in 1.3.0
 
 - **[The card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/)** (Chrome or Edge on a
@@ -47,6 +70,9 @@ LUMIX S5II. The latest version is on the
   the right local time, but no summer-time mark.
 - The time zone rules are built into the firmware (tz database 2026e since 1.2.0). When a country
   changes its rules later, the card needs a newer firmware for them.
+- After 1.4.0, an older firmware (gpxcam 1.3 or older, Meshtastic up to 2.7.15) restarts once by
+  itself about 30 s after its first start: the watchdog of 1.4.0 keeps running until then. This
+  does no harm.
 
 ## Install the release (Windows, macOS, Linux)
 
@@ -77,7 +103,8 @@ Chrome or Edge on Windows, macOS or Linux (Firefox, Safari and phones cannot tal
 - it pairs the card with the camera, step by step, and says why if pairing fails; it can also
   forget the paired camera;
 - it sets whether the card sets the camera's clock, and the time zone;
-- it sets how loud the card is (see [Sounds and LED](#sounds-and-led)).
+- it sets how loud the card is (see [Sounds and LED](#sounds-and-led));
+- it sets how often the card sends the position, Normal or Frequent (see [Normal use](#normal-use)).
 
 1. Plug the card into the computer with a USB cable. Close serial monitors that use it.
 2. Open [the card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/).
@@ -85,8 +112,8 @@ Chrome or Edge on Windows, macOS or Linux (Firefox, Safari and phones cannot tal
 
 The page runs only in the browser and sends nothing over the internet. It sends the card only `v`,
 `status`, `pair`, `pair off`, `unpair`, `clock on`, `clock off`, `sound loud`, `sound quiet`,
-`sound off`, `tz` and `tz` with a zone from its list. With gpxcam 1.2 it only sets the time zone;
-the rest needs 1.3.0 or newer.
+`sound off`, `updates normal`, `updates frequent`, `tz` and `tz` with a zone from its list. With
+gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or newer, the location updates 1.4.0.
 
 On Linux, if the page says "Reading from the card failed" after a serial monitor (for example
 `pio device monitor`) used the card: unplug the card and plug it in again. Such programs leave the
@@ -197,6 +224,18 @@ and plug the cable in twice quickly – the LED lights up and the T1000-E drive 
 
 gpxcam never changes the bootloader or the SoftDevice, so Meshtastic installs as on a new card.
 Whether Meshtastic keeps its old settings has not been checked – be ready to set it up again.
+After gpxcam 1.4.0, Meshtastic up to 2.7.15 (the factory version) restarts once by itself about
+30 s after its first start, as any older firmware does (see [Known limitations](#known-limitations)).
+Meshtastic 2.7.16 and later feed the same watchdog and should not restart; this has not been
+tested.
+
+Coming back to gpxcam 1.4.0 later:
+- The copy of the pairing lives on two flash pages of its own (0xEB000 and 0xEC000), which
+  flashing never writes. Meshtastic up to 2.7 does not use them, so the copy is still there.
+  Meshtastic 2.8 and later keep their own node cache on these pages and overwrite the copy; gpxcam
+  then takes the pages back and writes the copy again from the pairing file at its next start.
+- Whether Meshtastic leaves gpxcam's files (the pairing file, the settings) in the file system
+  they share has not been checked. Without the pairing file and its copy, pair the card again.
 
 ## User guide
 
@@ -235,8 +274,14 @@ first fix takes about 1–3 minutes outdoors or near a window; deep indoors it m
 When the camera is on, the card connects by itself (two rising beeps), sets the camera's clock
 (see [Set the time zone](#set-the-time-zone); this can be switched off) and the camera shows its
 Bluetooth and GPS icons.
-The card sends the position at once and then every 25 s – earlier when it moves more than 20 m. If the GPS loses its fix later, the connection stays, but no position is
-sent until the fix is back.
+The card sends the position at once and then, with **Normal** location updates, every 25 s –
+earlier when it moves more than 20 m; with **Frequent** (1.4.0) every 5 s – earlier when it moves
+more than 5 m, at most every 2 s. If the GPS loses its fix later, the connection stays, but no
+position is sent until the fix is back.
+
+Charge the card with the magnetic cable on the bare card, not through a case, until the magnet
+clicks into place. A contact that keeps making and breaking once hung the card (see
+[What's new in 1.4.0](#whats-new-in-140)).
 
 When the camera is switched off, the card notices it (two falling beeps) and waits:
 - for the first 20 minutes it keeps the GPS ready and looks for the camera every second, so the
@@ -275,6 +320,24 @@ keeps the setting through restarts and firmware updates.
 | a short flash every 4 s | connected to the camera |
 | fast blinking | `off` countdown |
 
+### If the card forgot its settings
+
+From 1.4.0 the card never erases its stored settings by itself. If it cannot read them – its
+file system is damaged, as after the hang described in [What's new in 1.4.0](#whats-new-in-140) –
+it:
+- works with the default settings: sound Loud, the clock on, Europe/Warsaw, location updates
+  Normal;
+- stays paired with the camera, from the copy of its pairing, and connects as usual;
+- says so: the card page shows a note, `p` shows `storage: DAMAGED`, `status` has
+  `storage=damaged`;
+- saves no changes: pairing, forgetting the camera and the settings are refused until it is
+  repaired.
+
+To repair it, send `storage format yes` in a [serial terminal](#with-a-serial-terminal); the card
+page never sends it. The card erases its file system, restarts and takes the pairing back from its
+copy. The time zone, the sound, the clock and location update settings and the battery log are
+lost: set them again on the card page.
+
 ## Serial console (service)
 
 ```
@@ -284,7 +347,7 @@ pio device monitor
 | Command | What it does |
 |---|---|
 | `v` | version (with the git commit) and the reason of the last reset |
-| `p` | state: radio, GPS, Bluetooth, pairing (card id, camera), time zone, sound, link, battery |
+| `p` | state: file system, radio, GPS, Bluetooth (transmit power), pairing (card id, camera, the copy's two pages), time zone, sound, location updates, link, watchdog, USB, battery |
 | `status` | the same in short `key=value` lines without the card id and the camera, for the card page |
 | `log` | the last 32 events, also from times without USB |
 | `off` | power off after a 15 s countdown (refused with USB; a short press cancels) |
@@ -294,11 +357,15 @@ pio device monitor
 | `tz` / `tz NAME` / `tz RULE` | show / set the time zone, see [Set the time zone](#set-the-time-zone) |
 | `clock` / `clock on` / `clock off` | show / set whether the card sets the camera's clock, see [Leave the camera's clock alone](#leave-the-cameras-clock-alone-130) |
 | `sound` / `sound loud` / `sound quiet` / `sound off` | show / set how loud the card is, see [Sounds and LED](#sounds-and-led); a new Loud or Quiet plays two short beeps |
+| `updates` / `updates normal` / `updates frequent` | show / set how often the card sends the position, see [Normal use](#normal-use) |
 | `link on` / `link off` | work with the paired camera; on by itself after start when a camera is paired |
-| `bat log on` / `bat log off` | battery log in flash: an entry every 10 min on the battery, up to 1024 |
+| `bat log on` / `bat log off` | battery log in flash: an entry every 10 min on the battery, written six at a time, up to 1024 |
 | `bat log` / `bat log clear` | show / delete the battery log |
 | `diag bat` | battery voltage at different settling times of the divider (about 4 s) |
 | `diag snd N` | all sounds at N % PWM duty (1–50), whatever the setting, to choose the volume by ear |
+| `diag hang` | test of the watchdog: holds the main loop; the card restarts after 30 s |
+| `diag clk` / `diag clk S` | how much of 1 s the 64 MHz crystal runs, now or in S seconds (kept for `log`, so it can be measured on the battery) |
+| `storage format yes` | erase a damaged file system and restart, see [If the card forgot its settings](#if-the-card-forgot-its-settings); refused while the file system is fine |
 
 **Privacy:** the log shows the camera's serial number and Bluetooth address and the card's id –
 do not publish it. GPS positions are never logged.
@@ -314,8 +381,9 @@ node --test test/web/card_page.test.mjs
 
 The modules without hardware dependencies – NMEA parser, LUMIX protocol (advertisement, byte
 formats, location), camera list, UTC calendar, time zone table, POSIX time zone rules (against the
-full tz database at every change of 2026–2031), time zone file, pairing record, settings file, the
-camera handles kept between connections, link, battery and sound rules, the lines of `status` – are
+full tz database at every change of 2026–2031), time zone file, pairing record and its copy,
+settings file, the camera handles kept between connections, link, battery and sound rules, the
+battery log's batches and the stable-USB rule, the lines of `status` – are
 tested with made-up data and the vectors from `docs/PROTOCOL.md`. The second command (Node.js,
 tested with version 22) tests the card page with a simulated card.
 
