@@ -18,8 +18,9 @@ const page = vm.runInContext(
     " startList, parseStatus, cameraTile, gpsTile, batteryTile, zoneTile, classifyClockAnswer, clockAnswerText," +
     " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText, SOUND_SETTINGS," +
     " classifySoundAnswer, soundAnswerText, soundNoteText, soundText, UPDATES_SETTINGS, classifyUpdatesAnswer," +
-    " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText, chooseTransport })",
-  vm.createContext({ TextEncoder, TextDecoder, setTimeout, clearTimeout, console }),
+    " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText, chooseTransport," +
+    " openProblemText })",
+  vm.createContext({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console }),
 );
 
 // Values made in the page's context: compared as JSON, since their prototypes are not ours.
@@ -140,8 +141,9 @@ class FakeElement {
 
 // Starts the page with every element that has an id, with its classes from the HTML, and a
 // browser whose port chooser gives the simulated card (serial: false - a browser without Web Serial).
-// serialEvents collects the listeners the page adds to navigator.serial.
-function openPage(port, { serial = true, serialEvents = {} } = {}) {
+// serialEvents collects the listeners the page adds to navigator.serial. app: the desktop app
+// (simulatedApp()) instead of a browser.
+function openPage(port, { serial = true, serialEvents = {}, app = null } = {}) {
   const elements = {};
   for (const [tag] of html.matchAll(/<[a-z]+\b[^>]*>/g)) {
     const id = / id="([^"]+)"/.exec(tag);
@@ -151,15 +153,51 @@ function openPage(port, { serial = true, serialEvents = {} } = {}) {
     getElementById: (id) => elements[id],
     createElement: () => new FakeElement(),
   };
-  const navigator = serial ? {
+  const navigator = serial && !app ? {
     serial: { requestPort: async () => port, addEventListener: (type, listener) => { serialEvents[type] = listener; } },
   } : {};
   vm.runInContext(scripts.join("\n"), vm.createContext({
-    TextEncoder, TextDecoder, setTimeout, clearTimeout, console, document, navigator,
-    window: { isSecureContext: true },
+    TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console, document, navigator,
+    window: app ? app.window : { isSecureContext: true },
   }));
   return elements;
 }
+
+// The desktop app's Rust side as app/src-tauri gives it to the page: list_cards, open_card with a
+// channel for the card's lines, send (the answers come back over the channel, line by line) and
+// close_card. openError: the word open_card fails with.
+function simulatedApp(paths, answers, { openError = null } = {}) {
+  const app = { calls: [], channel: null };
+  const core = {
+    Channel: class {
+      constructor() { this.onmessage = null; }
+    },
+    invoke: async (command, args = {}) => {
+      app.calls.push([command, args.path ?? args.command].filter((part) => part !== undefined).join(" "));
+      if (command === "list_cards") return paths.map((path) => ({ path }));
+      if (command === "open_card") {
+        if (openError) throw openError; // Tauri rejects with the command's error value
+        app.channel = args.onEvent;
+        return null;
+      }
+      if (command === "send") {
+        const lines = (answers[args.command] || []).join("").split("\n").map((line) => line.replace(/\r$/, ""));
+        for (const text of lines.filter(Boolean)) setTimeout(() => app.channel.onmessage({ kind: "line", text }), 5);
+        return null;
+      }
+      if (command === "close_card") {
+        setTimeout(() => app.channel.onmessage({ kind: "closed", error: null }), 1);
+        return null;
+      }
+      throw new Error(`no such command: ${command}`);
+    },
+  };
+  app.window = { isSecureContext: true, __TAURI__: { core } };
+  app.unplug = () => app.channel.onmessage({ kind: "closed", error: "the card was unplugged" });
+  return app;
+}
+
+const tick = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Chooses a zone in the list as a click does; returns its name element.
 async function chooseZone(ui, zone) {
@@ -397,7 +435,7 @@ test("motion is short, changes only colours and the toggle's knob, and stops wit
 
 test("what a returning reader does not need is folded: the steps once paired, and About", () => {
   assert.match(html, /<details id="pair-help" class="help" open>\s*<summary>How to pair<\/summary>/);
-  assert.match(html, /<details class="about">\s*<summary>About this page<\/summary>/);
+  assert.match(html, /<details class="about">\s*<summary id="about-title">About this page<\/summary>/);
 });
 
 test("hidden parts stay hidden whatever display their own rule gives", () => {
@@ -582,6 +620,92 @@ test("Web Serial is the transport only where the browser offers it to this page"
   transport.onDisconnect((port) => unplugged.push(port));
   listeners.disconnect({ target: "the port" });
   assert.deepEqual(unplugged, ["the port"]);
+});
+
+test("the desktop app is the transport where it runs, before Web Serial", () => {
+  const app = simulatedApp([], {});
+  assert.equal(page.chooseTransport({}, app.window).name, "app");
+  assert.equal(page.chooseTransport({ serial: {} }, app.window).name, "app");
+  assert.equal(page.chooseTransport({}, { isSecureContext: true, __TAURI__: {} }), null); // no core
+});
+
+test("the app's port reads lines from its channel and sends commands without the newline", async () => {
+  const app = simulatedApp(["/dev/ttyACM0"], { v: VERSION_1_4, status: STATUS_1_4 });
+  const transport = page.chooseTransport({}, app.window);
+  const card = new page.Card(await transport.requestPort(() => assert.fail("one card: no choice")));
+  await card.open();
+  assert.equal(await card.version(), "1.4.0");
+  const status = await card.status();
+  assert.equal(status.kind, "ok");
+  assert.equal(status.state.updates, "normal");
+  await assert.rejects(card.ask("dfu", () => true, 50)); // refused before the app sees it
+  await card.close();
+  assert.deepEqual(app.calls, ["list_cards", "open_card /dev/ttyACM0", "send v", "send status", "close_card"]);
+});
+
+test("the app says why the card's port did not open", () => {
+  assert.match(page.openProblemText("permission"), /dialout group \(sudo usermod -aG dialout \$USER\)/);
+  assert.match(page.openProblemText("not-found"), /^The card is gone\./);
+  assert.match(page.openProblemText("busy"), /^Could not open the card\. Close other programs/);
+  assert.match(page.openProblemText(new DOMException("Failed to open serial port.", "NetworkError")),
+    /^Could not open the card\./); // Web Serial
+});
+
+test("in the app: no chooser for one card, the same state, and words without the browser", async () => {
+  const app = simulatedApp(["/dev/ttyACM0"], { v: VERSION_1_4, status: STATUS_1_4 });
+  const ui = openPage(null, { app });
+  assert.equal(ui.unsupported.hidden, true);
+  assert.equal(ui["intro-choose"].hidden, true);
+  assert.equal(ui["about-title"].textContent, "About this app");
+  assert.equal(ui["about-runs"].textContent, "The app sends");
+  assert.equal(ui["about-link"].hidden, true);
+  assert.equal(ui["about-address"].hidden, false);
+  await ui.connect.fire("click");
+  assert.equal(ui["choose-card"].hidden, true);
+  assert.equal(ui["card-status"].textContent, "Connected to the card");
+  assert.equal(ui["state-firmware"].textContent, "gpxcam 1.4.0 \u00b7 git 1234567");
+  assert.equal(ui["updates-normal"].checked, true);
+  app.unplug();
+  await tick();
+  assert.equal(ui["card-status"].textContent, "The connection to the card ended (the card was unplugged).");
+  assert.equal(ui.connect.disabled, false);
+});
+
+test("in the app: a choice between two cards, Cancel, and no card at all", async () => {
+  const app = simulatedApp(["/dev/ttyACM0", "/dev/ttyACM1"], { v: VERSION_1_4, status: STATUS_1_4 });
+  const ui = openPage(null, { app });
+  let connecting = ui.connect.fire("click");
+  await tick();
+  assert.equal(ui["choose-card"].hidden, false);
+  const choices = ui["card-choices"].children;
+  assert.deepEqual(choices.map((button) => button.textContent), ["/dev/ttyACM0", "/dev/ttyACM1", "Cancel"]);
+  await choices[2].fire("click"); // Cancel
+  await connecting;
+  assert.equal(ui["choose-card"].hidden, true);
+  assert.equal(ui["card-status"].className, ""); // nothing to report: the page stays as it was
+  assert.equal(ui.connect.disabled, false);
+  connecting = ui.connect.fire("click");
+  await tick();
+  await ui["card-choices"].children[1].fire("click");
+  await connecting;
+  assert.equal(app.calls[app.calls.length - 3], "open_card /dev/ttyACM1");
+  assert.equal(ui["card-status"].textContent, "Connected to the card");
+  await ui.disconnect.fire("click");
+
+  const none = openPage(null, { app: simulatedApp([], {}) });
+  await none.connect.fire("click");
+  assert.equal(none["card-status"].textContent, "No card found. Plug the card in with a USB cable and click Connect.");
+  assert.equal(none["card-status"].className, "bad");
+});
+
+test("in the app: a port without permission or in use is explained", async () => {
+  for (const [word, text] of [["permission", /dialout/], ["busy", /Close other programs/]]) {
+    const ui = openPage(null, { app: simulatedApp(["/dev/ttyACM0"], {}, { openError: word }) });
+    await ui.connect.fire("click");
+    assert.match(ui["card-status"].textContent, text, word);
+    assert.equal(ui["card-status"].className, "bad");
+    assert.equal(ui.connect.disabled, false);
+  }
 });
 
 test("unplugging the card ends the connection on the page", async () => {
