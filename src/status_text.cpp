@@ -114,6 +114,8 @@ void format(const State &state, void (*emit)(const char *line))
     emit(line);
     snprintf(line, sizeof(line), "status: watchdog_restart=%d", state.watchdogRestart ? 1 : 0);
     emit(line);
+    snprintf(line, sizeof(line), "status: storage=%s", state.storage);
+    emit(line);
     emit("status: end");
 }
 

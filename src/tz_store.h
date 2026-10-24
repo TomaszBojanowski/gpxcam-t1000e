@@ -9,10 +9,8 @@
 namespace tz_store {
 
 // Loads the zone; a missing file means the default zone, and so (logged) does a damaged
-// one or one whose rule cannot be used. Call once in setup() after bluetooth::begin(), with
-// its result: Bluefruit mounts the file system. Without it the default zone is used and the
-// file is not touched (InternalFS.begin() of the core would erase the data area when it
-// cannot mount it).
+// one or one whose rule cannot be used. Call once in setup() with storage::ready(); without
+// the file system the default zone is used and nothing is written.
 void begin(bool fileSystemMounted);
 
 // The rule of the zone in effect, valid after begin().

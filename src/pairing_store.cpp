@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "log.h"
+#include "storage.h"
 
 // Sources: InternalFileSytem and Adafruit_LittleFS in the core (littlefs 1.7). littlefs
 // commits a file only when it is closed, and rename is atomic, also on power loss, and
@@ -100,8 +101,8 @@ namespace pairing_store {
 
 bool begin()
 {
-    if (!InternalFS.begin()) { // already mounted by Bluefruit: returns true at once
-        logger::line("pair: file system not available");
+    if (!storage::ready()) {
+        logger::line("pair: no pairing - the file system is damaged (see 'storage' in 'p')");
         return false;
     }
     pairing_record::Status status = pairing_record::Status::Ok;

@@ -18,7 +18,7 @@ const page = vm.runInContext(
     " startList, parseStatus, cameraTile, gpsTile, batteryTile, zoneTile, classifyClockAnswer, clockAnswerText," +
     " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText, SOUND_SETTINGS," +
     " classifySoundAnswer, soundAnswerText, soundNoteText, soundText, UPDATES_SETTINGS, classifyUpdatesAnswer," +
-    " updatesAnswerText, updatesNoteText, updatesText, updatesNowText })",
+    " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText })",
   vm.createContext({ TextEncoder, TextDecoder, setTimeout, clearTimeout, console }),
 );
 
@@ -50,6 +50,7 @@ const STATE = {
   version: "1.3.0", git: "1234567", batteryMv: 4100, batteryPercent: 89, charger: "charging", gpsOn: true,
   gpsFix: true, gpsSatellites: 11, paired: true, link: "connected", pair: "idle", pairAttempt: 0,
   pairResult: "none", clockOn: true, timeZone: "Europe/Warsaw", sound: "loud", updates: null, updatesNow: null,
+  storage: null,
 };
 const NO_STATUS = ["command: unknown 'status'\r\n", "commands: v = version and reset reason,\r\n"];
 const statusLines = (text) => text.trim().split("\n");
@@ -465,7 +466,7 @@ test("a card before 1.3.0, a missing line, no end and a newer format are told ap
   assert.equal(page.parseStatus([]).kind, "none");
   assert.equal(page.parseStatus(["status: format=2 fw=2.0.0", "status: end"]).kind, "newer");
   // A key added later is skipped.
-  const more = [...lines.slice(0, -1), "status: storage=ok", "status: end"];
+  const more = [...lines.slice(0, -1), "status: later_key=1", "status: end"];
   assert.deepEqual(json(page.parseStatus(more).state), STATE);
 });
 
@@ -852,6 +853,31 @@ test("the state says when the card sends less often than chosen", () => {
   assert.equal(now("frequent", "frequent"), null);
   assert.equal(now("normal", "normal"), null);
   assert.equal(now(null, null), null); // gpxcam before 1.4.0
+});
+
+// storage=damaged: the card did not mount its file system and left it as it is (src/storage.h).
+test("the state says when the card cannot read what it saved", () => {
+  const lines = (storage) => statusLines(STATUS_1_4.join("").replace("status: end", `status: storage=${storage}\r\nstatus: end`)
+    .replace(/gps: .*\r\n/, "").replaceAll("\r", ""));
+  assert.equal(page.parseStatus(lines("damaged")).state.storage, "damaged");
+  assert.equal(page.parseStatus(lines("ok")).state.storage, "ok");
+  assert.equal(page.parseStatus(statusLines(STATUS_ANSWER.join("").replace(/gps: .*\r\n/, "").replaceAll("\r", "")))
+    .state.storage, null); // gpxcam 1.3
+  assert.match(page.storageNoteText({ ...STATE, storage: "damaged" }), /^The card cannot read what it saved/);
+  for (const storage of ["ok", null]) assert.equal(page.storageNoteText({ ...STATE, storage }), null);
+});
+
+test("a note on the page while the card cannot read what it saved", async () => {
+  const answers = { v: VERSION_1_4, status: [STATUS_1_4.join("").replace("status: end", "status: storage=damaged\r\nstatus: end")] };
+  const ui = openPage(simulatedCard(answers));
+  assert.equal(ui["storage-note"].hidden, true);
+  await ui.connect.fire("click");
+  assert.equal(ui["storage-note"].hidden, false);
+  assert.match(ui["storage-note"].textContent, /cannot connect to the camera/);
+  answers.status = [STATUS_1_4.join("").replace("status: end", "status: storage=ok\r\nstatus: end")];
+  await ui.refresh.fire("click");
+  assert.equal(ui["storage-note"].hidden, true);
+  await ui.disconnect.fire("click");
 });
 
 test("the location updates choice follows the card, with a note while the camera answers slowly", async () => {

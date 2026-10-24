@@ -9,7 +9,7 @@ using status_text::State;
 
 namespace {
 
-constexpr size_t MAX_LINES = 10;
+constexpr size_t MAX_LINES = 12;
 char lines[MAX_LINES][status_text::LINE_SIZE];
 size_t count = 0;
 
@@ -26,6 +26,7 @@ State someState()
     state.version = "1.3.0";
     state.git = "1234567";
     state.watchdogRestart = false;
+    state.storage = "ok";
     state.batteryMillivolts = 4100;
     state.batteryPercent = 89;
     state.charger = battery::Charger::Charging;
@@ -56,7 +57,7 @@ void tearDown() {}
 void test_all_lines()
 {
     status_text::format(someState(), collect);
-    TEST_ASSERT_EQUAL_size_t(10, count);
+    TEST_ASSERT_EQUAL_size_t(11, count);
     TEST_ASSERT_EQUAL_STRING("status: format=1 fw=1.3.0 git=1234567", lines[0]);
     TEST_ASSERT_EQUAL_STRING("status: battery_mv=4100 battery_pct=89 charger=charging", lines[1]);
     TEST_ASSERT_EQUAL_STRING("status: gps=on gps_fix=1 gps_sat=11", lines[2]);
@@ -66,7 +67,8 @@ void test_all_lines()
     TEST_ASSERT_EQUAL_STRING("status: sound=loud", lines[6]);
     TEST_ASSERT_EQUAL_STRING("status: updates=normal updates_now=normal", lines[7]);
     TEST_ASSERT_EQUAL_STRING("status: watchdog_restart=0", lines[8]);
-    TEST_ASSERT_EQUAL_STRING("status: end", lines[9]);
+    TEST_ASSERT_EQUAL_STRING("status: storage=ok", lines[9]);
+    TEST_ASSERT_EQUAL_STRING("status: end", lines[10]);
 }
 
 void test_other_values()
@@ -87,6 +89,7 @@ void test_other_values()
     state.updates = link_policy::Updates::Frequent;
     state.updatesNow = link_policy::Updates::Normal; // the guard slowed the connection down
     state.watchdogRestart = true;
+    state.storage = "damaged";
     status_text::format(state, collect);
     TEST_ASSERT_EQUAL_STRING("status: battery_mv=3400 battery_pct=0 charger=no_usb", lines[1]);
     TEST_ASSERT_EQUAL_STRING("status: gps=off gps_fix=0 gps_sat=0", lines[2]);
@@ -96,6 +99,7 @@ void test_other_values()
     TEST_ASSERT_EQUAL_STRING("status: sound=off", lines[6]);
     TEST_ASSERT_EQUAL_STRING("status: updates=frequent updates_now=normal", lines[7]);
     TEST_ASSERT_EQUAL_STRING("status: watchdog_restart=1", lines[8]);
+    TEST_ASSERT_EQUAL_STRING("status: storage=damaged", lines[9]);
 }
 
 void test_frequent_in_effect()
@@ -126,7 +130,7 @@ void test_longest_lines_fit()
     state.pairing = {pairing::Phase::WaitingForFix, 3, pairing::Result::NotInPairingMode};
     state.timeZone = "<+000000000000000000000000000000000000000000000000000000000000>0"; // 63, the most
     status_text::format(state, collect);
-    TEST_ASSERT_EQUAL_size_t(10, count);
+    TEST_ASSERT_EQUAL_size_t(11, count);
     for (size_t i = 0; i < count; i++)
         TEST_ASSERT_TRUE(strlen(lines[i]) < status_text::LINE_SIZE - 1); // nothing was cut
     TEST_ASSERT_EQUAL_STRING("status: clock=on tz=<+000000000000000000000000000000000000000000000000000000000000>0",

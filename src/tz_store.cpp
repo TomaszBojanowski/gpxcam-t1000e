@@ -59,7 +59,7 @@ namespace tz_store {
 void begin(bool fileSystemMounted)
 {
     useDefault();
-    fileSystemReady = fileSystemMounted && InternalFS.begin(); // mounted by Bluefruit: true at once
+    fileSystemReady = fileSystemMounted && InternalFS.begin(); // mounted by storage::begin(): true at once
     if (!fileSystemReady) {
         logger::line("tz: file system not available - using %s", current.name);
         return;

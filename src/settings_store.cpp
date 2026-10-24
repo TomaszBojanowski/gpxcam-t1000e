@@ -49,7 +49,7 @@ void begin(bool fileSystemMounted)
 {
     current = settings_record::DEFAULTS;
     savedInFile = false;
-    fileSystemReady = fileSystemMounted && InternalFS.begin(); // mounted by Bluefruit: true at once
+    fileSystemReady = fileSystemMounted && InternalFS.begin(); // mounted by storage::begin(): true at once
     if (!fileSystemReady) {
         logger::line("settings: file system not available - using the defaults");
         return;

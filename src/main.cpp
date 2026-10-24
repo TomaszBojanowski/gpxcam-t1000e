@@ -26,6 +26,7 @@
 #include "settings_store.h"
 #include "sound.h"
 #include "status_text.h"
+#include "storage.h"
 #include "tz_record.h"
 #include "tz_store.h"
 #include "usb_power.h"
@@ -135,6 +136,7 @@ void logStatus()
     state.version = FW_VERSION;
     state.git = FW_GIT;
     state.watchdogRestart = watchdog::restartedLastTime();
+    state.storage = storage::stateName();
     state.batteryMillivolts = battery.batteryMv;
     state.batteryPercent = battery_rules::percentFromMillivolts(battery.batteryMv);
     state.charger = battery.charger;
@@ -174,6 +176,8 @@ void logHelp()
     logger::transient("          for photos on the move), updates alone shows it");
     logger::transient("          bat log on / bat log off = battery log in flash every 10 min on the battery,");
     logger::transient("          bat log = show it, bat log clear = delete it");
+    logger::transient("          storage format yes = erase a damaged file system ('p' says when; pairing and");
+    logger::transient("          settings are lost, the card restarts)");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty),");
     logger::transient("             diag hang (test of the watchdog: the card restarts after %lu s),",
                       (unsigned long)watchdog::TIMEOUT_S);
@@ -413,6 +417,7 @@ void runCommand(char *cmd)
         logVersion(true);
         diag::logResetInfo();
     } else if (strcmp(cmd, "p") == 0) {
+        storage::logState();
         board::logPowerState();
         gps::logState();
         bluetooth::logState();
@@ -468,6 +473,10 @@ void runCommand(char *cmd)
         battery_log::stop();
     } else if (strcmp(cmd, "bat log") == 0) {
         battery_log::dump();
+    } else if (strcmp(cmd, "storage format yes") == 0) {
+        storage::formatDamaged();
+    } else if (strcmp(cmd, "storage format") == 0) {
+        logger::line("storage: 'storage format yes' erases the file system (only when it is damaged)");
     } else if (strcmp(cmd, "bat log clear") == 0) {
         battery_log::clear();
     } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
@@ -563,13 +572,15 @@ void setup()
     watchdog::begin();     // from here on a hang restarts the card
     power::handleWakeUp(); // may go straight back to System OFF after a short button press
     board::sleepRadio();   // about 0.27 s
-    const bool bleReady = bluetooth::begin(); // a few ms; up to about 1 s on the very first start
+    storage::begin();      // before Bluefruit, which would format a file system it cannot mount
+    // A few ms; up to about 1 s on the very first start.
+    const bool bleReady = storage::safeForBluefruit() && bluetooth::begin();
     button::begin();
-    settings_store::begin(bleReady); // reads a small file: a few ms
+    settings_store::begin(storage::ready()); // reads a small file: a few ms
     // Before the start sound: the notes change in sound::poll(), so the one-time move of a 1.3
     // log (flash writes, done at 1.0 s after the start on the card) would hold its first note.
     // Otherwise it only reads: a few ms.
-    battery_log::begin(bleReady);
+    battery_log::begin(storage::ready());
     sound::setSetting(settings_store::sound());
     const bool soundReady = sound::begin();
     sound::playStart(); // right away: after a wake-up it tells the user to let go
@@ -590,13 +601,14 @@ void setup()
     else
         logger::line("ble: SoftDevice did not start, BLE off");
     diag::logResetInfo();
+    storage::logStart();
     board::logPowerState();
     gps::logState();
     logBattery(BatteryCheck::AtStart); // a flat battery powers off here, before GPS and radio start
     // After the start logs: the very first start writes flash here.
     if (bleReady && pairing_store::begin())
         pairing_store::logState();
-    tz_store::begin(bleReady);
+    tz_store::begin(storage::ready());
     tz_store::logState();
     settings_store::logState();
     link_control::begin(); // starts when a camera is paired

@@ -14,8 +14,8 @@ namespace bluetooth {
 // once in setup(), after power::handleWakeUp(), so a short wake-up press goes back to
 // System OFF without it.
 // Bluefruit also mounts its file system in the data area 0xED000-0xF4000 (bond_init() in
-// Bluefruit52Lib/src/utility/bonding.cpp); if it cannot be mounted, it is erased and
-// formatted, which happens once and takes up to about 1 s.
+// Bluefruit52Lib/src/utility/bonding.cpp) and would erase and format it if it could not mount
+// it; storage::begin() runs first, so Bluefruit finds a mounted one (see storage.h).
 // Returns false if the SoftDevice did not start; the card then works without BLE.
 bool begin();
 

@@ -9,8 +9,8 @@
 namespace settings_store {
 
 // Loads the settings; a missing file means the defaults, and so (logged) does a damaged one.
-// Call once in setup() after bluetooth::begin(), with its result: Bluefruit mounts the file
-// system (see tz_store.h).
+// Call once in setup() with storage::ready(); without the file system the defaults are used and
+// nothing is written.
 void begin(bool fileSystemMounted);
 
 // The settings in effect; valid after begin().

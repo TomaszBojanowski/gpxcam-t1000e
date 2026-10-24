@@ -147,7 +147,7 @@ namespace battery_log {
 
 void begin(bool fileSystemMounted)
 {
-    fileSystemReady = fileSystemMounted && InternalFS.begin(); // mounted by Bluefruit: true at once
+    fileSystemReady = fileSystemMounted && InternalFS.begin(); // mounted by storage::begin(): true at once
     if (fileSystemReady)
         moveOldFile();
     entriesInFile = countEntriesInFile();

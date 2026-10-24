@@ -16,8 +16,7 @@ namespace battery_log {
 constexpr uint32_t PERIOD_MS = 10 * 60000;
 
 // Moves the log of firmware before 1.4.0 (/gpxcam/battery.bin) once and counts the entries in
-// the file. Call once in setup() after bluetooth::begin(), with its result (Bluefruit mounts
-// the file system, see tz_store.h), before the battery is checked.
+// the file. Call once in setup() with storage::ready(), before the battery is checked.
 void begin(bool fileSystemMounted);
 
 // 'bat log on' / 'bat log off' (writes the entries in RAM). On by command only, to spare

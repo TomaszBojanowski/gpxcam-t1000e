@@ -231,7 +231,8 @@ input.toggle:disabled { opacity: 0.5; cursor: default; }
 .segmented label:has(input:disabled) { color: var(--disabled-text); cursor: default; }
 .segmented label:has(input:checked:disabled) { color: var(--accent-text); opacity: 0.5; }
 .says { min-height: 2.9em; margin: var(--s3) 0 0; } /* two lines: the page does not move between settings */
-/* For a while the card sends less often than chosen: a note in the colour of a tile that is worth a look */
+/* A note in the colour of a tile that is worth a look: the card sends less often than chosen for a
+   while, or cannot read what it saved */
 .slow-note {
   margin: var(--s3) 0 0;
   padding: var(--s2) var(--s3);
@@ -468,6 +469,7 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
           <div id="state-zone-detail" class="tile-detail"></div>
         </div>
       </div>
+      <p id="storage-note" class="slow-note hidden" role="status"></p>
       <div id="card-lines" class="card-lines"></div>
       <p id="card-note" class="note hidden"></p>
       <div id="refresh-row" class="meta hidden">
@@ -1768,6 +1770,14 @@ function updatesNowText(state) {
     "off and on.";
 }
 
+// When the card cannot mount its file system (src/storage.h): it works with the defaults and has no
+// pairing, and only the console command 'storage format yes' erases what is there. Null otherwise.
+function storageNoteText(state) {
+  if (state.storage !== "damaged") return null;
+  return "The card cannot read what it saved: the pairing, time zone and settings. It works with the " +
+    "defaults and cannot connect to the camera. Repairing erases what it saved; the README says how.";
+}
+
 function isPairAnswer(line) {
   return line.startsWith("pair: ") || line.startsWith("command: ");
 }
@@ -1873,6 +1883,7 @@ function parseStatus(lines) {
       sound: values.sound,
       updates: values.updates ?? null, // null: gpxcam before 1.4.0, always normal
       updatesNow: values.updates_now ?? null,
+      storage: values.storage ?? null, // null: gpxcam before 1.4.0
     },
   };
 }
@@ -2119,6 +2130,7 @@ function startPage() {
     stateFirmware: element("state-firmware"),
     cardLines: element("card-lines"),
     cardNote: element("card-note"),
+    storageNote: element("storage-note"),
     refreshRow: element("refresh-row"),
     refresh: element("refresh"),
     stateTime: element("state-time"),
@@ -2280,6 +2292,9 @@ function startPage() {
     showTile("gps", gpsTile(state));
     showTile("battery", batteryTile(state));
     showTile("zone", zoneTile(state));
+    const storage = storageNoteText(state);
+    ui.storageNote.textContent = storage || "";
+    ui.storageNote.classList.toggle("hidden", storage === null);
     ui.stateTime.textContent = `Updated ${new Date().toLocaleTimeString()}.`;
     ui.state.classList.remove("hidden");
     ui.refreshRow.classList.remove("hidden");
@@ -2316,7 +2331,7 @@ function startPage() {
 
   const hideCard = () => {
     clearTimeout(refreshTimer);
-    for (const part of [ui.state, ui.cardNote, ui.refreshRow]) part.classList.add("hidden");
+    for (const part of [ui.state, ui.cardNote, ui.refreshRow, ui.storageNote]) part.classList.add("hidden");
     ui.cardLines.textContent = "";
     ui.intro.classList.remove("hidden");
     clockOn = null;
