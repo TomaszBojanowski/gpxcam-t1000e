@@ -17,7 +17,8 @@ const page = vm.runInContext(
     " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText, tzProblemText," +
     " startList, parseStatus, cameraTile, gpsTile, batteryTile, zoneTile, classifyClockAnswer, clockAnswerText," +
     " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText, SOUND_SETTINGS," +
-    " classifySoundAnswer, soundAnswerText, soundNoteText, soundText })",
+    " classifySoundAnswer, soundAnswerText, soundNoteText, soundText, UPDATES_SETTINGS, classifyUpdatesAnswer," +
+    " updatesAnswerText, updatesNoteText, updatesText, updatesNowText })",
   vm.createContext({ TextEncoder, TextDecoder, setTimeout, clearTimeout, console }),
 );
 
@@ -48,7 +49,7 @@ const STATUS_ANSWER = [
 const STATE = {
   version: "1.3.0", git: "1234567", batteryMv: 4100, batteryPercent: 89, charger: "charging", gpsOn: true,
   gpsFix: true, gpsSatellites: 11, paired: true, link: "connected", pair: "idle", pairAttempt: 0,
-  pairResult: "none", clockOn: true, timeZone: "Europe/Warsaw", sound: "loud",
+  pairResult: "none", clockOn: true, timeZone: "Europe/Warsaw", sound: "loud", updates: null, updatesNow: null,
 };
 const NO_STATUS = ["command: unknown 'status'\r\n", "commands: v = version and reset reason,\r\n"];
 const statusLines = (text) => text.trim().split("\n");
@@ -58,9 +59,13 @@ const CLOCK_OFF_SAVED = [
   "clock: off - the card leaves the camera's clock alone; set it in the camera's menu\r\n",
 ];
 const CLOCK_NOT_SAVED = ["clock: could not write the time zone file\r\n"];
-// STATUS_ANSWER with other values, e.g. statusWith({ paired: 0, link: "off" }).
-const statusWith = (changes) => [Object.entries(changes).reduce(
-  (text, [key, value]) => text.replace(new RegExp(` ${key}=\\S+`), ` ${key}=${value}`), STATUS_ANSWER.join(""))];
+// A card with gpxcam 1.4.0: the same state and the location updates.
+const STATUS_1_4 = [STATUS_ANSWER.join("").replace("fw=1.3.0", "fw=1.4.0")
+  .replace("status: end", "status: updates=normal updates_now=normal\r\nstatus: end")];
+const VERSION_1_4 = ["gpxcam-t1000e 1.4.0 (git 1234567), uptime 12 s, log dropped 0\r\n"];
+// STATUS_ANSWER (or another answer) with other values, e.g. statusWith({ paired: 0, link: "off" }).
+const statusWith = (changes, answer = STATUS_ANSWER) => [Object.entries(changes).reduce(
+  (text, [key, value]) => text.replace(new RegExp(` ${key}=\\S+`), ` ${key}=${value}`), answer.join(""))];
 const NOT_PAIRED = { paired: 0, link: "off" };
 const PAIR_STARTED = ["link: off\r\n", "pair: started - waiting for GPS time (up to 120 s)\r\n"];
 const FORGOTTEN = ["link: off\r\n", "pair: camera forgotten (the card id stays)\r\n"];
@@ -247,14 +252,17 @@ test("offsets come from the browser's own data", () => {
   assert.equal(page.utcOffsetText("Mars/Olympus_Mons", july), "");
 });
 
-test("only v, status, pair, pair off, unpair, clock on/off, sound loud/quiet/off, tz and tz NAME can be sent", () => {
-  for (const allowed of ["v", "status", "pair", "pair off", "unpair", "clock on", "clock off", "sound loud",
-    "sound quiet", "sound off", "tz", "tz Europe/Warsaw", "tz Poland", "tz Etc/GMT+5"]) {
+test("only v, status, pair, pair off, unpair, clock on/off, updates normal/frequent, sound loud/quiet/off, tz and " +
+  "tz NAME can be sent", () => {
+  for (const allowed of ["v", "status", "pair", "pair off", "unpair", "clock on", "clock off", "updates normal",
+    "updates frequent", "sound loud", "sound quiet", "sound off", "tz", "tz Europe/Warsaw", "tz Poland",
+    "tz Etc/GMT+5"]) {
     assert.equal(page.allowedCommand(allowed), true, allowed);
   }
   const refused = ["dfu", "off", "link off", "link on", "log", "bat log clear", "status ", "clock",
     "clock  on", "Clock off", "sound", "sound on", "sound  off", "Sound loud", "diag snd 10", "pair on", "Pair",
-    "unpair now", "tz europe/warsaw",
+    "unpair now", "updates", "updates fast", "updates  normal", "Updates frequent", "updates frequent ",
+    "tz europe/warsaw",
     "tz Mars/Olympus_Mons", "tz <+0545>-5:45", "tz Europe/Warsaw\ndfu", "tz Europe/Warsaw ", "V", ""];
   for (const command of refused) assert.equal(page.allowedCommand(command), false, command);
   for (const [name] of page.TZ_DATA.zones) assert.equal(page.allowedCommand(`tz ${name}`), true, name);
@@ -361,7 +369,8 @@ test("text and the edges of fields stand out enough in both themes", () => {
 test("each part of the page is a card with its heading and icon; the favicon is drawn in the page", () => {
   const card = /<section class="panel section">\s*<h2><svg class="icon"[^>]*>[\s\S]*?<\/svg>([^<]+)<\/h2>/g;
   const cards = [...html.matchAll(card)];
-  assert.deepEqual(cards.map((card) => card[1]), ["The card", "The camera", "The camera's clock", "Sound"]);
+  assert.deepEqual(cards.map((card) => card[1]), ["The card", "The camera", "The camera's clock", "Location updates",
+    "Sound"]);
   assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,/);
 });
 
@@ -778,6 +787,140 @@ test("the sound choice follows the card", async () => {
   assert.deepEqual(checked(), []);
   assert.equal(ui["sound-off"].disabled, true);
   assert.equal(ui["sound-answer"].textContent, "");
+});
+
+test("the page offers every location updates setting of the firmware, each with its own choice", () => {
+  assert.deepEqual(json(page.UPDATES_SETTINGS), firmwareValues("updatesName", "link_policy.cpp"));
+  for (const setting of page.UPDATES_SETTINGS) assert.match(html, new RegExp(`id="updates-${setting}" type="radio"`));
+  assert.match(html, /<fieldset id="updates" class="segmented">/);
+});
+
+// The timings in the page's words are the firmware's (src/link_policy.h).
+test("the location updates are explained with the firmware's timings", () => {
+  const source = readFileSync(new URL("../../src/link_policy.h", import.meta.url), "utf8");
+  const timing = (name) => {
+    const match = new RegExp(`${name} = \\{(\\d+), (\\d+), (\\d+)\\}`).exec(source);
+    assert.ok(match, name);
+    return { seconds: Number(match[1]) / 1000, metres: Number(match[3]) };
+  };
+  const normal = timing("NORMAL_TIMING");
+  const frequent = timing("FREQUENT_TIMING");
+  assert.match(page.updatesText("normal"),
+    new RegExp(`^Every ${normal.seconds} seconds, sooner when you move ${normal.metres} m\\.`));
+  assert.match(page.updatesText("frequent"),
+    new RegExp(`^Every ${frequent.seconds} seconds, sooner when you move ${frequent.metres} m\\.`));
+  assert.equal(page.updatesText(null), "How often the card sends the camera its position.");
+  assert.match(page.updatesNoteText("1.3.0"),
+    new RegExp(`^gpxcam 1\\.3\\.0 sends the position every ${normal.seconds} seconds\\. ` +
+      "Choosing needs version 1\\.4\\.0\\.$"));
+  assert.match(page.updatesNoteText(), /^The camera keeps the last position it got/);
+  assert.match(page.updatesNowText({ ...STATE, updates: "frequent", updatesNow: "normal" }),
+    new RegExp(`^For now every ${normal.seconds} seconds: the camera answers slowly\\.`));
+});
+
+test("the answers to 'updates normal|frequent' are told apart and explained", async () => {
+  const saved = [
+    "updates: frequent saved\r\n",
+    "updates: frequent - a location every 5 s, sooner after 5 m or when the camera asks (at most every 2 s)\r\n",
+  ];
+  const { port, card } = await openCard({ "updates frequent": saved });
+  const lines = await card.updates("frequent");
+  assert.deepEqual(port.written, ["updates frequent\n"]);
+  assert.equal(page.classifyUpdatesAnswer(lines), "saved");
+  const classify = (lines) => page.classifyUpdatesAnswer(lines);
+  assert.equal(classify([]), "none");
+  assert.equal(classify(["updates: normal saved"]), "saved");
+  assert.equal(classify(["updates: already frequent"]), "unchanged");
+  assert.equal(classify(["updates: could not write the settings file"]), "not-saved");
+  assert.equal(classify(["command: unknown 'updates normal'"]), "no-updates");
+  assert.deepEqual(json(page.updatesAnswerText("saved")), ["Saved. The card uses it from the next position it sends.",
+    "good"]);
+  assert.equal(page.updatesAnswerText("unchanged")[1], "good");
+  for (const answer of ["not-saved", "none", "no-updates"]) assert.equal(page.updatesAnswerText(answer)[1], "bad");
+});
+
+// updates_now differs from updates only while the guard holds a connection at normal.
+test("the state says when the card sends less often than chosen", () => {
+  const lines = statusLines(statusWith({ updates: "frequent", updates_now: "normal" }, STATUS_1_4).join("")
+    .replace(/gps: .*\r\n/, "").replaceAll("\r", ""));
+  const status = page.parseStatus(lines);
+  assert.equal(status.kind, "ok");
+  assert.equal(status.state.updates, "frequent");
+  assert.equal(status.state.updatesNow, "normal");
+  const now = (updates, updatesNow) => page.updatesNowText({ ...STATE, updates, updatesNow });
+  assert.match(now("frequent", "normal"), /Frequent comes back when you switch the camera off and on\.$/);
+  assert.equal(now("frequent", "frequent"), null);
+  assert.equal(now("normal", "normal"), null);
+  assert.equal(now(null, null), null); // gpxcam before 1.4.0
+});
+
+test("the location updates choice follows the card, with a note while the camera answers slowly", async () => {
+  const answers = { v: VERSION_1_4, status: STATUS_1_4 };
+  const port = simulatedCard(answers);
+  const ui = openPage(port);
+  const checked = () => [...page.UPDATES_SETTINGS].filter((setting) => ui[`updates-${setting}`].checked);
+  assert.deepEqual(checked(), []); // not connected
+  assert.equal(ui["updates-frequent"].disabled, true);
+  assert.equal(ui["updates-note"].textContent, "Connect the card to change this setting.");
+  assert.equal(ui["updates-now"].hidden, true);
+  await ui.connect.fire("click");
+  assert.deepEqual(checked(), ["normal"]);
+  assert.match(ui["updates-says"].textContent, /^Every 25 seconds/);
+  assert.equal(ui["updates-frequent"].disabled, false);
+  assert.match(ui["updates-note"].textContent, /^The camera keeps the last position it got/);
+
+  answers["updates frequent"] = ["updates: frequent saved\r\n"];
+  answers.status = statusWith({ updates: "frequent", updates_now: "frequent" }, STATUS_1_4);
+  ui["updates-frequent"].checked = true; // as the browser does on a click
+  await ui["updates-frequent"].fire("change");
+  assert.deepEqual(port.written.slice(-2), ["updates frequent\n", "status\n"]);
+  assert.equal(ui["updates-answer"].textContent, "Saved. The card uses it from the next position it sends.");
+  assert.equal(ui["updates-answer"].className, "good");
+  assert.deepEqual(checked(), ["frequent"]);
+  assert.match(ui["updates-says"].textContent, /^Every 5 seconds/);
+  assert.equal(ui["updates-now"].hidden, true);
+
+  answers.status = statusWith({ updates: "frequent", updates_now: "normal" }, STATUS_1_4); // the guard
+  await ui.refresh.fire("click");
+  assert.deepEqual(checked(), ["frequent"]); // still the choice
+  assert.equal(ui["updates-now"].hidden, false);
+  assert.match(ui["updates-now"].textContent, /^For now every 25 seconds: the camera answers slowly\./);
+
+  answers.status = statusWith({ updates: "frequent", updates_now: "frequent" }, STATUS_1_4); // switched off and on
+  await ui.refresh.fire("click");
+  assert.equal(ui["updates-now"].hidden, true);
+  assert.equal(ui["updates-now"].textContent, "");
+
+  answers["updates normal"] = ["updates: could not write the settings file\r\n"];
+  ui["updates-normal"].checked = true;
+  await ui["updates-normal"].fire("change");
+  assert.equal(ui["updates-answer"].className, "bad");
+  assert.deepEqual(checked(), ["frequent"]); // as the card has it
+
+  answers.status = statusWith({ updates: "frequent", updates_now: "normal" }, STATUS_1_4);
+  await ui.refresh.fire("click");
+  await ui.disconnect.fire("click");
+  assert.deepEqual(checked(), []);
+  assert.equal(ui["updates-normal"].disabled, true);
+  assert.equal(ui["updates-answer"].textContent, "");
+  assert.equal(ui["updates-now"].hidden, true);
+});
+
+test("with gpxcam 1.3 and 1.2 the location updates stay normal and cannot be changed", async () => {
+  for (const [answers, version] of [[{ v: VERSION_1_3, status: STATUS_ANSWER }, "1.3.0"],
+    [{ v: VERSION_ANSWER, status: NO_STATUS, tz: TZ_STATE }, "1.2.0"]]) {
+    const ui = openPage(simulatedCard(answers));
+    await ui.connect.fire("click");
+    assert.equal(ui["updates-normal"].checked, true, version);
+    assert.equal(ui["updates-frequent"].checked, false, version);
+    assert.equal(ui["updates-normal"].disabled, true, version);
+    assert.equal(ui["updates-frequent"].disabled, true, version);
+    assert.match(ui["updates-says"].textContent, /^Every 25 seconds/);
+    assert.equal(ui["updates-note"].textContent,
+      `gpxcam ${version} sends the position every 25 seconds. Choosing needs version 1.4.0.`);
+    assert.equal(ui["updates-now"].hidden, true);
+    await ui.disconnect.fire("click");
+  }
 });
 
 test("with gpxcam 1.2 the sound stays loud and cannot be changed", async () => {

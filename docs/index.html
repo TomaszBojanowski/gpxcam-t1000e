@@ -206,7 +206,7 @@ input.toggle::after {
 input.toggle:checked { background: var(--accent); }
 input.toggle:checked::after { transform: translateX(16px); }
 input.toggle:disabled { opacity: 0.5; cursor: default; }
-/* The sound as one segmented choice; the chosen one stays visible (red) also when it cannot be changed */
+/* A setting as one segmented choice; the chosen one stays visible (red) also when it cannot be changed */
 .segmented {
   display: inline-flex;
   gap: 2px;
@@ -230,7 +230,15 @@ input.toggle:disabled { opacity: 0.5; cursor: default; }
 .segmented label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .segmented label:has(input:disabled) { color: var(--disabled-text); cursor: default; }
 .segmented label:has(input:checked:disabled) { color: var(--accent-text); opacity: 0.5; }
-.sound-says { min-height: 2.9em; margin: var(--s3) 0 0; } /* two lines: the page does not move between settings */
+.says { min-height: 2.9em; margin: var(--s3) 0 0; } /* two lines: the page does not move between settings */
+/* For a while the card sends less often than chosen: a note in the colour of a tile that is worth a look */
+.slow-note {
+  margin: var(--s3) 0 0;
+  padding: var(--s2) var(--s3);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-s);
+  background: var(--warn-tint);
+}
 fieldset:disabled { opacity: 0.55; }
 ol.steps { margin: var(--s2) 0; padding-left: 22px; }
 ol.steps li { margin: var(--s1) 0; }
@@ -536,6 +544,24 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
 
     <section class="panel section">
       <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 21c-3.6-4-6-7.2-6-10.2a6 6 0 0 1 12 0c0 3-2.4 6.2-6 10.2z"/>
+          <circle cx="12" cy="10.8" r="2.2"/>
+        </svg>Location updates</h2>
+      <fieldset id="updates" class="segmented">
+        <legend class="visually-hidden">Location updates</legend>
+        <label><input id="updates-normal" type="radio" name="updates" value="normal" disabled><span>Normal</span>
+        </label>
+        <label><input id="updates-frequent" type="radio" name="updates" value="frequent" disabled><span>Frequent</span>
+        </label>
+      </fieldset>
+      <p id="updates-says" class="says">How often the card sends the camera its position.</p>
+      <p id="updates-now" class="slow-note hidden" role="status"></p>
+      <p id="updates-note" class="note">Connect the card to change this setting.</p>
+      <p id="updates-answer" role="status"></p>
+    </section>
+
+    <section class="panel section">
+      <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/>
           <path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11"/>
         </svg>Sound</h2>
@@ -545,7 +571,7 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
         <label><input id="sound-quiet" type="radio" name="sound" value="quiet" disabled><span>Quiet</span></label>
         <label><input id="sound-off" type="radio" name="sound" value="off" disabled><span>Off</span></label>
       </fieldset>
-      <p id="sound-says" class="sound-says">How loud the card is.</p>
+      <p id="sound-says" class="says">How loud the card is.</p>
       <p id="sound-note" class="note">Connect the card to change this setting.</p>
       <p id="sound-answer" role="status"></p>
     </section>
@@ -555,8 +581,9 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
     <summary>About this page</summary>
     <p>The page runs only in your browser and sends nothing over the internet. It talks to the card over USB at
        115200 baud and sends it only <code>v</code>, <code>status</code>, <code>pair</code>, <code>pair off</code>,
-       <code>unpair</code>, <code>clock on</code>, <code>clock off</code>, <code>sound loud</code>,
-       <code>sound quiet</code>, <code>sound off</code>, <code>tz</code> and <code>tz</code> with the zone you chose.
+       <code>unpair</code>, <code>clock on</code>, <code>clock off</code>, <code>updates normal</code>,
+       <code>updates frequent</code>, <code>sound loud</code>, <code>sound quiet</code>, <code>sound off</code>,
+       <code>tz</code> and <code>tz</code> with the zone you chose.
        Offsets in the list come from your browser and are only a guide; the card uses its own copy of the tz
        database.</p>
     <p><a href="https://github.com/TomaszBojanowski/gpxcam-t1000e">gpxcam-t1000e on GitHub</a></p>
@@ -1443,6 +1470,8 @@ const TZ_TIMEOUT_MS = 6000; // saving writes flash: about 1 s, more the first ti
 const CLOCK_TIMEOUT_MS = 6000; // the clock setting is saved in the same file as the time zone
 const SOUND_TIMEOUT_MS = 6000; // saving writes flash, like the time zone
 const SOUND_SETTINGS = ["loud", "quiet", "off"]; // src/sound_rules.cpp settingName()
+const UPDATES_TIMEOUT_MS = 6000; // saved in the same file as the sound
+const UPDATES_SETTINGS = ["normal", "frequent"]; // src/link_policy.cpp updatesName()
 const ANSWER_QUIET_MS = 400; // an answer is complete after this long without another of its lines
 const MAX_RESULTS = 60;
 
@@ -1575,9 +1604,11 @@ function computerZone() {
 // ---- The card's console (pure functions) ----
 
 // The only commands the page may send: v, status, pair, pair off, unpair, clock on, clock off,
-// sound loud, sound quiet, sound off, tz, and tz with a name exactly as the table spells it.
+// updates normal, updates frequent, sound loud, sound quiet, sound off, tz, and tz with a name
+// exactly as the table spells it.
 const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "unpair", "clock on", "clock off",
-  ...SOUND_SETTINGS.map((setting) => `sound ${setting}`), "tz"]);
+  ...UPDATES_SETTINGS.map((setting) => `updates ${setting}`), ...SOUND_SETTINGS.map((setting) => `sound ${setting}`),
+  "tz"]);
 function allowedCommand(command) {
   if (FIXED_COMMANDS.has(command)) return true;
   const match = /^tz ([A-Za-z0-9/_+-]{1,40})$/.exec(command);
@@ -1688,6 +1719,55 @@ function soundNoteText(version = null) {
   return "Choosing Loud or Quiet plays two short beeps at that volume.";
 }
 
+function isUpdatesAnswer(line) {
+  return line.startsWith("updates: ") || line.startsWith("command: ");
+}
+
+// What the card answered to 'updates normal|frequent' (src/main.cpp setUpdates()).
+function classifyUpdatesAnswer(lines) {
+  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
+  if (lines.length === 0) return "none";
+  if (has("command: unknown")) return "no-updates";
+  if (UPDATES_SETTINGS.some((setting) => has(`updates: ${setting} saved`))) return "saved";
+  if (has("updates: already")) return "unchanged";
+  if (has("updates: could not write")) return "not-saved";
+  return "state";
+}
+
+// [text, kind] after choosing how often the card sends the position.
+function updatesAnswerText(answer) {
+  switch (answer) {
+    case "saved": return ["Saved. The card uses it from the next position it sends.", "good"];
+    case "unchanged": return ["The card already had this setting.", "good"];
+    case "not-saved": return ["The card could not save the setting. Try again.", "bad"];
+    default: return ["No answer from the card. Try again.", "bad"];
+  }
+}
+
+// What a setting means (src/link_policy.h NORMAL_TIMING, FREQUENT_TIMING); null: none shown yet.
+function updatesText(setting) {
+  switch (setting) {
+    case "normal": return "Every 25 seconds, sooner when you move 20 m. Enough for photos from one place.";
+    case "frequent":
+      return "Every 5 seconds, sooner when you move 5 m. For photos on the move: on foot, by bike, by car.";
+    default: return "How often the card sends the camera its position.";
+  }
+}
+
+// Under the choice. version: gpxcam that cannot change it (before 1.4.0), or null.
+function updatesNoteText(version = null) {
+  if (version) return `gpxcam ${version} sends the position every 25 seconds. Choosing needs version 1.4.0.`;
+  return "The camera keeps the last position it got: on the move, Frequent puts photos closer to where you took them.";
+}
+
+// While the card's guard holds a connection at the normal timing (src/link_policy.h RateGuard):
+// the camera answered late, or the connection before broke off. Null otherwise.
+function updatesNowText(state) {
+  if (state.updates !== "frequent" || state.updatesNow !== "normal") return null;
+  return "For now every 25 seconds: the camera answers slowly. Frequent comes back when you switch the camera " +
+    "off and on.";
+}
+
 function isPairAnswer(line) {
   return line.startsWith("pair: ") || line.startsWith("command: ");
 }
@@ -1743,7 +1823,8 @@ function tzProblemText(version, answer) {
 
 // ---- The card's state (pure functions) ----
 
-// The keys of the answer to 'status' in format 1 (src/status_text.h).
+// The keys of the answer to 'status' in format 1 (src/status_text.h). Not among them: updates and
+// updates_now, which came with gpxcam 1.4.0.
 const STATUS_KEYS = ["format", "fw", "git", "battery_mv", "battery_pct", "charger", "gps", "gps_fix", "gps_sat",
   "paired", "link", "pair", "pair_attempt", "pair_result", "clock", "tz", "sound"];
 
@@ -1790,6 +1871,8 @@ function parseStatus(lines) {
       clockOn: values.clock === "on",
       timeZone: values.tz,
       sound: values.sound,
+      updates: values.updates ?? null, // null: gpxcam before 1.4.0, always normal
+      updatesNow: values.updates_now ?? null,
     },
   };
 }
@@ -2000,6 +2083,10 @@ class Card {
     return this.ask(`sound ${setting}`, isSoundAnswer, SOUND_TIMEOUT_MS);
   }
 
+  updates(setting) {
+    return this.ask(`updates ${setting}`, isUpdatesAnswer, UPDATES_TIMEOUT_MS);
+  }
+
   timeZone(name) {
     const command = name ? tzCommand(name) : "tz";
     if (!command) return Promise.reject(new Error(`unknown time zone: ${name}`));
@@ -2062,8 +2149,13 @@ function startPage() {
     soundNote: element("sound-note"),
     soundSays: element("sound-says"),
     soundAnswer: element("sound-answer"),
+    updatesNote: element("updates-note"),
+    updatesSays: element("updates-says"),
+    updatesNow: element("updates-now"),
+    updatesAnswer: element("updates-answer"),
   };
   const soundChoices = new Map(SOUND_SETTINGS.map((setting) => [setting, element(`sound-${setting}`)]));
+  const updatesChoices = new Map(UPDATES_SETTINGS.map((setting) => [setting, element(`updates-${setting}`)]));
   let card = null;
   const computer = computerZone();
   let selected = computer;
@@ -2072,6 +2164,7 @@ function startPage() {
   let refreshing = false;
   let clockOn = null; // as the card has it; null: not connected, or it cannot be changed
   let soundSetting = null; // as the card has it; null: not connected, or it cannot be changed
+  let updatesSetting = null; // the same
   let oldVersion = null; // gpxcam before 1.3.0: the page only sets its time zone
   let lastState = null; // the card's last answer to 'status'
   let shownPaired = null; // the pairing steps fold away when a camera is paired
@@ -2096,6 +2189,7 @@ function startPage() {
     ui.refresh.disabled = card === null || refreshing;
     ui.clock.disabled = card === null || busy || clockOn === null;
     for (const choice of soundChoices.values()) choice.disabled = card === null || busy || soundSetting === null;
+    for (const choice of updatesChoices.values()) choice.disabled = card === null || busy || updatesSetting === null;
     const pairing = lastState !== null && lastState.pair !== "idle";
     ui.pair.disabled = card === null || busy || lastState === null || pairing;
     for (const button of [ui.pairCancel, ui.unpair, ui.unpairYes]) button.disabled = card === null || busy;
@@ -2153,6 +2247,26 @@ function startPage() {
     refreshButtons();
   };
 
+  // gpxcam that cannot change the location updates (before 1.4.0), or null.
+  const updatesOldVersion = () => {
+    if (card === null) return null;
+    if (oldVersion !== null) return oldVersion;
+    return lastState !== null && lastState.updates === null ? lastState.version : null;
+  };
+
+  // The choice as the card has it, and a note while the card sends less often than chosen.
+  const showUpdates = () => {
+    const old = updatesOldVersion();
+    const shown = old !== null ? "normal" : updatesSetting; // before 1.4.0 always normal
+    for (const [setting, choice] of updatesChoices) choice.checked = setting === shown;
+    ui.updatesSays.textContent = updatesText(shown);
+    ui.updatesNote.textContent = card === null ? "Connect the card to change this setting." : updatesNoteText(old);
+    const slow = card !== null && lastState !== null ? updatesNowText(lastState) : null;
+    ui.updatesNow.textContent = slow || "";
+    ui.updatesNow.classList.toggle("hidden", slow === null);
+    refreshButtons();
+  };
+
   // A tile: its level as a class (the colour of the dot), the word and the detail.
   const showTile = (name, [level, word, detail]) => {
     element(`tile-${name}`).className = `tile level-${level}`;
@@ -2169,13 +2283,15 @@ function startPage() {
     ui.stateTime.textContent = `Updated ${new Date().toLocaleTimeString()}.`;
     ui.state.classList.remove("hidden");
     ui.refreshRow.classList.remove("hidden");
+    lastState = state;
     if (!busy) { // a change being saved is shown when it is done
       clockOn = state.clockOn;
       soundSetting = state.sound;
+      updatesSetting = state.updates;
       showClock();
       showSound();
+      showUpdates();
     }
-    lastState = state;
     showSelected();
     followPairing(state);
     showPairing();
@@ -2205,9 +2321,11 @@ function startPage() {
     ui.intro.classList.remove("hidden");
     clockOn = null;
     soundSetting = null;
+    updatesSetting = null;
     oldVersion = null;
     setStatus(ui.clockAnswer, "");
     setStatus(ui.soundAnswer, "");
+    setStatus(ui.updatesAnswer, "");
     lastState = null;
     watchingPairing = false;
     pairMessage = null;
@@ -2269,6 +2387,7 @@ function startPage() {
     setStatus(ui.cardStatus, message, kind);
     showClock();
     showSound();
+    showUpdates();
     showPairing();
   };
 
@@ -2335,6 +2454,7 @@ function startPage() {
     }
     showClock();
     showSound();
+    showUpdates();
     showPairing();
   };
 
@@ -2410,6 +2530,22 @@ function startPage() {
     showSound();
   };
 
+  // The choice shows the card's setting again once the card has answered.
+  const setUpdates = async (setting) => {
+    const asked = card;
+    if (!asked) return;
+    busy = true;
+    refreshButtons();
+    setStatus(ui.updatesAnswer, "Saving...", "busy");
+    const lines = await asked.updates(setting).catch(() => []);
+    if (card !== asked) return;
+    const [text, kind] = updatesAnswerText(classifyUpdatesAnswer(lines));
+    setStatus(ui.updatesAnswer, text, kind);
+    busy = false;
+    await refresh();
+    showUpdates();
+  };
+
   // Sends a pairing command and then shows the card's state; the stages and the result come
   // with it (showPairing()).
   const pairCommand = async (send) => {
@@ -2454,6 +2590,7 @@ function startPage() {
   ui.refresh.addEventListener("click", refresh);
   ui.clock.addEventListener("change", setClock);
   for (const [setting, choice] of soundChoices) choice.addEventListener("change", () => setSound(setting));
+  for (const [setting, choice] of updatesChoices) choice.addEventListener("change", () => setUpdates(setting));
   ui.search.addEventListener("input", showResults);
   if ("serial" in navigator) {
     navigator.serial.addEventListener("disconnect", (event) => {
@@ -2464,6 +2601,7 @@ function startPage() {
   showResults();
   showClock();
   showSound();
+  showUpdates();
   showPairing();
 }
 
