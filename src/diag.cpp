@@ -1,6 +1,9 @@
 #include "diag.h"
 
 #include <Arduino.h>
+#include <nrf_clock.h>
+#include <nrf_sdm.h>
+#include <nrf_soc.h>
 #include <stdio.h>
 
 #include "battery.h"
@@ -51,6 +54,41 @@ void formatResetReason(uint32_t reasons, char *out, size_t size)
 constexpr uint32_t HANG_LIMIT_S = 2 * watchdog::TIMEOUT_S;
 constexpr uint32_t HANG_LIMIT_MS = 2 * watchdog::TIMEOUT_MS;
 
+constexpr uint32_t CLOCK_SAMPLES = 1000;
+constexpr uint32_t CLOCK_SAMPLE_MS = 1;
+constexpr uint32_t PERCENT = 100;
+constexpr uint32_t MS_PER_SECOND = 1000;
+
+bool clockCheckPending = false;
+uint32_t clockCheckStartMs = 0;
+uint32_t clockCheckDelayMs = 0;
+
+// As TinyUSB's hfclk_running() (dcd_nrf5x.c): through the SoftDevice while it runs.
+bool crystalRunning()
+{
+    uint8_t enabled = 0;
+    (void)sd_softdevice_is_enabled(&enabled);
+    if (enabled) {
+        uint32_t running = 0;
+        (void)sd_clock_hfclk_is_running(&running);
+        return running != 0;
+    }
+    return nrf_clock_hf_is_running(NRF_CLOCK, NRF_CLOCK_HFCLK_HIGH_ACCURACY);
+}
+
+void measureClock()
+{
+    uint32_t running = 0;
+    for (uint32_t i = 0; i < CLOCK_SAMPLES; i++) {
+        if (crystalRunning())
+            running++;
+        delay(CLOCK_SAMPLE_MS);
+    }
+    logger::line("diag: 64 MHz crystal running in %lu %% of 1 s (%lu of %lu samples), USB %s",
+                 (unsigned long)(running * PERCENT / CLOCK_SAMPLES), (unsigned long)running,
+                 (unsigned long)CLOCK_SAMPLES, battery::usbPowered() ? "in" : "out");
+}
+
 // ---- Battery settle check ---------------------------------------------------
 
 // Waits after switching P1.06 on, to see when the battery divider has settled.
@@ -88,6 +126,26 @@ void hang()
     while (millis() - start < HANG_LIMIT_MS)
         delay(1); // lets the USB task send the log; the loop does not feed the watchdog
     logger::line("diag: the watchdog did not restart the card in %lu s", (unsigned long)HANG_LIMIT_S);
+}
+
+void checkClock(uint32_t delayS)
+{
+    if (delayS == 0) {
+        measureClock();
+        return;
+    }
+    clockCheckPending = true;
+    clockCheckStartMs = millis();
+    clockCheckDelayMs = delayS * MS_PER_SECOND;
+    logger::line("diag: crystal check in %lu s", (unsigned long)delayS);
+}
+
+void poll()
+{
+    if (!clockCheckPending || millis() - clockCheckStartMs < clockCheckDelayMs)
+        return;
+    clockCheckPending = false;
+    measureClock();
 }
 
 } // namespace diag

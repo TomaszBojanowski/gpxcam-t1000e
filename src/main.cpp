@@ -175,8 +175,9 @@ void logHelp()
     logger::transient("          bat log on / bat log off = battery log in flash every 10 min on the battery,");
     logger::transient("          bat log = show it, bat log clear = delete it");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty),");
-    logger::transient("             diag hang (test of the watchdog: the card restarts after %lu s)",
+    logger::transient("             diag hang (test of the watchdog: the card restarts after %lu s),",
                       (unsigned long)watchdog::TIMEOUT_S);
+    logger::transient("             diag clk [S] (64 MHz crystal running, now or in S s, kept for 'log')");
 }
 
 void rebootToUf2Bootloader()
@@ -190,7 +191,19 @@ void rebootToUf2Bootloader()
 }
 
 constexpr const char *SOUND_TEST_COMMAND = "diag snd ";
+constexpr const char *CLOCK_CHECK_COMMAND = "diag clk ";
 
+// "diag clk S": the crystal check in S seconds.
+void runClockCheck(const char *argument)
+{
+    char *end = nullptr;
+    const unsigned long delayS = strtoul(argument, &end, 10);
+    if (end == argument || *end != '\0' || delayS > diag::CLOCK_CHECK_MAX_DELAY_S)
+        logger::line("diag: usage: diag clk [S], S = 0..%lu (seconds before the check)",
+                     (unsigned long)diag::CLOCK_CHECK_MAX_DELAY_S);
+    else
+        diag::checkClock((uint32_t)delayS);
+}
 
 // "diag snd N": plays all sounds at N % PWM duty to choose the volume by ear.
 void runSoundTest(const char *argument)
@@ -460,6 +473,10 @@ void runCommand(char *cmd)
         diag::battery();
     } else if (strcmp(cmd, "diag hang") == 0) {
         diag::hang();
+    } else if (strcmp(cmd, "diag clk") == 0) {
+        diag::checkClock(0);
+    } else if (strncmp(cmd, CLOCK_CHECK_COMMAND, strlen(CLOCK_CHECK_COMMAND)) == 0) {
+        runClockCheck(cmd + strlen(CLOCK_CHECK_COMMAND));
     } else if (cmd[0] != '\0') {
         logger::line("command: unknown '%s'", cmd);
         logHelp();
@@ -610,6 +627,7 @@ void loop()
     battery_log::poll();
     handleButton();
     power::poll();
+    diag::poll();
     sound::poll();
     delay(LOOP_DELAY_MS);
 }

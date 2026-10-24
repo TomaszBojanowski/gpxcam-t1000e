@@ -1,7 +1,10 @@
-// Read-only hardware diagnostics (reset reason, battery divider settling) and the watchdog test.
+// Read-only hardware diagnostics (reset reason, battery divider settling, the 64 MHz crystal)
+// and the watchdog test.
 // Nothing here changes flash or enters a sleep mode. The one-off checks of M1
 // step 1 (button, P0.04, P0.05, VDDH) are documented in docs/HARDWARE.md.
 #pragma once
+
+#include <stdint.h>
 
 namespace diag {
 
@@ -16,5 +19,15 @@ void battery();
 // tasks keep running). The watchdog restarts the card after watchdog::TIMEOUT_MS; this returns,
 // with a log line, only if it did not, after twice that time.
 void hang();
+
+// The 64 MHz crystal (HFXO): in how much of 1 s it runs (1000 samples), as a log line kept in
+// the history. With the radio idle ('link off') only a request holds it: USB's while the cable
+// is in, none once it is out. After delayS seconds (up to CLOCK_CHECK_MAX_DELAY_S), so that it
+// can be measured on the battery and read with 'log' afterwards. Blocks for 1 s when it runs.
+constexpr uint32_t CLOCK_CHECK_MAX_DELAY_S = 600;
+void checkClock(uint32_t delayS);
+
+// Runs a crystal check that is due. Call from loop().
+void poll();
 
 } // namespace diag
