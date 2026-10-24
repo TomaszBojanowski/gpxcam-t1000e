@@ -4,8 +4,8 @@
 // power-off. Its own directory: its writes do not rewrite /gpxcam, which holds the pairing,
 // time zone and settings. Entries: battery_rules::Entry. They wait in RAM and go to the file
 // battery_batch::BATCH_ENTRIES at a time (1 h), and at once when the cable is plugged in,
-// on 'bat log off' and before a low-battery power-off; at most battery_batch::MAX_ENTRIES.
-// Loop task only.
+// on 'bat log off' and before System OFF; at most battery_batch::MAX_ENTRIES. On USB no
+// entries are added, so RAM holds none then (also not for 'dfu'). Loop task only.
 #pragma once
 
 #include <stdint.h>
@@ -31,6 +31,10 @@ void clear();
 
 // Call from loop(): an entry when the card goes on the battery and every PERIOD_MS then.
 void poll();
+
+// Writes the entries in RAM now: before System OFF. Nothing to do before begin(): the log
+// has no entries then.
+void save();
 
 // The last entry before a low-battery power-off, written at once (also when the log is off:
 // it explains the power-off later).

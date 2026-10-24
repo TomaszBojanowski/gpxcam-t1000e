@@ -222,6 +222,11 @@ void poll()
         stopLogging("full");
 }
 
+void save()
+{
+    writeBatch();
+}
+
 void addPowerOffEntry(uint32_t millivolts)
 {
     if (batch.add(entryNow(millivolts, battery_rules::FLAG_LOW_BATTERY_OFF), entriesInFile))

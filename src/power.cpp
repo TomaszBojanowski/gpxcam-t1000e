@@ -165,6 +165,7 @@ void enterSystemOff()
     link_control::stop(false);   // closes a camera connection, GPS off
     bluetooth::scanOff();        // the radio must be idle
     gps::off();           // a running GPS would draw milliamps in System OFF
+    battery_log::save();  // its entries in RAM; with the radio idle the flash write is quick
     if (!armWakeUp())
         return;
 
