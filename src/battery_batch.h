@@ -42,6 +42,22 @@ private:
     size_t count = 0;
 };
 
+// USB counts as plugged in, ending a run on the battery and writing the batch, only after
+// USB_STABLE_MS without a break. A magnetic cable that bounces gives short pulses of USB power;
+// on 2026-10-24 a batch write started on one of them was cut off by the hang that followed.
+constexpr uint32_t USB_STABLE_MS = 10000;
+
+class StableUsb {
+public:
+    // Call with every reading; true once USB power has been there for USB_STABLE_MS without a
+    // break.
+    bool update(bool usbNow, uint32_t nowMs);
+
+private:
+    bool present = false;
+    uint32_t sinceMs = 0;
+};
+
 // What to do at start with the file of firmware before 1.4.0 (/gpxcam/battery.bin). With both
 // files (back to 1.3 and up again) both stay, and 'bat log clear' removes both.
 enum class OldFile { None, Move, KeepBoth };

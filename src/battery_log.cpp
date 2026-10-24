@@ -25,7 +25,8 @@ constexpr uint32_t MS_PER_MINUTE = 60000;
 
 bool fileSystemReady = false;
 bool logging = false;
-bool onBattery = false; // the previous poll saw no USB
+bool onBattery = false; // a run on the battery goes on; it ends when USB is stable
+battery_batch::StableUsb usbStable;
 uint32_t lastEntryMs = 0;
 uint32_t entriesInFile = 0; // read at start, then counted: no file opened for it per entry
 battery_batch::Batch batch;
@@ -202,13 +203,16 @@ void poll()
 {
     if (!logging)
         return;
-    if (battery::usbPowered()) {
+    const uint32_t now = millis();
+    const bool usb = battery::usbPowered();
+    if (usbStable.update(usb, now)) {
         if (onBattery && !writeBatch()) // the run on the battery ended
             stopLogging("not writable");
         onBattery = false;
         return;
     }
-    const uint32_t now = millis();
+    if (usb) // plugged in for less than USB_STABLE_MS: no entry and no write yet
+        return;
     if (onBattery && now - lastEntryMs < PERIOD_MS)
         return;
     onBattery = true;

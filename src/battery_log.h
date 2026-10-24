@@ -3,9 +3,11 @@
 // the link was doing) goes to /log/battery.bin in the file system, so it survives a
 // power-off. Its own directory: its writes do not rewrite /gpxcam, which holds the pairing,
 // time zone and settings. Entries: battery_rules::Entry. They wait in RAM and go to the file
-// battery_batch::BATCH_ENTRIES at a time (1 h), and at once when the cable is plugged in,
-// on 'bat log off' and before System OFF; at most battery_batch::MAX_ENTRIES. On USB no
-// entries are added, so RAM holds none then (also not for 'dfu'). Loop task only.
+// battery_batch::BATCH_ENTRIES at a time (1 h), when the cable has been plugged in for
+// battery_batch::USB_STABLE_MS (not on the pulses of a bouncing cable), on 'bat log off' and
+// before System OFF; at most battery_batch::MAX_ENTRIES. On USB no entries are added, so once
+// the cable has been in for USB_STABLE_MS RAM holds none ('dfu' earlier would lose them).
+// Loop task only.
 #pragma once
 
 #include <stdint.h>

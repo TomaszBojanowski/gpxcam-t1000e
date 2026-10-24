@@ -21,6 +21,19 @@ battery_rules::Entry Batch::entry(size_t index) const
     return battery_rules::decode(&data[index * battery_rules::ENTRY_SIZE]);
 }
 
+bool StableUsb::update(bool usbNow, uint32_t nowMs)
+{
+    if (!usbNow) {
+        present = false;
+        return false;
+    }
+    if (!present) {
+        present = true;
+        sinceMs = nowMs;
+    }
+    return nowMs - sinceMs >= USB_STABLE_MS;
+}
+
 OldFile oldFile(bool oldExists, bool newExists)
 {
     if (!oldExists)

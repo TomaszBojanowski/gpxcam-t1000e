@@ -6,6 +6,8 @@
 #include "battery_batch.h"
 
 using battery_batch::Batch;
+using battery_batch::StableUsb;
+using battery_batch::USB_STABLE_MS;
 using battery_rules::Entry;
 
 void setUp() {}
@@ -72,6 +74,43 @@ void test_the_limit_counts_file_and_ram()
     TEST_ASSERT_FALSE(batch.due(battery_batch::MAX_ENTRIES)); // nothing to write
 }
 
+// USB counts only after USB_STABLE_MS without a break.
+void test_usb_stable_after_ten_seconds()
+{
+    StableUsb usb;
+    TEST_ASSERT_FALSE(usb.update(false, 1000));
+    TEST_ASSERT_FALSE(usb.update(true, 2000));
+    TEST_ASSERT_FALSE(usb.update(true, 2000 + USB_STABLE_MS - 1));
+    TEST_ASSERT_TRUE(usb.update(true, 2000 + USB_STABLE_MS));
+    TEST_ASSERT_TRUE(usb.update(true, 2000 + 5 * USB_STABLE_MS));
+    TEST_ASSERT_FALSE(usb.update(false, 2000 + 5 * USB_STABLE_MS + 1)); // unplugged
+}
+
+// A bouncing cable: every break starts the time again.
+void test_usb_bounces_do_not_count()
+{
+    StableUsb usb;
+    uint32_t now = 0;
+    for (int i = 0; i < 20; i++) {
+        TEST_ASSERT_FALSE(usb.update(true, now));
+        TEST_ASSERT_FALSE(usb.update(true, now + USB_STABLE_MS - 1));
+        TEST_ASSERT_FALSE(usb.update(false, now + USB_STABLE_MS - 1));
+        now += USB_STABLE_MS;
+    }
+    TEST_ASSERT_FALSE(usb.update(true, now));
+    TEST_ASSERT_TRUE(usb.update(true, now + USB_STABLE_MS));
+}
+
+// millis() wraps after 49.7 days.
+void test_usb_stable_across_millis_wrap()
+{
+    StableUsb usb;
+    const uint32_t start = UINT32_MAX - USB_STABLE_MS / 2;
+    TEST_ASSERT_FALSE(usb.update(true, start));
+    TEST_ASSERT_FALSE(usb.update(true, start + USB_STABLE_MS - 1)); // wrapped
+    TEST_ASSERT_TRUE(usb.update(true, start + USB_STABLE_MS));
+}
+
 void test_old_file()
 {
     using battery_batch::OldFile;
@@ -87,6 +126,9 @@ int main(int, char **)
     RUN_TEST(test_due_after_six_entries);
     RUN_TEST(test_bytes_are_the_entries_in_order);
     RUN_TEST(test_the_limit_counts_file_and_ram);
+    RUN_TEST(test_usb_stable_after_ten_seconds);
+    RUN_TEST(test_usb_bounces_do_not_count);
+    RUN_TEST(test_usb_stable_across_millis_wrap);
     RUN_TEST(test_old_file);
     return UNITY_END();
 }
