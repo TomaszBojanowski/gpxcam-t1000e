@@ -1,12 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-  <!-- The mark of the card page (docs/index.html), in fixed colours, on a light rounded square -->
-  <rect width="48" height="48" rx="10" fill="#f3f4f6"/>
-  <g transform="translate(24 24) scale(0.92) translate(-24.5 -23)">
-    <rect x="3" y="15" width="32" height="23" rx="5" fill="#5f6670"/>
-    <path d="M10 15l3-5h12l3 5z" fill="#5f6670"/>
-    <circle cx="19" cy="26.5" r="7" fill="#ffffff"/>
-    <circle cx="19" cy="26.5" r="4" fill="#5f6670"/>
-    <path d="M38 30c-3-5-8-9-8-14a8 8 0 1 1 16 0c0 5-5 9-8 14z" fill="#e5202e"/>
-    <circle cx="38" cy="16" r="3" fill="#ffffff"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- The app's icon: a lens seen from the front with a location pin in its glass. The greys and the
+       red are the card page's (docs/index.html), the blues GNOME's palette. The icons in src-tauri/icons
+       are made from it with 'cargo tauri icon ../icon.svg -o <folder>' in src-tauri; only the seven
+       desktop files kept there are copied back. -->
+  <circle cx="64" cy="70" r="55" fill="#3d434a"/>
+  <circle cx="64" cy="64" r="55" fill="#5f6670"/>
+  <circle cx="64" cy="64" r="48" fill="#3d434a"/>
+  <circle cx="64" cy="64" r="42" fill="#1a5fb4"/>
+  <path d="M34 50a32 32 0 0 1 22-22" fill="none" stroke="#62a0ea" stroke-width="5" stroke-linecap="round"/>
+  <path d="M64 98c-10-13-22-24-22-38a22 22 0 0 1 44 0c0 14-12 25-22 38z" fill="#e5202e" stroke="#fff"
+        stroke-width="5" stroke-linejoin="round"/>
+  <circle cx="64" cy="60" r="8" fill="#fff"/>
 </svg>
