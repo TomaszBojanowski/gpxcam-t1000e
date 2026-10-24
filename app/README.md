@@ -12,8 +12,9 @@ pairing, the camera's clock and time zone, location updates and sound.
 
 ## How it is made
 
-- `../docs/index.html` is the page. `tools/app_frontend.py` copies it to `dist/index.html` and
-  changes only its content security policy: the page may then talk to the app over Tauri's IPC.
+- `../docs/index.html` is the page. `tools/app_frontend.py` copies it to `dist/index.html` with two
+  changes: its content security policy lets the page talk to the app over Tauri's IPC, and "About
+  this app" shows the version from `src-tauri/Cargo.toml`.
 - `src-tauri/` is the Rust side. It finds the card, opens its port at 115200 baud with DTR, passes
   the card's lines to the page and sends the allowed commands.
 - The page finds the app through `window.__TAURI__`, and Card works over it unchanged.
