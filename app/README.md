@@ -36,3 +36,15 @@ in again:
 ```
 sudo usermod -aG dialout $USER
 ```
+
+## Versions
+
+The app has its own version numbers, from 1.0.0, apart from the firmware's. Each release of the app
+says which gpxcam it was tested with. It works with older gpxcam as far as the firmware allows:
+
+| gpxcam on the card | What the app can do |
+|---|---|
+| 1.4.0 | everything |
+| 1.3.x | everything but choosing how often the position is sent |
+| 1.2.x | only the time zone |
+| before 1.2.0 | nothing: install the newest gpxcam first |
