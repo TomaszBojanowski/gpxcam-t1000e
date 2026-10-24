@@ -1,6 +1,6 @@
 // gpxcam-t1000e – firmware for the SenseCAP T1000-E that sends the position from its GPS to
 // a Panasonic LUMIX S5II over Bluetooth LE: start-up, the main loop, the serial commands
-// and the LED. Copyright (C) 2026 Tomasz Bojanowski. License: GPL-3.0 (see LICENSE).
+// and the LED. Copyright (C) 2026 Tomasz Bojanowski. License: GPL-3.0-only (see LICENSE).
 #include <Arduino.h>
 // The core always uses Serial (TinyUSB CDC, included by Arduino.h). This include lets
 // PlatformIO's library finder link the Adafruit TinyUSB library; it does not follow
