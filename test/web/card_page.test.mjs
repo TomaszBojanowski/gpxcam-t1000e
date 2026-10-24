@@ -18,7 +18,7 @@ const page = vm.runInContext(
     " startList, parseStatus, cameraTile, gpsTile, batteryTile, zoneTile, classifyClockAnswer, clockAnswerText," +
     " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText, SOUND_SETTINGS," +
     " classifySoundAnswer, soundAnswerText, soundNoteText, soundText, UPDATES_SETTINGS, classifyUpdatesAnswer," +
-    " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText })",
+    " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText, chooseTransport })",
   vm.createContext({ TextEncoder, TextDecoder, setTimeout, clearTimeout, console }),
 );
 
@@ -140,7 +140,8 @@ class FakeElement {
 
 // Starts the page with every element that has an id, with its classes from the HTML, and a
 // browser whose port chooser gives the simulated card (serial: false - a browser without Web Serial).
-function openPage(port, { serial = true } = {}) {
+// serialEvents collects the listeners the page adds to navigator.serial.
+function openPage(port, { serial = true, serialEvents = {} } = {}) {
   const elements = {};
   for (const [tag] of html.matchAll(/<[a-z]+\b[^>]*>/g)) {
     const id = / id="([^"]+)"/.exec(tag);
@@ -150,7 +151,9 @@ function openPage(port, { serial = true } = {}) {
     getElementById: (id) => elements[id],
     createElement: () => new FakeElement(),
   };
-  const navigator = serial ? { serial: { requestPort: async () => port, addEventListener() {} } } : {};
+  const navigator = serial ? {
+    serial: { requestPort: async () => port, addEventListener: (type, listener) => { serialEvents[type] = listener; } },
+  } : {};
   vm.runInContext(scripts.join("\n"), vm.createContext({
     TextEncoder, TextDecoder, setTimeout, clearTimeout, console, document, navigator,
     window: { isSecureContext: true },
@@ -560,6 +563,40 @@ test("the page sets the time zone of a card with gpxcam 1.2 and says what 1.3.0 
   assert.match(ui["card-note"].textContent, /^gpxcam 1\.2\.0 can only set the time zone from this page/);
   assert.equal(ui.save.disabled, false); // the computer's zone, or nothing, is selected
   await ui.disconnect.fire("click");
+});
+
+test("Web Serial is the transport only where the browser offers it to this page", async () => {
+  assert.equal(page.chooseTransport({}, { isSecureContext: true }), null); // Firefox, Safari
+  assert.equal(page.chooseTransport({ serial: {} }, { isSecureContext: false }), null); // not https
+  const asked = [];
+  const listeners = {};
+  const serial = {
+    requestPort: async (options) => { asked.push(options); return "the port"; },
+    addEventListener: (type, listener) => { listeners[type] = listener; },
+  };
+  const transport = page.chooseTransport({ serial }, { isSecureContext: true });
+  assert.equal(transport.name, "web-serial");
+  assert.equal(await transport.requestPort(), "the port");
+  assert.deepEqual(json(asked), [{ filters: [{ usbVendorId: 0x2886, usbProductId: 0x8057 }] }]);
+  const unplugged = [];
+  transport.onDisconnect((port) => unplugged.push(port));
+  listeners.disconnect({ target: "the port" });
+  assert.deepEqual(unplugged, ["the port"]);
+});
+
+test("unplugging the card ends the connection on the page", async () => {
+  const port = simulatedCard({ v: VERSION_1_3, status: STATUS_ANSWER });
+  const serialEvents = {};
+  const ui = openPage(port, { serialEvents });
+  await ui.connect.fire("click");
+  assert.equal(ui["card-status"].textContent, "Connected to the card");
+  serialEvents.disconnect({ target: {} }); // another port: nothing happens
+  assert.equal(port.closed, false);
+  serialEvents.disconnect({ target: port });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(port.closed, true);
+  assert.match(ui["card-status"].textContent, /^The connection to the card ended/);
+  assert.equal(ui.connect.disabled, false);
 });
 
 test("a browser without Web Serial gets only the explanation", () => {

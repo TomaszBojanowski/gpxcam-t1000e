@@ -2128,6 +2128,29 @@ class Card {
   }
 }
 
+// ---- How the page reaches the card ----
+// A transport finds the card's port and tells when a port is unplugged. The port is an object
+// like Web Serial's SerialPort (open, setSignals, readable, writable, close), and Card uses only
+// that, whatever the transport.
+
+// Web Serial in Chrome and Edge: the browser's chooser, filtered by the card's USB id.
+function webSerialTransport(navigatorObject, windowObject) {
+  if (!("serial" in navigatorObject) || !windowObject.isSecureContext) return null;
+  return {
+    name: "web-serial",
+    // The port the user chose; rejects when the chooser was closed without one.
+    requestPort: () => navigatorObject.serial.requestPort({ filters: [CARD_USB] }),
+    // Calls listener(port) when a port is unplugged.
+    onDisconnect: (listener) =>
+      navigatorObject.serial.addEventListener("disconnect", (event) => listener(event.target)),
+  };
+}
+
+// The transport of this page, or null where it cannot reach the card.
+function chooseTransport(navigatorObject, windowObject) {
+  return webSerialTransport(navigatorObject, windowObject);
+}
+
 // ---- The page ----
 
 function startPage() {
@@ -2192,8 +2215,9 @@ function startPage() {
   let shownPaired = null; // the pairing steps fold away when a camera is paired
   let watchingPairing = false; // a pairing ran since the last answer: its result is shown when it ends
   let pairMessage = null; // [text, kind] of the last pairing or unpairing
+  const transport = chooseTransport(navigator, window);
 
-  if (!("serial" in navigator) || !window.isSecureContext) {
+  if (transport === null) {
     element("unsupported").classList.remove("hidden");
     element("app").classList.add("hidden"); // nothing here would work
     ui.connect.disabled = true;
@@ -2205,7 +2229,7 @@ function startPage() {
   };
 
   const refreshButtons = () => {
-    ui.connect.disabled = card !== null || busy || !("serial" in navigator);
+    ui.connect.disabled = card !== null || busy || transport === null;
     ui.disconnect.disabled = card === null || busy;
     ui.save.disabled = card === null || busy || selected === null;
     ui.refresh.disabled = card === null || refreshing;
@@ -2441,7 +2465,7 @@ function startPage() {
   const connect = async () => {
     let port;
     try {
-      port = await navigator.serial.requestPort({ filters: [CARD_USB] });
+      port = await transport.requestPort();
     } catch (error) {
       return; // no card chosen
     }
@@ -2620,9 +2644,9 @@ function startPage() {
   for (const [setting, choice] of soundChoices) choice.addEventListener("change", () => setSound(setting));
   for (const [setting, choice] of updatesChoices) choice.addEventListener("change", () => setUpdates(setting));
   ui.search.addEventListener("input", showResults);
-  if ("serial" in navigator) {
-    navigator.serial.addEventListener("disconnect", (event) => {
-      if (card && event.target === card.port) card.close();
+  if (transport !== null) {
+    transport.onDisconnect((port) => {
+      if (card && port === card.port) card.close();
     });
   }
   showSelected();
