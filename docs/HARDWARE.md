@@ -31,7 +31,9 @@ The bootloader behaviour described below comes from the code of this version (`s
 | 0x00000–0x01000 | MBR | never touched |
 | 0x01000–0x27000 | SoftDevice S140 7.3.0 | never touched |
 | 0x27000–0xEA000 | application | `variants/t1000-e/nrf52840_s140_v7.ld` |
-| 0xEA000–0xF4000 | application data (40 KB) | the bootloader does not overwrite it; includes InternalFS 0xED000–0xF4000 (from M3 – Bluefruit) |
+| 0xEA000–0xEB000 | application data: free | the bootloader does not overwrite 0xEA000–0xF4000 (40 KB) |
+| 0xEB000–0xED000 | application data: the copy of the pairing, two pages (1.4.0) | `src/pairing_copy.h`; the first copy goes to 0xEC000 |
+| 0xED000–0xF4000 | application data: InternalFS (littlefs) | from M3 – Bluefruit; mounted by `src/storage.h` from 1.4.0 |
 | 0xF4000–0x100000 | bootloader, its configuration and settings (0xFF000) | never touched |
 
 Sources:
@@ -41,6 +43,12 @@ Sources:
   (Makefile), so `USER_FLASH_END = 0xF4000 − 0xA000`. This matches the end of `CURRENT.UF2` on the card.
   Meshtastic's linker script allows code up to 0xED000; we narrow the limit to 0xEA000.
 - InternalFS: 0xED000, 7 pages of 4 KB (`libraries/InternalFileSytem/src/InternalFileSystem.cpp` in the core).
+- Application data 0xEA000–0xF3FFF is safe from flashing: for a UF2 with the application the bootloader writes only
+  blocks below 0xEA000 and rejects the others (`in_app_space()` in `ghostfat.c`); a bootloader update is staged at
+  0xE0000–0xE9FFF, below it. Nothing in the core, its libraries or this firmware uses 0xEA000–0xECFFF except the
+  pairing copy. Meshtastic 2.8 and later keep their node cache, the `WarmNodeStore` ring, on 0xEA000–0xECFFF
+  (`src/mesh/WarmNodeStore.h`, from commit 79a7dcc46); Meshtastic up to 2.7 does not use these pages. On the test card
+  0xEB000 and 0xEC000 were erased (all 0xFF) before the first copy.
 - Bootloader from 0xF4000, settings 0xFF000: the bootloader's `linker/nrf52840.ld`.
 
 ## UF2
@@ -80,6 +88,8 @@ Sources:
   The way out: manual DFU and flashing a UF2 file. That is why we never start the port monitor at 1200 baud.
 - After an entry through GPREGRET (the command or 1200 bps) the bootloader waits for a file as long as USB is connected
   (`main.c`: the 3 s limit applies only when USB does not connect).
+- **Hold the button and plug the cable in once:** the processor restarts (`RESETREAS` = `RESETPIN`) and the firmware
+  starts normally. This restarted the hung card of 2026-10-24 (see "Reliability (1.4.0)").
 
 ## Waking up from System OFF (nRF52840)
 
@@ -244,6 +254,7 @@ about 1 s – released after 836 ms, the card starts.
   (the same in 40 s without scanning).
 - **File system:** `Bluefruit.begin()` always calls `bond_init()` – it mounts InternalFS (0xED000–0xF4000),
   and when that fails, it formats it; it creates the directories `/adafruit/bond_prph` and `/adafruit/bond_cntr`.
+  From 1.4.0 `storage::begin()` mounts it first, so Bluefruit never formats it (see "Reliability (1.4.0)").
   When writing flash the library lights `LED_BUILTIN` – we use `-DLED_BUILTIN=-1`, as in Meshtastic.
 - **LEDs:** `Bluefruit.autoConnLed(false)` – in the variant `LED_BLUE` is -1.
 - **Tested on the card (step 1):** log `ble: SoftDevice on`; `off` with the cable – refused after 15 s, the card keeps running;
@@ -486,9 +497,10 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
 2. `bat log clear`, then `bat log on`.
 3. Set up one scenario, e.g. the camera on and connected; the camera in standby overnight; the camera far away (rare mode).
 4. Unplug the cable. The first entry is made at once, the next ones every 10 min (uptime, voltage, `link` state), up to 1024 entries.
+   From 1.4.0 they wait in RAM and reach the flash six at a time (see "Battery log (1.4.0)").
 5. Leave the card until it switches off at 3.40 V (last entry: `low battery, powered off`), or stop the test by plugging in
    the cable – logging pauses on USB.
-6. Plug in the cable, `bat log`. Average current ≈ 700 mAh × used fraction / number of hours. Down to 3.40 V almost
+6. Plug in the cable, wait 10 s (1.4.0 writes the entries still in RAM then), `bat log`. Average current ≈ 700 mAh × used fraction / number of hours. Down to 3.40 V almost
    the whole capacity is used – this is the most accurate variant; from the voltage drop alone in a shorter test the result is rough
    (±20–30 %), because the voltage of a Li-ion cell is not linear in its charge.
 
@@ -506,6 +518,103 @@ The idle current (System OFF, in the µA range) cannot be measured this way: the
 - A multimeter with a µA/mA range in series with the battery – good for idle; during work the reading jumps (the radio works in pulses).
 - A USB tester will not do – it measures charging, not the draw from the battery.
 
+## Reliability (1.4.0)
+
+### The hang of 2026-10-24
+
+- A 1.4.0 test build (the battery log written at once when USB came, no watchdog) ran about 3 h on the battery with
+  Frequent location updates and the battery log on. The positions in the photos stayed fresh to the end.
+- The magnetic cable was then put on through a case, and its contact kept breaking: the PC saw one failed enumeration
+  (`new low-speed USB device`, no descriptor) and then nothing, also with a good contact.
+- The card did not respond: no LED, no click from the button, no USB. Holding the button while plugging the cable in
+  once restarted it (`RESETPIN`, battery 4.18 V).
+- At that start the file system did not mount, and `InternalFS.begin()` inside `Bluefruit.begin()` erased and formatted
+  it: the pairing, the time zone, the settings and the battery log were gone, and the card made a new card id.
+- **Probable cause, not reproduced:** `tusb_hal_nrf_power_event()` (Adafruit_TinyUSB_Arduino 3.1.3, `dcd_nrf5x.c`)
+  waits without a limit, on the READY event, for the USBD peripheral and then for the high-frequency clock. When the
+  cable bounces, READY can be handled after REMOVED has disabled the USBD and released the clock; neither then comes,
+  and the Bluefruit SOC task (priority 3), which calls the handler, spins for good. The loop task (priority 1) never
+  runs again, and the flash operations, whose completion events the same task delivers, never end. That build wrote the
+  battery log right at plug-in, so the likely damage is a flash page erased but not programmed again. The same waits are
+  in TinyUSB master and Adafruit_TinyUSB_Arduino 3.7.7 (2026-10); meshtastic/firmware#8865 saw a hang at the same line.
+- **Reproduction attempt** with 1.3.0 (the same TinyUSB, no write at plug-in): two rounds of a bouncing cable through
+  a case, the second with 33 kernel events (7 enumerations, 6 errors `-71`, one `low-speed` detection like the one
+  above) – no hang. Not tried further.
+
+### What 1.4.0 changes
+
+- **Watchdog** (`src/watchdog.h`): 30 s, started first in `setup()`, fed only from `loop()`; it runs while the CPU
+  sleeps and pauses only under a debugger. It survives a soft reset (`dfu`, the start after flashing); a watchdog, pin,
+  brownout or power-on reset stops it (PS v1.1 5.3.6.8). The UF2 bootloader feeds a running watchdog in its DFU loop
+  (`bootloader.c`, `wait_for_events()`). Tested: `diag hang` → restart after about 31 s, `reset: DOG`,
+  `status: watchdog_restart=1`; flashing with the watchdog running → not interrupted, then `kept running through the
+  reset` and no restart; back to 1.3.0 → one restart after about 30 s (`DOG`), then stable.
+- **USB guard** (`src/usb_power.cpp`, linker option `--wrap=tusb_hal_nrf_power_event`): READY goes on to TinyUSB's
+  handler only when the USBD is still enabled, VBUS is there, and both the USBD and the clock are ready within 100 ms;
+  then the handler's waits end at once. The clock is asked for only when it does not run within 10 ms (DETECTED did
+  not ask for it) and given back when READY is skipped. Skipped READY events are counted in `p`. All four callers of
+  the handler go through the guard (checked with `objdump`). Tested: three clean plug-ins and unplugs → 0 skipped; one
+  short bouncing contact on a test build (kernel error `-71`) → no hang. **The new version was not tested with the
+  rounds of a bouncing cable.**
+- **Battery log** written only after 10 s of USB without a break, and before `dfu` (below). Tested: a short touch of
+  the cable wrote nothing, a 9 s plug-in neither, a firm plug-in wrote after about 10 s.
+- **The 64 MHz crystal after unplugging** (`diag clk 120`, then unplugging): running 0 % of the time with the radio idle,
+  100 % on USB – nothing keeps it running on the battery, as in 1.3.0.
+- **File system** (`src/storage.h`): mounted before Bluefruit with the base class's `Adafruit_LittleFS::begin()`, which
+  never formats (`lfs_mount()` of littlefs 1.7 only reads). An area of all 0xFF (a new card) is formatted; anything else
+  that does not mount is left as it is, Bluefruit gets a 2 KB littlefs in RAM for its bond directories, the card uses the
+  default settings, and `storage format yes` erases the 7 pages and restarts. `status: storage=ok|damaged`.
+- **Pairing copy** (`src/pairing_copy.h`, `src/pairing_copy_record.h`): 48 bytes at the start of a page – magic
+  `GXPC`, version 1, a sequence number, the 32-byte pairing record as in `pairing.bin`, CRC-32 – on 0xEC000 and 0xEB000
+  in turn, always on the older one. A page with anything else than 0xFF, a copy or Meshtastic's node cache (pages
+  starting with `WRNG`, `WRN2` or `WRN3`) is never erased or written. With a damaged file system the card stays paired
+  from the copy and refuses `pair` and `unpair`; a missing or damaged `pairing.bin` comes back from the copy.
+- **Tested on the card** with the test build (`pio run -e t1000e_test`, which adds `diag storage break yes`: it zeroes
+  the start of both copies of littlefs's superblock, blocks 0 and 1): damaged → BLE on, the default settings, the pairing
+  from the copy, connected to the camera, `pair` and `unpair` refused with nothing changed; `storage format yes` → the
+  empty area formatted, `pairing.bin` restored from the copy, connected again. The copies alternated: 1 and 3 on
+  0xEC000, 2 on 0xEB000. Erasing only the first page of the file system had not been enough: a young file system fits in
+  it, and the area was then empty.
+
+## Transmit power (1.4.0)
+
+- +8 dBm, the most of the nRF52840, instead of the SoftDevice's default 0 dBm: on 2026-10-24 the connection was lost
+  when another person carried the card a few metres from the camera.
+- Set once with `sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_SCAN_INIT, …)`: the initiator has the scanner's power
+  and a connection inherits the initiator's (`ble_gap.h`). `Bluefruit.setTxPower()` sets only the advertiser's power
+  (`BLEAdvertising.cpp`). `p` shows the power.
+- Cost, an estimate: without DC/DC the radio draws 32.7 mA instead of 10.6 mA while it transmits (PS v1.1 6.20.15.2),
+  about 0.1–0.2 ms of every 48.75 ms connection event: about 0.05–0.1 mA more, about 1 % of a connection.
+- EU limits for 2400–2483.5 MHz wideband data transmission: 100 mW (20 dBm) e.i.r.p., and 10 mW/MHz for modulations
+  other than frequency hopping (ERC/REC 70-03 annex 3, ETSI EN 300 328). +8 dBm from the chip stays within both while
+  the antenna gain is at most 2 dBi; Seeed does not state the gain.
+- The RSSI the card shows is the camera's signal, which the card's power does not change (at the desk −47 dBm with
+  1.3.0, −51 dBm with +8 dBm). How much further the connection reaches has not been measured.
+
+## Location updates (1.4.0)
+
+- **Normal:** every 25 s, sooner after 20 m, at most every 5 s (as up to 1.3). **Frequent:** every 5 s, sooner after
+  5 m, at most every 2 s (`link_policy.h`). Stored in byte 6 of `settings.bin`, which 1.3 kept reserved: 1.3 reads the
+  file and writes the byte back as 0 (Normal) when it saves.
+- **Guard:** the camera answers a location write in 1–2 connection events (about 50–100 ms); an answer later than 1 s
+  counts as late, and after two in one connection the card uses Normal to its end. A connection that did not end by the
+  camera's own close (`HCI 0x13`) makes the next one Normal too. `status: updates_now` shows the timing in effect.
+- **Night test** (test build, 2026-10-23/24): one connection for 8 h 11 min, about 5,950 locations, answers 58–244 ms
+  (average 86, 99 % within 156 ms), no late answer, refusal or disconnection.
+- **Walk** (Frequent, 2026-10-24): 32 photos, the age of the position in EXIF at most 7 s (median 3 s), its distance to
+  a watch's GPS track at the moment of the photo median 2.7 m, 90 % within 6.5 m.
+
+## Battery log (1.4.0)
+
+- The entries wait in RAM and go to `/log/battery.bin` six at a time (1 h): littlefs 1.7 in the core uses 128-byte
+  blocks, and every write to a file copies its last block and rewrites a block of its directory, while the core erases
+  and programs each 4 KB flash page touched (`flash_cache.c`).
+- The entries in RAM are also written when the cable has been in for 10 s without a break, on `bat log off`, before
+  System OFF and before `dfu`. A restart in between loses them (up to 5).
+- Its own directory: its writes do not rewrite `/gpxcam`, which holds the pairing, the time zone and the settings. The
+  file of 1.3 (`/gpxcam/battery.bin`) is moved once; with both files (back to 1.3 and up again) both stay, and
+  `bat log clear` removes both.
+
 ## Open questions
 
 - **Wake-up and LATCH (M2, step 4):** once, after a wake-up with the button, the P0.06 bit in `LATCH` could not be cleared
@@ -522,6 +631,13 @@ The idle current (System OFF, in the µA range) cannot be measured this way: the
   RESET pin (P0.18), and the pin is enabled – probably something on the board causes this reset. We do not investigate as long as it works.
 
 ## Still to do
+
+- The range with +8 dBm against 0 dBm: another person carries the card away until the connection ends (1.3.0 and 1.4.0,
+  same place, same pocket).
+- The current with +8 dBm (the battery log in the same scenario as 1.0.1).
+- Pairing: keep the GPS on until a fix (with a limit), and say on the card page when the GPS starts from nothing.
+- A shorter pause before connecting again after a loss of range (`HCI 0x08`).
+- Whether Meshtastic leaves gpxcam's files in the file system after a trip there and back.
 
 - Measure the current in standby and with 1.1.0 (the discharge test above; during work with 1.0.1 about 7–8 mA,
   rough), and at rest in System OFF (it needs a meter). The LR1110 in sleep should draw less than 1 µA.
