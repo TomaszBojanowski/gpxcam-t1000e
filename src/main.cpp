@@ -29,6 +29,7 @@
 #include "tz_record.h"
 #include "tz_store.h"
 #include "version.h"
+#include "watchdog.h"
 
 namespace {
 
@@ -132,6 +133,7 @@ void logStatus()
     status_text::State state = {};
     state.version = FW_VERSION;
     state.git = FW_GIT;
+    state.watchdogRestart = watchdog::restartedLastTime();
     state.batteryMillivolts = battery.batteryMv;
     state.batteryPercent = battery_rules::percentFromMillivolts(battery.batteryMv);
     state.charger = battery.charger;
@@ -171,7 +173,9 @@ void logHelp()
     logger::transient("          for photos on the move), updates alone shows it");
     logger::transient("          bat log on / bat log off = battery log in flash every 10 min on the battery,");
     logger::transient("          bat log = show it, bat log clear = delete it");
-    logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty)");
+    logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty),");
+    logger::transient("             diag hang (test of the watchdog: the card restarts after %lu s)",
+                      (unsigned long)watchdog::TIMEOUT_S);
 }
 
 void rebootToUf2Bootloader()
@@ -399,6 +403,7 @@ void runCommand(char *cmd)
         settings_store::logState();
         pairing::logState();
         link_control::logState();
+        watchdog::logState();
         logBattery(BatteryCheck::None);
     } else if (strcmp(cmd, "status") == 0) {
         logStatus();
@@ -450,6 +455,8 @@ void runCommand(char *cmd)
         runSoundTest(cmd + strlen(SOUND_TEST_COMMAND));
     } else if (strcmp(cmd, "diag bat") == 0) {
         diag::battery();
+    } else if (strcmp(cmd, "diag hang") == 0) {
+        diag::hang();
     } else if (cmd[0] != '\0') {
         logger::line("command: unknown '%s'", cmd);
         logHelp();
@@ -530,6 +537,7 @@ void readSerial()
 void setup()
 {
     board::init();         // all peripherals off; takes microseconds
+    watchdog::begin();     // from here on a hang restarts the card
     power::handleWakeUp(); // may go straight back to System OFF after a short button press
     board::sleepRadio();   // about 0.27 s
     const bool bleReady = bluetooth::begin(); // a few ms; up to about 1 s on the very first start
@@ -578,6 +586,7 @@ void loop()
     static uint32_t lastBattery = millis(); // measured once in setup()
     const uint32_t now = millis();
 
+    watchdog::feed();
     board::led(ledLit(now));
 
     if (now - lastStatus >= STATUS_PERIOD_MS) {

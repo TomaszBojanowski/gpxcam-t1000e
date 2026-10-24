@@ -112,6 +112,8 @@ void format(const State &state, void (*emit)(const char *line))
     snprintf(line, sizeof(line), "status: updates=%s updates_now=%s", link_policy::updatesName(state.updates),
              link_policy::updatesName(state.updatesNow));
     emit(line);
+    snprintf(line, sizeof(line), "status: watchdog_restart=%d", state.watchdogRestart ? 1 : 0);
+    emit(line);
     emit("status: end");
 }
 

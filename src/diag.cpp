@@ -5,6 +5,7 @@
 
 #include "battery.h"
 #include "log.h"
+#include "watchdog.h"
 
 namespace {
 
@@ -47,6 +48,9 @@ void formatResetReason(uint32_t reasons, char *out, size_t size)
     }
 }
 
+constexpr uint32_t HANG_LIMIT_S = 2 * watchdog::TIMEOUT_S;
+constexpr uint32_t HANG_LIMIT_MS = 2 * watchdog::TIMEOUT_MS;
+
 // ---- Battery settle check ---------------------------------------------------
 
 // Waits after switching P1.06 on, to see when the battery divider has settled.
@@ -75,6 +79,15 @@ void battery()
     }
     const battery::Status status = battery::read();
     logger::line("battery: %lu mV, %s", (unsigned long)status.batteryMv, battery::chargerText(status.charger));
+}
+
+void hang()
+{
+    logger::line("diag: loop held - the watchdog should restart the card in %lu s", (unsigned long)watchdog::TIMEOUT_S);
+    const uint32_t start = millis();
+    while (millis() - start < HANG_LIMIT_MS)
+        delay(1); // lets the USB task send the log; the loop does not feed the watchdog
+    logger::line("diag: the watchdog did not restart the card in %lu s", (unsigned long)HANG_LIMIT_S);
 }
 
 } // namespace diag

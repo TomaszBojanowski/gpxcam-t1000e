@@ -11,6 +11,7 @@
 //   status: clock=on tz=Europe/Warsaw
 //   status: sound=loud
 //   status: updates=normal updates_now=normal
+//   status: watchdog_restart=0
 //   status: end
 //
 // Values hold no spaces; 'end' tells that the answer is complete. A later version may add
@@ -37,6 +38,7 @@ constexpr size_t LINE_SIZE = 126;
 struct State {
     const char *version; // "1.3.0"
     const char *git;     // short commit hash
+    bool watchdogRestart; // the last start was a watchdog reset: the card had hung
     uint32_t batteryMillivolts;
     uint8_t batteryPercent; // battery_rules::percentFromMillivolts()
     battery::Charger charger;
