@@ -11,7 +11,10 @@
 //
 // What is on a page before the first copy is not known (the card came with other firmware), so
 // a page with anything but 0xFF or our own copy on it is never erased or written; with one such
-// page the copy uses the other one alone, with two there is no copy. Loop task only.
+// page the copy uses the other one alone, with two there is no copy. The one exception: pages of
+// Meshtastic's node cache, which Meshtastic 2.8 and later keep on 0xEA000-0xECFFF; after a
+// return from Meshtastic the copy takes them back (pairing_copy_record.h). Meshtastic 2.7 and
+// earlier do not use these pages. Loop task only.
 #pragma once
 
 #include "pairing_record.h"

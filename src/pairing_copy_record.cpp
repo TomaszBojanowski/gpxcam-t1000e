@@ -17,6 +17,21 @@ constexpr size_t CRC_AT = RECORD_AT + pairing_record::SIZE;
 static_assert(CRC_AT + 4 == SIZE, "layout");
 constexpr uint8_t ERASED = 0xFF;
 
+// The first four bytes of a page of Meshtastic's WarmNodeStore ring: WARM_RING_MAGIC_V1, _V2 and
+// WARM_RING_MAGIC (0x474E5257, 0x324E5257, 0x334E5257) as stored, little-endian.
+constexpr uint8_t MESHTASTIC_RING_MAGICS[][4] = {{'W', 'R', 'N', 'G'}, {'W', 'R', 'N', '2'}, {'W', 'R', 'N', '3'}};
+
+bool meshtasticRing(const uint8_t *page, size_t size)
+{
+    if (size < sizeof(MESHTASTIC_RING_MAGICS[0]))
+        return false;
+    for (const auto &magic : MESHTASTIC_RING_MAGICS) {
+        if (memcmp(page, magic, sizeof(magic)) == 0)
+            return true;
+    }
+    return false;
+}
+
 void putU32(uint8_t *out, uint32_t value)
 {
     for (int i = 0; i < 4; i++)
@@ -54,6 +69,10 @@ Page classify(const uint8_t *page, size_t size)
     Page result = {};
     if (allErased(page, size)) {
         result.kind = Kind::Empty;
+        return result;
+    }
+    if (meshtasticRing(page, size)) {
+        result.kind = Kind::Meshtastic;
         return result;
     }
     if (size < SIZE || memcmp(page, MAGIC, sizeof(MAGIC)) != 0) {
@@ -117,6 +136,8 @@ const char *kindText(Kind kind)
         return "copy";
     case Kind::Broken:
         return "broken copy";
+    case Kind::Meshtastic:
+        return "Meshtastic node cache";
     case Kind::Foreign:
         return "other data";
     }

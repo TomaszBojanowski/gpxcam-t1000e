@@ -111,11 +111,37 @@ void test_a_cut_off_copy_is_broken()
     TEST_ASSERT_EQUAL(Kind::Broken, pairing_copy_record::classify(page, sizeof(page)).kind);
 }
 
+// Meshtastic 2.8 keeps its node cache on these pages; after a return to gpxcam they may be written.
+// Each page starts with the ring's magic and a sequence number (WarmNodeStore.cpp).
+void test_meshtastic_ring_pages_are_recognised()
+{
+    const char *magics[] = {"WRNG", "WRN2", "WRN3"};
+    for (const char *magic : magics) {
+        erase();
+        memcpy(page, magic, 4);
+        page[4] = 0x07; // sequence 7
+        page[4 + 4] = 0x2a; // a record follows
+        TEST_ASSERT_EQUAL(Kind::Meshtastic, pairing_copy_record::classify(page, sizeof(page)).kind);
+    }
+    erase();
+    memcpy(page, "WRN4", 4); // not a known version: someone else's data
+    TEST_ASSERT_EQUAL(Kind::Foreign, pairing_copy_record::classify(page, sizeof(page)).kind);
+    erase();
+    memcpy(page, "WRM3", 4); // Meshtastic's warm.dat file magic, not the ring
+    TEST_ASSERT_EQUAL(Kind::Foreign, pairing_copy_record::classify(page, sizeof(page)).kind);
+
+    Page pages[2] = {kindOnly(Kind::Meshtastic), kindOnly(Kind::Meshtastic)};
+    TEST_ASSERT_EQUAL_INT(0, pairing_copy_record::writeTarget(pages));
+    pages[0] = kindOnly(Kind::Copy, 1);
+    TEST_ASSERT_EQUAL_INT(1, pairing_copy_record::writeTarget(pages));
+}
+
 void test_usable_pages()
 {
     TEST_ASSERT_TRUE(pairing_copy_record::usable(kindOnly(Kind::Empty)));
     TEST_ASSERT_TRUE(pairing_copy_record::usable(kindOnly(Kind::Copy, 1)));
     TEST_ASSERT_TRUE(pairing_copy_record::usable(kindOnly(Kind::Broken)));
+    TEST_ASSERT_TRUE(pairing_copy_record::usable(kindOnly(Kind::Meshtastic)));
     TEST_ASSERT_FALSE(pairing_copy_record::usable(kindOnly(Kind::Foreign)));
 }
 
@@ -173,6 +199,7 @@ int main(int, char **)
     RUN_TEST(test_an_erased_page_is_empty);
     RUN_TEST(test_other_data_is_foreign);
     RUN_TEST(test_a_cut_off_copy_is_broken);
+    RUN_TEST(test_meshtastic_ring_pages_are_recognised);
     RUN_TEST(test_usable_pages);
     RUN_TEST(test_two_pages_take_turns);
     RUN_TEST(test_one_usable_page);

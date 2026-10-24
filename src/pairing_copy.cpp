@@ -74,9 +74,12 @@ namespace pairing_copy {
 void begin()
 {
     readPages();
-    // Kept in the history when it is worth a look: a page left alone or a broken copy.
-    const bool unusual = !pairing_copy_record::usable(pages[0]) || !pairing_copy_record::usable(pages[1]) ||
-                         pages[0].kind == Kind::Broken || pages[1].kind == Kind::Broken;
+    // Kept in the history when it is worth a look: a page left alone, a broken copy, or
+    // Meshtastic's node cache that the copy takes back.
+    bool unusual = false;
+    for (const Page &page : pages)
+        unusual = unusual || !pairing_copy_record::usable(page) || page.kind == Kind::Broken ||
+                  page.kind == Kind::Meshtastic;
     logPages(unusual);
 }
 
