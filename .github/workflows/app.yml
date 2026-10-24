@@ -1,0 +1,139 @@
+# The desktop app (app/): its tests, then its installers for Linux, macOS and Windows as files
+# of the run. Nothing is published from here: the files go to a GitHub Release by hand, after a
+# check, under a tag app-vX.Y.Z. No secrets: the macOS app is signed ad hoc, the Windows
+# installers are not signed.
+name: app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["app-v*"]
+  pull_request:
+    paths:
+      - "app/**"
+      - "docs/index.html"
+      - "tools/app_frontend.py"
+      - "test/web/**"
+      - "test/tools/**"
+      - "test/commands.json"
+      - ".github/workflows/app.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_TOOLCHAIN: "1.99.0" # the version the app was tested with
+  TAURI_CLI_VERSION: "2.12.4"
+  CARGO_TERM_COLOR: never
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12" # app_frontend.py needs tomllib (3.11)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Linux packages for Tauri and serialport
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev libssl-dev libudev-dev pkg-config
+      - name: Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup default "$RUST_TOOLCHAIN"
+      - name: The card page
+        run: node --test test/web/card_page.test.mjs
+      - name: The app's page, made from the card page
+        run: |
+          python -I test/tools/test_app_frontend.py
+          python tools/app_frontend.py
+      - name: The Rust side
+        working-directory: app/src-tauri
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-22.04 # an older glibc: the packages run on more systems
+            args: --bundles deb,rpm
+            bundle: app/src-tauri/target/release/bundle
+            files: deb/*.deb rpm/*.rpm
+          - name: macos
+            os: macos-26
+            args: --target universal-apple-darwin --bundles dmg # Intel and Apple processors
+            bundle: app/src-tauri/target/universal-apple-darwin/release/bundle
+            files: dmg/*.dmg
+          - name: windows
+            os: windows-2025
+            args: --bundles nsis,msi
+            bundle: app/src-tauri/target/release/bundle
+            files: nsis/*.exe msi/*.msi
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Linux packages for Tauri and serialport
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev libssl-dev libudev-dev pkg-config
+      - name: Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+      - name: Rust for Intel and Apple processors
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Tauri CLI
+        run: cargo install tauri-cli --version "$TAURI_CLI_VERSION" --locked
+      - name: Build
+        working-directory: app
+        env:
+          ARGS: ${{ matrix.args }}
+        run: cargo tauri build $ARGS
+      - name: Files without spaces in their names, and their checksums
+        env:
+          BUNDLE: ${{ matrix.bundle }}
+          FILES: ${{ matrix.files }}
+        run: |
+          mkdir out
+          out=$(pwd)/out # the bash path, also on Windows
+          cd "$BUNDLE"
+          for file in $FILES; do
+            name=$(basename "$file")
+            cp "$file" "$out/${name// /-}"
+          done
+          cd "$out"
+          if command -v sha256sum >/dev/null; then sha256sum -- * > SHA256SUMS; else shasum -a 256 -- * > SHA256SUMS; fi
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gpxcam-card-${{ matrix.name }}
+          path: out/
+          if-no-files-found: error
