@@ -1770,6 +1770,11 @@ function updatesNowText(state) {
     "off and on.";
 }
 
+// While the card cannot read its saved settings it refuses to pair or forget the camera: it could
+// not save the change (src/pairing_store.h writable()).
+const STORAGE_PAIRING_TEXT = "The card cannot change the pairing while it cannot read its saved settings " +
+  "(see the note above).";
+
 // When the card cannot mount its file system (src/storage.h): it works with the default settings and
 // the pairing from its copy, if it has one (src/pairing_copy.h); only the console command
 // 'storage format yes' erases what is there. Null otherwise.
@@ -1791,6 +1796,7 @@ function classifyUnpairAnswer(lines) {
   if (lines.length === 0) return "none";
   if (has("pair: camera forgotten")) return "forgotten";
   if (has("pair: no camera paired")) return "not-paired";
+  if (has("pair: not possible - the file system is damaged")) return "storage-damaged"; // src/main.cpp, 1.4.0
   return "failed"; // "could not write the pairing file", "not available"
 }
 
@@ -1799,6 +1805,7 @@ function unpairAnswerText(answer) {
     case "forgotten": return ["The camera is forgotten.", "good"];
     case "not-paired": return ["No camera was paired.", "good"];
     case "failed": return ["The card could not forget the camera. Try again.", "bad"];
+    case "storage-damaged": return [STORAGE_PAIRING_TEXT, "bad"];
     default: return ["No answer from the card. Try again.", "bad"];
   }
 }
@@ -2206,8 +2213,10 @@ function startPage() {
     for (const choice of soundChoices.values()) choice.disabled = card === null || busy || soundSetting === null;
     for (const choice of updatesChoices.values()) choice.disabled = card === null || busy || updatesSetting === null;
     const pairing = lastState !== null && lastState.pair !== "idle";
-    ui.pair.disabled = card === null || busy || lastState === null || pairing;
-    for (const button of [ui.pairCancel, ui.unpair, ui.unpairYes]) button.disabled = card === null || busy;
+    const storageDamaged = lastState !== null && lastState.storage === "damaged"; // the card would refuse
+    ui.pair.disabled = card === null || busy || lastState === null || pairing || storageDamaged;
+    ui.pairCancel.disabled = card === null || busy;
+    for (const button of [ui.unpair, ui.unpairYes]) button.disabled = card === null || busy || storageDamaged;
   };
 
   // The camera section from the card's last state: what to do, the stage or the result.
@@ -2221,6 +2230,7 @@ function startPage() {
     }
     ui.cameraOld.classList.toggle("hidden", oldVersion === null);
     if (card === null) ui.cameraNote.textContent = "Connect the card to pair it with your camera.";
+    else if (lastState !== null && lastState.storage === "damaged") ui.cameraNote.textContent = STORAGE_PAIRING_TEXT;
     else ui.cameraNote.textContent = paired ? "The card is paired with a camera. Pairing again replaces it." :
       "The card is not paired with a camera yet.";
     ui.pair.textContent = paired ? "Pair again" : "Pair";

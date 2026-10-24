@@ -876,9 +876,17 @@ test("a note on the page while the card cannot read what it saved", async () => 
   await ui.connect.fire("click");
   assert.equal(ui["storage-note"].hidden, false);
   assert.match(ui["storage-note"].textContent, /^The card cannot read its saved settings/);
+  // Pairing and forgetting would be refused: the buttons are off, and the camera note says why.
+  assert.equal(ui.pair.disabled, true);
+  assert.equal(ui.unpair.disabled, true);
+  assert.equal(ui["unpair-yes"].disabled, true);
+  assert.match(ui["camera-note"].textContent, /^The card cannot change the pairing while/);
   answers.status = [STATUS_1_4.join("").replace("status: end", "status: storage=ok\r\nstatus: end")];
   await ui.refresh.fire("click");
   assert.equal(ui["storage-note"].hidden, true);
+  assert.equal(ui.pair.disabled, false);
+  assert.equal(ui.unpair.disabled, false);
+  assert.equal(ui["camera-note"].textContent, "The card is paired with a camera. Pairing again replaces it.");
   await ui.disconnect.fire("click");
 });
 
@@ -981,6 +989,10 @@ test("the pairing stages and results are explained", () => {
   assert.equal(page.classifyUnpairAnswer(["pair: no camera paired"]), "not-paired");
   assert.equal(page.classifyUnpairAnswer(["pair: could not write the pairing file"]), "failed");
   assert.equal(page.classifyUnpairAnswer(["pair: not available"]), "failed");
+  assert.equal(page.classifyUnpairAnswer(
+    ["pair: not possible - the file system is damaged ('storage format yes' first)"]), "storage-damaged");
+  assert.match(page.unpairAnswerText("storage-damaged")[0], /^The card cannot change the pairing while/);
+  assert.equal(page.unpairAnswerText("storage-damaged")[1], "bad");
   assert.equal(page.classifyUnpairAnswer([]), "none");
   assert.equal(page.unpairAnswerText("failed")[1], "bad");
 });
