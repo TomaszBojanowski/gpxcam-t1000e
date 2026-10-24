@@ -16,8 +16,11 @@ using namespace Adafruit_LittleFS_Namespace;
 
 namespace {
 
-constexpr const char *DIRECTORY = "/gpxcam";
-constexpr const char *PATH = "/gpxcam/battery.bin";
+constexpr const char *DIRECTORY = "/log";
+constexpr const char *PATH = "/log/battery.bin";
+// Firmware before 1.4.0: in the directory of the pairing, time zone and settings, which every
+// entry then rewrote (battery_batch.h).
+constexpr const char *OLD_PATH = "/gpxcam/battery.bin";
 constexpr uint32_t MS_PER_MINUTE = 60000;
 
 bool fileSystemReady = false;
@@ -76,11 +79,64 @@ void logEntry(const battery_rules::Entry &entry, bool saved)
                       saved ? "" : " (not saved yet)");
 }
 
+void logOldFileLeft()
+{
+    logger::line("bat log: an older log is still in %s - 'bat log clear' removes it too", OLD_PATH);
+}
+
+// Once, on the first start of 1.4.0. littlefs 1.7 renames across directories safely over a
+// power cut: lfs_rename() marks the entry as moving first, and after a cut the first write of
+// the next start finishes or undoes the move (lfs_deorphan()).
+void moveOldFile()
+{
+    switch (battery_batch::oldFile(InternalFS.exists(OLD_PATH), InternalFS.exists(PATH))) {
+    case battery_batch::OldFile::None:
+        return;
+    case battery_batch::OldFile::Move:
+        if ((InternalFS.exists(DIRECTORY) || InternalFS.mkdir(DIRECTORY)) && InternalFS.rename(OLD_PATH, PATH))
+            logger::line("bat log: moved %s to %s", OLD_PATH, PATH);
+        else
+            logger::line("bat log: could not move %s to %s", OLD_PATH, PATH);
+        return;
+    case battery_batch::OldFile::KeepBoth:
+        logOldFileLeft();
+        return;
+    }
+}
+
+// True when the file is gone or was not there; says so when it could not be removed.
+bool removeIfThere(const char *path)
+{
+    if (!fileSystemReady || !InternalFS.exists(path) || InternalFS.remove(path))
+        return true;
+    logger::line("bat log: could not remove %s", path);
+    return false;
+}
+
 // Ends logging when the file cannot take more entries, or a write failed.
 void stopLogging(const char *why)
 {
     logging = false;
     logger::line("bat log: %s - logging stops (%lu entries)", why, (unsigned long)entriesInFile);
+}
+
+void logEntries()
+{
+    if (entriesInFile + batch.size() == 0) {
+        logger::transient("bat log: no entries");
+        return;
+    }
+    logger::transient("bat log: %lu entries (%u not saved yet), logging %s (uptime min, battery mV, link)",
+                      (unsigned long)(entriesInFile + batch.size()), (unsigned)batch.size(), logging ? "on" : "off");
+    File file(InternalFS);
+    if (entriesInFile > 0 && file.open(PATH, FILE_O_READ)) {
+        uint8_t data[battery_rules::ENTRY_SIZE];
+        for (uint32_t i = 0; i < entriesInFile && file.read(data, sizeof(data)) == (int)sizeof(data); i++)
+            logEntry(battery_rules::decode(data), true);
+        file.close();
+    }
+    for (size_t i = 0; i < batch.size(); i++)
+        logEntry(batch.entry(i), false);
 }
 
 } // namespace
@@ -90,6 +146,8 @@ namespace battery_log {
 void begin(bool fileSystemMounted)
 {
     fileSystemReady = fileSystemMounted && InternalFS.begin(); // mounted by Bluefruit: true at once
+    if (fileSystemReady)
+        moveOldFile();
     entriesInFile = countEntriesInFile();
 }
 
@@ -124,32 +182,18 @@ void stop()
 
 void dump()
 {
-    if (entriesInFile + batch.size() == 0) {
-        logger::transient("bat log: no entries");
-        return;
-    }
-    logger::transient("bat log: %lu entries (%u not saved yet), logging %s (uptime min, battery mV, link)",
-                      (unsigned long)(entriesInFile + batch.size()), (unsigned)batch.size(), logging ? "on" : "off");
-    File file(InternalFS);
-    if (entriesInFile > 0 && file.open(PATH, FILE_O_READ)) {
-        uint8_t data[battery_rules::ENTRY_SIZE];
-        for (uint32_t i = 0; i < entriesInFile && file.read(data, sizeof(data)) == (int)sizeof(data); i++)
-            logEntry(battery_rules::decode(data), true);
-        file.close();
-    }
-    for (size_t i = 0; i < batch.size(); i++)
-        logEntry(batch.entry(i), false);
+    logEntries();
+    if (fileSystemReady && InternalFS.exists(OLD_PATH))
+        logOldFileLeft();
 }
 
 void clear()
 {
     batch.clear();
-    if (fileSystemReady && InternalFS.exists(PATH) && !InternalFS.remove(PATH)) {
-        entriesInFile = countEntriesInFile();
-        logger::line("bat log: could not remove %s", PATH);
+    const bool removed = removeIfThere(PATH) && removeIfThere(OLD_PATH);
+    entriesInFile = countEntriesInFile();
+    if (!removed)
         return;
-    }
-    entriesInFile = 0;
     logger::line("bat log: cleared");
 }
 

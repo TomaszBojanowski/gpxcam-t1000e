@@ -1,7 +1,8 @@
 // Battery log for measuring the current without a meter (M6): while switched on with
 // 'bat log on' and running on the battery, an entry every 10 minutes (uptime, voltage, what
-// the link was doing) goes to /gpxcam/battery.bin in the file system, so it survives a
-// power-off. Entries: battery_rules::Entry. They wait in RAM and go to the file
+// the link was doing) goes to /log/battery.bin in the file system, so it survives a
+// power-off. Its own directory: its writes do not rewrite /gpxcam, which holds the pairing,
+// time zone and settings. Entries: battery_rules::Entry. They wait in RAM and go to the file
 // battery_batch::BATCH_ENTRIES at a time (1 h), and at once when the cable is plugged in,
 // on 'bat log off' and before a low-battery power-off; at most battery_batch::MAX_ENTRIES.
 // Loop task only.
@@ -13,8 +14,9 @@ namespace battery_log {
 
 constexpr uint32_t PERIOD_MS = 10 * 60000;
 
-// Counts the entries in the file. Call once in setup() after bluetooth::begin(), with its
-// result (Bluefruit mounts the file system, see tz_store.h), before the battery is checked.
+// Moves the log of firmware before 1.4.0 (/gpxcam/battery.bin) once and counts the entries in
+// the file. Call once in setup() after bluetooth::begin(), with its result (Bluefruit mounts
+// the file system, see tz_store.h), before the battery is checked.
 void begin(bool fileSystemMounted);
 
 // 'bat log on' / 'bat log off' (writes the entries in RAM). On by command only, to spare
@@ -23,7 +25,7 @@ void start();
 void stop();
 
 // 'bat log': all entries, oldest first, those in RAM marked; writes nothing. 'bat log clear':
-// removes the file and the entries in RAM.
+// removes the file, an old one left in /gpxcam and the entries in RAM.
 void dump();
 void clear();
 
