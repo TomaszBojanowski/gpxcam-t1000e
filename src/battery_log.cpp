@@ -63,6 +63,7 @@ bool writeBatch()
         return false;
     }
     entriesInFile += count;
+    logger::line("bat log: %u entries saved (%lu in the file)", (unsigned)count, (unsigned long)entriesInFile);
     return true;
 }
 
