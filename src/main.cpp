@@ -535,10 +535,13 @@ void setup()
     const bool bleReady = bluetooth::begin(); // a few ms; up to about 1 s on the very first start
     button::begin();
     settings_store::begin(bleReady); // reads a small file: a few ms
+    // Before the start sound: the notes change in sound::poll(), so the one-time move of a 1.3
+    // log (flash writes, done at 1.0 s after the start on the card) would hold its first note.
+    // Otherwise it only reads: a few ms.
+    battery_log::begin(bleReady);
     sound::setSetting(settings_store::sound());
     const bool soundReady = sound::begin();
     sound::playStart(); // right away: after a wake-up it tells the user to let go
-    battery_log::begin(bleReady); // moves a log of 1.3 once; before the battery check below
 
     Serial.begin(115200); // USB CDC: the baud rate is ignored
     // Without USB no terminal can connect, so there is nothing to wait for.
