@@ -14,6 +14,7 @@ constexpr uint8_t VERSION = 1;
 
 constexpr size_t VERSION_OFFSET = 4;
 constexpr size_t SOUND_OFFSET = 5;
+constexpr size_t UPDATES_OFFSET = 6;
 constexpr size_t CRC_OFFSET = 12;
 static_assert(CRC_OFFSET + 4 == SIZE, "record layout");
 
@@ -21,6 +22,13 @@ bool isSound(uint8_t value)
 {
     return value == (uint8_t)sound_rules::Setting::Loud || value == (uint8_t)sound_rules::Setting::Quiet ||
            value == (uint8_t)sound_rules::Setting::Off;
+}
+
+// Only frequent is read as frequent: 0 and values this firmware does not know are normal.
+link_policy::Updates updatesFrom(uint8_t value)
+{
+    return value == (uint8_t)link_policy::Updates::Frequent ? link_policy::Updates::Frequent
+                                                             : link_policy::Updates::Normal;
 }
 
 } // namespace
@@ -31,6 +39,7 @@ void encode(const Record &record, uint8_t out[SIZE])
     memcpy(out, MAGIC, sizeof(MAGIC));
     out[VERSION_OFFSET] = VERSION;
     out[SOUND_OFFSET] = (uint8_t)record.sound;
+    out[UPDATES_OFFSET] = (uint8_t)record.updates;
     bytes::putU32(&out[CRC_OFFSET], pairing_record::crc32(out, CRC_OFFSET));
 }
 
@@ -47,6 +56,7 @@ Status decode(const uint8_t *data, size_t length, Record *record)
     if (!isSound(data[SOUND_OFFSET]))
         return Status::BadSound;
     record->sound = (sound_rules::Setting)data[SOUND_OFFSET];
+    record->updates = updatesFrom(data[UPDATES_OFFSET]);
     return Status::Ok;
 }
 
