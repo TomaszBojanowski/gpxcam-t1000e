@@ -19,7 +19,7 @@ const page = vm.runInContext(
     " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText, SOUND_SETTINGS," +
     " classifySoundAnswer, soundAnswerText, soundNoteText, soundText, UPDATES_SETTINGS, classifyUpdatesAnswer," +
     " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText, chooseTransport," +
-    " openProblemText, parseOlderRegister, olderOutcomeText, FIXED_COMMANDS })",
+    " openProblemText, parseOlderRegister, olderOutcomeText, olderStartProgress, FIXED_COMMANDS })",
   vm.createContext({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console }),
 );
 
@@ -323,6 +323,10 @@ test("parseOlderRegister reads the card's line, and olderOutcomeText maps the re
   for (const bad of ["not-confirmed", "not-on-network", "failed", "anything"]) {
     assert.equal(page.olderOutcomeText(bad)[1], "bad");
   }
+  for (const phase of ["waiting_gps", "searching", "connecting", "waiting_wifi"]) {
+    assert.notEqual(page.olderStartProgress(phase), null, phase);
+  }
+  for (const phase of ["idle", "pausing"]) assert.equal(page.olderStartProgress(phase), null, phase);
 });
 
 test("the port is opened only at 115200 baud, with DTR", async () => {
@@ -878,7 +882,7 @@ function firmwareValues(functionName, file = "status_text.cpp") {
 
 test("every pairing stage, result, link state and charger state of the firmware has its own words", () => {
   const phases = firmwareValues("pairPhaseValue");
-  assert.deepEqual(phases, ["idle", "waiting_gps", "searching", "connecting", "pausing"]);
+  assert.deepEqual(phases, ["idle", "waiting_gps", "searching", "connecting", "waiting_wifi", "pausing"]);
   for (const phase of phases.slice(1)) {
     assert.notEqual(page.pairingText({ ...STATE, pair: phase }), "Pairing...", phase);
   }

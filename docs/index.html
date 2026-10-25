@@ -1498,7 +1498,7 @@ const STATUS_PERIOD_MS = 5000; // the card's state on the page refreshes itself 
 const PAIRING_STATUS_PERIOD_MS = 2000; // ... and this often while the card pairs
 const PAIR_TIMEOUT_MS = 3000;
 const UNPAIR_TIMEOUT_MS = 10000; // the card first puts its GPS to sleep (up to 7.5 s), then writes flash
-const OLDER_START_TIMEOUT_MS = 60000; // 'pair older': time for the card to connect and show its identity line
+const OLDER_START_TIMEOUT_MS = 210000; // 'pair older': the card may wait 2 min for a GPS fix and 1 min for the camera, then introduce
 // Pairing as the card does it (src/pairing.cpp): the limits the page tells.
 const PAIR_ATTEMPTS = 3;
 const PAIR_FIX_WAIT_TEXT = "2 minutes";
@@ -1997,6 +1997,7 @@ function pairingText(state) {
       `Looking for a camera in pairing mode, up to ${PAIR_SEARCH_TEXT}...` :
       `Looking for the camera again (attempt ${state.pairAttempt + 1} of ${PAIR_ATTEMPTS})...`;
     case "connecting": return `Talking to the camera (attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS})...`;
+    case "waiting_wifi": return "This is an older camera - it needs the gpxcam card app for the one-time Wi-Fi step.";
     case "pausing": return `Attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS} did not work; trying again in a moment...`;
     default: return "Pairing...";
   }
@@ -2025,10 +2026,6 @@ function pairResultText(result) {
 
 // 'pair older' (app only): the card prints one line for the app with the identity and device name to
 // register over the camera's Wi-Fi (src/older_session.cpp): "older: app register identity <id> name <name>".
-function isOlderRegister(line) {
-  return line.startsWith("older: app register ");
-}
-
 function parseOlderRegister(line) {
   const match = /^older: app register identity (\S+) name (\S+)/.exec(line);
   return match ? { identity: match[1], name: match[2] } : null;
@@ -2044,6 +2041,18 @@ function olderOutcomeText(outcome) {
       "then start over.", "bad"];
     case "cancelled": return ["Cancelled.", ""];
     default: return ["Older pairing failed. Start over.", "bad"];
+  }
+}
+
+// While 'pair older' works toward the Wi-Fi step, the card's pairing phase (status 'pair=...') as
+// wizard text, or null for a phase with nothing to add.
+function olderStartProgress(pairPhase) {
+  switch (pairPhase) {
+    case "waiting_gps": return "Waiting for a GPS fix - put the card outdoors or by a window; this can take a few minutes after a fresh start...";
+    case "searching": return "Looking for the camera in pairing mode...";
+    case "connecting": return "Connecting to the camera...";
+    case "waiting_wifi": return "Introducing the card to the camera...";
+    default: return null;
   }
 }
 
@@ -2157,10 +2166,12 @@ class Card {
 
   // 'pair older' (app only): starts older-dialect pairing and waits for the card's one line with the
   // identity and name to register over the camera's Wi-Fi. Null if the card did not start it in time.
-  olderRegister() {
-    return this.ask("pair older", isOlderRegister, OLDER_START_TIMEOUT_MS, (lines) => lines.length > 0).then(
-      (lines) => (lines.length ? parseOlderRegister(lines[0]) : null),
-    );
+  // Calls onLine for every line the card sends, until the returned stop() is called. Unlike ask(),
+  // it does not use the one-command queue, so status refresh keeps running under it: the older-
+  // pairing wizard watches the card's progress while it waits for the Wi-Fi step.
+  watchLines(onLine) {
+    this.waiters.add(onLine);
+    return () => this.waiters.delete(onLine);
   }
 
   clock(on) {
@@ -2386,6 +2397,8 @@ function startPage() {
     target.textContent = text;
     target.className = kind || "";
   };
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const refreshButtons = () => {
     ui.connect.disabled = card !== null || busy || transport === null;
@@ -2851,17 +2864,40 @@ function startPage() {
     ui.olderStart.classList.add("hidden");
     ui.olderCancel.classList.remove("hidden");
     refreshButtons();
-    setStatus(ui.olderProgress, "Starting - the card is connecting to the camera...", "busy");
+    setStatus(ui.olderProgress, "Starting - the card needs a GPS fix and a camera in pairing mode...", "busy");
     let accepted = false;
+    let info = null;
+    let notInPairingMode = false; // the card saw a camera, but not in Bluetooth pairing mode
+    // The card prints one line with the identity and name when it reaches the Wi-Fi step; catch it
+    // without the ask queue, so the status refresh keeps running and can show the card's progress.
+    const stopWatch = asked.watchLines((line) => {
+      const parsed = parseOlderRegister(line);
+      if (parsed) info = parsed;
+      else if (line.includes("not in pairing mode")) notInPairingMode = true;
+    });
     try {
-      const info = await asked.olderRegister();
+      await asked.send("pair older");
+      // Wait as long as the card does (a GPS fix, then the camera, then the introduction), showing
+      // its phase; stop when it reaches the Wi-Fi step, gives up, is cancelled, or the time runs out.
+      const deadline = Date.now() + OLDER_START_TIMEOUT_MS;
+      let started = false;
+      while (!info && !olderCancelled && Date.now() < deadline) {
+        await sleep(400);
+        if (card !== asked) return;
+        if (lastState && lastState.pair !== "idle") {
+          started = true;
+          const text = notInPairingMode && lastState.pair === "searching"
+            ? "A camera is here but not in pairing mode - start Bluetooth pairing on it (not Wi-Fi), then wait."
+            : olderStartProgress(lastState.pair);
+          if (text) setStatus(ui.olderProgress, text, "busy");
+        } else if (started) {
+          break; // the card ended its pairing before the Wi-Fi step
+        }
+      }
       if (card !== asked) return;
       if (olderCancelled) {
         setStatus(ui.olderProgress, "Cancelled.", "");
-      } else if (!info) {
-        setStatus(ui.olderProgress, "The card did not start. Give it a GPS fix, put the camera in pairing mode, " +
-          "and try again.", "bad");
-      } else {
+      } else if (info) {
         setStatus(ui.olderProgress, "Join the camera's Wi-Fi network shown on its screen and keep this window " +
           "open. On the S5 and similar it has no password by default - just pick it from the list; if the camera " +
           "asks for one, it is on the camera's screen or in its Wi-Fi setup (Setup → Wi-Fi → Wi-Fi Setup → " +
@@ -2877,12 +2913,19 @@ function startPage() {
         accepted = outcome === "accepted";
         const [text, kind] = olderOutcomeText(outcome);
         setStatus(ui.olderProgress, text, kind);
+      } else {
+        // The card gave up (or the wait ran out): show the card's own result.
+        await refresh();
+        const result = lastState ? pairResultText(lastState.pairResult) : null;
+        setStatus(ui.olderProgress, result ? result[0] : "The card did not reach the Wi-Fi step. Try again.",
+          result ? result[1] : "bad");
       }
       if (!accepted) await asked.cancelPairing().catch(() => {}); // any other end leaves the card waiting: stop it
       await refresh();
     } catch (error) {
       if (card === asked) setStatus(ui.olderProgress, "Older pairing failed. Try again.", "bad");
     } finally {
+      stopWatch();
       busy = false;
       ui.olderCancel.classList.add("hidden");
       ui.olderStart.classList.remove("hidden");
