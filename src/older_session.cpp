@@ -222,6 +222,23 @@ void afterKnown()
     writeTime(Step::Time);
 }
 
+// At the first pairing a computer (the gpxcam card app) does the one-time Wi-Fi step: it registers
+// this same identity and device name over the camera's Wi-Fi network while the user joins that
+// network by hand from the camera's screen. Print them in a line the app reads; local/mask.sed
+// masks the identity (a UUID) when a log is shown. Only for pairing - a lasting connection needs
+// no Wi-Fi step.
+void logAppRegistration()
+{
+    uint8_t seed[device_identity::SEED_LENGTH];
+    device_identity::cardSeed(cardUuid, seed);
+    char identity[device_identity::TEXT_LENGTH + 1];
+    if (device_identity::identityText(seed, identity, sizeof(identity)) == 0) {
+        logger::line("older: the identity text for the app could not be built");
+        return;
+    }
+    logger::line("older: app register identity %s name %s", identity, DEVICE_NAME);
+}
+
 void waitForKnown()
 {
     if (knownByLocationNotify || knownByTimeNotify) {
@@ -231,6 +248,8 @@ void waitForKnown()
     const uint32_t limit = keepOpen ? KNOWN_WAIT_CONNECT_MS : KNOWN_WAIT_PAIR_MS;
     logger::line("older: introduced - waiting up to %lu s for the camera's 01%s", (unsigned long)(limit / 1000),
                  keepOpen ? "" : " (the camera now waits for the Wi-Fi step)");
+    if (!keepOpen)
+        logAppRegistration();
     enter(Step::WaitKnown, limit);
 }
 
