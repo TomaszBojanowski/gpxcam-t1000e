@@ -1997,7 +1997,7 @@ function pairingText(state) {
       `Looking for a camera in pairing mode, up to ${PAIR_SEARCH_TEXT}...` :
       `Looking for the camera again (attempt ${state.pairAttempt + 1} of ${PAIR_ATTEMPTS})...`;
     case "connecting": return `Talking to the camera (attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS})...`;
-    case "waiting_wifi": return "This is an older camera - it needs the gpxcam card app for the one-time Wi-Fi step.";
+    case "waiting_wifi": return "This is an older camera - use \"Pair an older camera\" in the gpxcam card app for the one-time Wi-Fi step.";
     case "pausing": return `Attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS} did not work; trying again in a moment...`;
     default: return "Pairing...";
   }
