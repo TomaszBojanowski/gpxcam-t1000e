@@ -33,14 +33,45 @@ again:
 xattr -dr com.apple.quarantine "/Applications/gpxcam card.app"
 ```
 
-**Windows** 10 or 11 (64-bit) – run the `.msi` (or the `-setup.exe`). The installer
-is not signed, so Windows SmartScreen may say "Windows protected your PC": click "More info", then
-"Run anyway". The app uses Microsoft Edge WebView2, which Windows 10 and 11 usually have; if it is
-missing, the installer downloads it.
+**Windows** 10 or 11 (64-bit) – run the `.msi` (or the `-setup.exe`). The installers are signed by
+the SignPath Foundation (see [Code signing policy](#code-signing-policy)); a new signature may still
+make Windows SmartScreen say "Windows protected your PC" until it gains reputation: click "More
+info", then "Run anyway". The app uses Microsoft Edge WebView2, which Windows 10 and 11 usually
+have; if it is missing, the installer downloads it.
 
 The `.msi` has been tried with a card on Windows 11. The `-setup.exe` and the macOS version are
 built the same way but have not been tried with a card yet.
 If something does not work there, please open an issue on GitHub.
+
+## Code signing policy
+
+The Windows installers of gpxcam card (`.msi` and `-setup.exe`) are signed by the
+[SignPath Foundation](https://signpath.org). This program uses free code signing provided by
+[SignPath.io](https://signpath.io) and a free code signing certificate by the SignPath Foundation.
+Signing applies from the first signed release onwards; the macOS and Linux downloads are not signed
+this way (see Install above).
+
+**Team roles**
+
+- **Author / maintainer** – Tomasz Bojanowski, the repository owner: writes and maintains the source.
+- **Reviewer** – Tomasz Bojanowski: reviews every change from anyone who is not a committer before
+  it is merged.
+- **Approver** – Tomasz Bojanowski: approves each signing request.
+
+gpxcam card is a one-person project: the development, maintenance and signing team is the same
+person, who owns the repository. Every signing request is approved by hand.
+
+**Privacy policy**
+
+gpxcam card sends nothing over the internet or any other network: no telemetry, no analytics, no
+automatic updates. It talks only to the SenseCAP T1000-E card, over USB. No information is
+transferred to any networked system.
+
+**Verifying the signature (Windows)**
+
+Right-click the installer, then Properties → Digital Signatures: the signer is "SignPath
+Foundation". Or in PowerShell: `Get-AuthenticodeSignature <file>`. The `SHA256SUMS` file on the
+release page has the checksum of every download.
 
 ## How it is made
 

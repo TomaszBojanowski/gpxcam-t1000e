@@ -128,7 +128,8 @@ version numbers and releases: tags `app-vX.Y.Z`, named "gpxcam card" in
 [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases).
 [app/README.md](app/README.md#install) says how to install it, how to open it the first time and
 which gpxcam versions it works with. On Windows 11 the `.msi` has been tried with a card; the
-`-setup.exe` and the macOS version not yet.
+`-setup.exe` and the macOS version not yet. Its Windows installers are signed by the SignPath
+Foundation; see the [Code signing policy](app/README.md#code-signing-policy).
 
 ## Set the time zone
 
