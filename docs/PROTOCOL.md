@@ -188,6 +188,25 @@ Advertisement (made-up serial number `12 34 56 78 9a`, tests in `test/test_lumix
 - `09 ff 3a 00 06 12 34 56 78 9a` (a scan response alone) → camera, state `06` (standby)
 - `05 ff 3a 00 01 02` → Panasonic data in another layout, not a camera
 
+## Older dialect: the card's identity
+
+Cameras that the older Panasonic app pairs with (the S5II among them) also speak an older dialect, with other
+characteristics. At the first pairing the camera takes a device only when the identity it presents over Bluetooth
+is the one registered over the camera's Wi-Fi; after that the device connects over Bluetooth alone.
+
+- **Identity (16 B):** the fixed prefix `4d 45 49 30 01 00 10 00 80 01` (ASCII "MEI0" and six bytes), then a 6-byte
+  seed. The card's seed is the last 6 bytes of its UUID (the pairing file), so the identity stays as long as the
+  card keeps its pairing.
+- **Over Wi-Fi** it is registered as text, upper case: `4D454930-0100-1000-8001-` and the seed in hex.
+- **Over Bluetooth**, in the byte order and with the XOR of the newer dialect (key read from the camera):
+  - identity: `xor(wordSwap(10 + identity + ff ff ff), key)`, 20 bytes;
+  - device name: `xor(wordSwap([length] + name + 00… + ff ff ff), key)`, 20 bytes; printable ASCII, 1 to 16
+    characters, the same name as registered over Wi-Fi.
+
+Made-up vectors in `test/device_identity_vectors.txt`, checked in `test/test_device_identity`: seed
+`a1b2c3d4e5f6`, key `11 22 33 44` → identity field `58677e5401223274b023b344f4f6f0f6eeddccb2`; name `T1000-E` →
+`21136743540f03741122334411223344eeddcc44`.
+
 ## Camera behaviour worth knowing
 
 - After a few refused connections the camera stops advertising – switching it off and on helps.

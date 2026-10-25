@@ -1,0 +1,11 @@
+# Made-up test vectors for the card's identity in the older dialect (docs/PROTOCOL.md, "Older
+# dialect: the card's identity"): no real device values. Read by test/test_device_identity and, for
+# the Wi-Fi step, by the app's tests. One value per line, "name = value"; hex in lower case.
+card_uuid = 00112233445546778899a1b2c3d4e5f6
+seed = a1b2c3d4e5f6
+key = 11223344
+identity = 4d454930010010008001a1b2c3d4e5f6
+identity_text = 4D454930-0100-1000-8001-A1B2C3D4E5F6
+identity_field = 58677e5401223274b023b344f4f6f0f6eeddccb2
+name = T1000-E
+name_field = 21136743540f03741122334411223344eeddcc44
