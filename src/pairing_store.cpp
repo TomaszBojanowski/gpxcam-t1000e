@@ -29,7 +29,7 @@ pairing_record::Record current = {};
 bool sameRecord(const pairing_record::Record &a, const pairing_record::Record &b)
 {
     return memcmp(a.uuid, b.uuid, sizeof(a.uuid)) == 0 && a.paired == b.paired &&
-           memcmp(a.serial, b.serial, sizeof(a.serial)) == 0;
+           memcmp(a.serial, b.serial, sizeof(a.serial)) == 0 && a.dialect == b.dialect;
 }
 
 // False if the file is missing; otherwise *status says whether *record was read.
