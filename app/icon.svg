@@ -1,34 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The app's icon: a camera with a location pin, flat, on GNOME's 128 px icon grid, in GNOME's
+     palette colours, with no gradients. The Linux packages install this file as the scalable icon
+     (tauri.linux.conf.json); the icons in src-tauri/icons are made from it with
+     'cargo tauri icon ../icon.svg -o <folder>' in src-tauri, and only the seven desktop files kept
+     there are copied back. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <!-- The app's icon: a camera and a location pin. The greys and the red are the card page's
-       (docs/index.html), the silver and blues GNOME's palette. The Linux packages install this file
-       as the scalable icon (tauri.linux.conf.json); the icons in src-tauri/icons are made from it
-       with 'cargo tauri icon ../icon.svg -o <folder>' in src-tauri, and only the seven desktop files
-       kept there are copied back. -->
-  <defs>
-    <linearGradient id="silver" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f6f5f4"/>
-      <stop offset="1" stop-color="#9a9996"/>
-    </linearGradient>
-    <radialGradient id="glass" cx="0.5" cy="0.42" r="0.55">
-      <stop offset="0" stop-color="#0b2557"/>
-      <stop offset="0.65" stop-color="#1a5fb4"/>
-      <stop offset="1" stop-color="#2a7ad8"/>
-    </radialGradient>
-  </defs>
-  <!-- the camera: a dark body with a silver top plate and viewfinder -->
-  <rect x="8" y="44" width="112" height="70" rx="12" fill="#241f31"/>
-  <rect x="8" y="38" width="112" height="70" rx="12" fill="#3d434a"/>
-  <path d="M20 38h88a12 12 0 0 1 12 12v8H8v-8a12 12 0 0 1 12-12z" fill="url(#silver)"/>
-  <rect x="20" y="28" width="30" height="14" rx="4" fill="#c0bfbc"/>
-  <!-- the lens: a silver ring, a black ring and glass with a highlight and a coating glint -->
-  <circle cx="64" cy="76" r="31" fill="url(#silver)"/>
-  <circle cx="64" cy="76" r="26" fill="#1e2126"/>
-  <circle cx="64" cy="76" r="20" fill="url(#glass)"/>
-  <path d="M50 72a15 15 0 0 1 9-10" fill="none" stroke="#fff" stroke-opacity="0.75" stroke-width="3.5"
-        stroke-linecap="round"/>
-  <path d="M78 82a15 15 0 0 1-6 7" fill="none" stroke="#c061cb" stroke-width="3" stroke-linecap="round"/>
-  <!-- the location pin -->
-  <path d="M100 66c-7.3-11.5-17-21.6-17-36a17 17 0 0 1 34 0c0 14.4-9.7 24.5-17 36z" fill="#e5202e"
-        stroke="#fff" stroke-width="4" stroke-linejoin="round"/>
-  <circle cx="100" cy="30" r="6" fill="#fff"/>
+  <!-- top bump and shutter button -->
+  <rect x="30" y="18" width="40" height="22" rx="8" fill="#deddda"/>
+  <rect x="10" y="24" width="14" height="10" rx="3" fill="#5e5c64"/>
+  <!-- body -->
+  <rect x="4" y="32" width="120" height="84" rx="20" fill="#f6f5f4"/>
+  <!-- lower part a touch darker, for depth -->
+  <path d="M4 76 H124 V96 A20 20 0 0 1 104 116 H24 A20 20 0 0 1 4 96 Z" fill="#deddda"/>
+  <!-- dark strip under the top edge -->
+  <rect x="14" y="42" width="100" height="8" rx="4" fill="#5e5c64"/>
+
+  <!-- lens -->
+  <circle cx="56" cy="80" r="33" fill="#241f31"/>
+  <circle cx="56" cy="80" r="25" fill="#99c1f1"/>
+  <circle cx="56" cy="80" r="22" fill="#3584e4"/>
+  <circle cx="56" cy="80" r="12" fill="#1a5fb4"/>
+  <circle cx="48" cy="71" r="4" fill="#ffffff"/>
+
+  <!-- location pin -->
+  <path d="M100 8 C85 8 74 19 74 34 C74 54 100 82 100 82 C100 82 126 54 126 34 C126 19 115 8 100 8 Z" fill="#e01b24"/>
+  <circle cx="100" cy="34" r="10" fill="#ffffff"/>
 </svg>
