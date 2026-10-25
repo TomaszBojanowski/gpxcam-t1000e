@@ -11,6 +11,7 @@ on:
   pull_request:
     paths:
       - "app/**"
+      - "!app/**/*.md" # the app's documentation alone builds nothing
       - "docs/index.html"
       - "tools/app_frontend.py"
       - "test/web/**"
