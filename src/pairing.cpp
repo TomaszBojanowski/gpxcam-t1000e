@@ -18,9 +18,14 @@
 
 namespace {
 
-// M4 decisions.
+// M4 decisions; the search was 60 s up to 1.5.0-beta.1. An older camera (S5) stays in pairing mode only
+// about 30 s, so its user starts it once the card is looking, and needs the time to do so.
 constexpr uint32_t FIX_WAIT_MS = 120000;
-constexpr uint32_t SEARCH_MS = 60000;
+constexpr uint32_t SEARCH_MS = 120000;
+// The GPS stays on for a pairing to come, so that it skips the wait for GPS time: after a session that
+// did not pair (another try), and after 'pair prepare' (the card page sends it on connecting).
+constexpr uint32_t RETRY_GPS_HOLD_MS = 600000;
+constexpr uint32_t PREPARE_GPS_HOLD_MS = 600000;
 constexpr int MAX_ATTEMPTS = 3;
 constexpr uint32_t PAUSE_MS[MAX_ATTEMPTS - 1] = {10000, 30000}; // after attempts 1 and 2
 constexpr uint32_t SCAN_RETRY_MS = 1000; // the search switches a stopped scan on again at most this often
@@ -42,11 +47,37 @@ Result lastResult = Result::None;
 uint8_t cameraSerial[lumix::SERIAL_LENGTH];
 camera_list::Report lastCamera; // the current attempt's camera, to switch dialect without a rescan
 uint32_t lastScanStartMs = 0;   // the search's last scanOn()
+bool gpsHeld = false;           // the GPS is on only for a pairing to come
+uint32_t gpsHoldStartMs = 0;
+uint32_t gpsHoldMs = 0;
 
 void enter(Phase next)
 {
     phase = next;
     phaseStart = millis();
+}
+
+// Keeps the GPS on for holdMs (or until a session starts), so that a session finds the time ready.
+void holdGps(uint32_t holdMs, const char *why)
+{
+    if (!gps::isOn())
+        gps::on();
+    gpsHeld = true;
+    gpsHoldStartMs = millis();
+    gpsHoldMs = holdMs;
+    logger::line("pair: GPS on for %lu s, %s", (unsigned long)(holdMs / 1000), why);
+}
+
+// A hold that ran out switches the GPS off, unless the link uses it now.
+void releaseGpsHold(uint32_t now)
+{
+    if (!gpsHeld || now - gpsHoldStartMs < gpsHoldMs)
+        return;
+    gpsHeld = false;
+    if (link_control::active() || !gps::isOn())
+        return;
+    logger::line("pair: no pairing started - GPS off");
+    gps::off(); // about 2 s: Backup mode for the next hot start
 }
 
 void formatSerial(const uint8_t serial[lumix::SERIAL_LENGTH], char (&out)[2 * lumix::SERIAL_LENGTH + 1])
@@ -55,7 +86,8 @@ void formatSerial(const uint8_t serial[lumix::SERIAL_LENGTH], char (&out)[2 * lu
 }
 
 // Ends the session. The link starts again if it was on or a camera was just paired: it takes
-// GPS and scanning over as they are. Otherwise they go back to how they were.
+// GPS and scanning over as they are. Otherwise they go back to how they were, but a GPS switched
+// on for the session stays on for another try (not before System OFF: resumeLink false).
 void finish(bool resumeLink = true)
 {
     camera_session::cancel(); // does nothing when no session runs
@@ -69,7 +101,11 @@ void finish(bool resumeLink = true)
         bluetooth::scanOn();
     else if (!scanWasOn && bluetooth::scanning())
         bluetooth::scanOff();
-    if (!gpsWasOn)
+    if (gpsWasOn)
+        return;
+    if (resumeLink)
+        holdGps(RETRY_GPS_HOLD_MS, "for another try");
+    else
         gps::off(); // about 2 s: Backup mode for the next hot start
 }
 
@@ -277,7 +313,8 @@ static void startSession(bool older)
     linkWasOn = link_control::active();
     if (linkWasOn)
         link_control::stop(true); // keeps the GPS on
-    gpsWasOn = gps::isOn();
+    gpsWasOn = gps::isOn() && !gpsHeld; // a GPS on only for this pairing goes off after it
+    gpsHeld = false;
     scanWasOn = bluetooth::scanning();
     attempt = 0;
     otherStateLogged = false;
@@ -303,6 +340,27 @@ void startOlder()
     startSession(true);
 }
 
+void prepare()
+{
+    if (phase != Phase::Idle) {
+        logger::line("pair: already running");
+        return;
+    }
+    if (link_control::active()) {
+        logger::line("pair: the link runs the GPS - nothing to prepare");
+        return;
+    }
+    holdGps(PREPARE_GPS_HOLD_MS, "ready for pairing");
+}
+
+uint32_t gpsHoldSeconds()
+{
+    if (!gpsHeld)
+        return 0;
+    const uint32_t held = millis() - gpsHoldStartMs;
+    return held >= gpsHoldMs ? 0 : (gpsHoldMs - held + 999) / 1000;
+}
+
 void stop(bool resumeLink)
 {
     if (phase == Phase::Idle)
@@ -325,7 +383,10 @@ Progress progress()
 void logState()
 {
     if (phase == Phase::Idle) {
-        logger::transient("pair: idle");
+        if (gpsHeld)
+            logger::transient("pair: idle, GPS held for a pairing for %lu s more", (unsigned long)gpsHoldSeconds());
+        else
+            logger::transient("pair: idle");
         return;
     }
     logger::transient("pair: %s for %lu s, attempt %d/%d", phaseText(), (unsigned long)((millis() - phaseStart) / 1000),
@@ -337,6 +398,7 @@ void poll()
     const uint32_t now = millis();
     switch (phase) {
     case Phase::Idle:
+        releaseGpsHold(now);
         break;
     case Phase::WaitingForFix:
         waitForFix(now);

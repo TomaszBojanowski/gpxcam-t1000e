@@ -99,8 +99,8 @@ void format(const State &state, void (*emit)(const char *line))
     snprintf(line, sizeof(line), "status: battery_mv=%lu battery_pct=%u charger=%s",
              (unsigned long)state.batteryMillivolts, (unsigned)state.batteryPercent, chargerValue(state.charger));
     emit(line);
-    snprintf(line, sizeof(line), "status: gps=%s gps_fix=%d gps_sat=%u", onOffValue(state.gpsOn), state.gpsFix ? 1 : 0,
-             (unsigned)state.gpsSatellites);
+    snprintf(line, sizeof(line), "status: gps=%s gps_fix=%d gps_sat=%u gps_hold=%lu", onOffValue(state.gpsOn),
+             state.gpsFix ? 1 : 0, (unsigned)state.gpsSatellites, (unsigned long)state.gpsHoldSeconds);
     emit(line);
     snprintf(line, sizeof(line), "status: paired=%d link=%s", state.paired ? 1 : 0, linkValue(state.link));
     emit(line);
