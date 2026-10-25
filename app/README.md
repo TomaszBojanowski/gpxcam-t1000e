@@ -33,12 +33,13 @@ again:
 xattr -dr com.apple.quarantine "/Applications/gpxcam card.app"
 ```
 
-**Windows** 10 or 11 (64-bit) – run the `-setup.exe` (or the `.msi`). The installer
+**Windows** 10 or 11 (64-bit) – run the `.msi` (or the `-setup.exe`). The installer
 is not signed, so Windows SmartScreen may say "Windows protected your PC": click "More info", then
 "Run anyway". The app uses Microsoft Edge WebView2, which Windows 10 and 11 usually have; if it is
 missing, the installer downloads it.
 
-The macOS and Windows versions are built automatically and have not been tried with a card yet.
+The `.msi` has been tried with a card on Windows 11. The `-setup.exe` and the macOS version are
+built the same way but have not been tried with a card yet.
 If something does not work there, please open an issue on GitHub.
 
 ## How it is made

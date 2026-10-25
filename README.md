@@ -127,8 +127,8 @@ Edge. It does the same as the page and, like it, sends nothing over the internet
 version numbers and releases: tags `app-vX.Y.Z`, named "gpxcam card" in
 [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases).
 [app/README.md](app/README.md#install) says how to install it, how to open it the first time and
-which gpxcam versions it works with. The macOS and Windows versions have not been tried with a card
-yet.
+which gpxcam versions it works with. On Windows 11 the `.msi` has been tried with a card; the
+`-setup.exe` and the macOS version not yet.
 
 ## Set the time zone
 
