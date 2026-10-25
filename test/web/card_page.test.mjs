@@ -19,7 +19,8 @@ const page = vm.runInContext(
     " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText, SOUND_SETTINGS," +
     " classifySoundAnswer, soundAnswerText, soundNoteText, soundText, UPDATES_SETTINGS, classifyUpdatesAnswer," +
     " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText, chooseTransport," +
-    " openProblemText, parseOlderRegister, olderOutcomeText, olderStartProgress, FIXED_COMMANDS })",
+    " openProblemText, parseOlderRegister, olderOutcomeText, olderStartProgress, FIXED_COMMANDS, isLogLine," +
+    " belongsToScan, scanEnded, scanResultText, diagnosticsText, SCAN_RUN_MS })",
   vm.createContext({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console }),
 );
 
@@ -143,7 +144,8 @@ class FakeElement {
 // browser whose port chooser gives the simulated card (serial: false - a browser without Web Serial).
 // serialEvents collects the listeners the page adds to navigator.serial. app: the desktop app
 // (simulatedApp()) instead of a browser.
-function openPage(port, { serial = true, serialEvents = {}, app = null } = {}) {
+// clipboard: navigator.clipboard (none by default, as in a web view without it).
+function openPage(port, { serial = true, serialEvents = {}, app = null, clipboard = null } = {}) {
   const elements = {};
   for (const [tag] of html.matchAll(/<[a-z]+\b[^>]*>/g)) {
     const id = / id="([^"]+)"/.exec(tag);
@@ -156,6 +158,7 @@ function openPage(port, { serial = true, serialEvents = {}, app = null } = {}) {
   const navigator = serial && !app ? {
     serial: { requestPort: async () => port, addEventListener: (type, listener) => { serialEvents[type] = listener; } },
   } : {};
+  if (clipboard) navigator.clipboard = clipboard;
   vm.runInContext(scripts.join("\n"), vm.createContext({
     TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console, document, navigator,
     window: app ? app.window : { isSecureContext: true },
@@ -428,7 +431,7 @@ test("each part of the page is a card with its heading and icon; the favicon is 
   const card = /<section class="panel section">\s*<h2><svg class="icon"[^>]*>[\s\S]*?<\/svg>([^<]+)<\/h2>/g;
   const cards = [...html.matchAll(card)];
   assert.deepEqual(cards.map((card) => card[1]), ["The card", "The camera", "The camera's clock", "Location updates",
-    "Sound"]);
+    "Sound", "Diagnostics"]);
   assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,/);
 });
 
@@ -1277,4 +1280,115 @@ test("with gpxcam 1.2 pairing is left to the card's button", async () => {
   await ui.disconnect.fire("click");
   for (const id of ["camera-note", "pair-help", "pair-row"]) assert.equal(ui[id].hidden, false, id);
   assert.equal(ui["camera-old"].hidden, true);
+});
+
+// ---- Diagnostics ----
+
+// The card's answer to 'log' (src/log.cpp dumpHistory()) and a 'diag scan' run (src/bluetooth.cpp,
+// src/scan_dump.cpp), made-up values; a status answer of the page's refresh comes in between.
+const LOG_ANSWER = [
+  "[     12.3 s] gps: on\r\n[    15.0 s] link: looking for camera 123456789a\r\n",
+  "[  12345.6 s] link: position sent\r\n",
+];
+const SCAN_ANSWER = [
+  "diag scan: on 30 s, radio 50 ms of every 100 ms, reports stronger than -65 dBm; full bytes for Panasonic\r\n",
+  "diag scan: **:**:**:**:**:e2 RPA -48 dBm adv 13 B, camera, bytes: 02 01 06 09 ff 3a 00 00 12 34 56 78 9a\r\n",
+  "status: format=1 fw=1.3.0 git=1234567\r\n",
+  "diag scan: **:**:**:**:**:33 RPA -40 dBm rsp 7 B\r\n",
+  "diag scan: done, 2 device(s) shown, 812 reports received\r\n",
+];
+
+// A clipboard that keeps what is written, or one that refuses (focus lost, not allowed).
+function simulatedClipboard(refuses = false) {
+  const clipboard = { written: [] };
+  clipboard.writeText = async (text) => {
+    if (refuses) throw new DOMException("Document is not focused.", "NotAllowedError");
+    clipboard.written.push(text);
+  };
+  return clipboard;
+}
+
+test("diagnostics: log lines, scan lines and the end of a scan are told apart", () => {
+  assert.equal(page.isLogLine("[     12.3 s] gps: on"), true);
+  assert.equal(page.isLogLine("[  12345.6 s] link: position sent"), true);
+  for (const line of ["gps: on", "status: end", "[12 s] gps: on", "diag scan: done, 0 device(s)"]) {
+    assert.equal(page.isLogLine(line), false, line);
+  }
+  assert.equal(page.belongsToScan("diag scan: **:**:**:**:**:33 RPA -40 dBm rsp 7 B"), true);
+  assert.equal(page.belongsToScan("link: off"), true); // the card's log around the run helps too
+  assert.equal(page.belongsToScan("status: end"), false);
+  for (const line of ["diag scan: done, 2 device(s) shown, 812 reports received", "diag scan: done, 0 device(s)",
+    "diag scan: not possible, the SoftDevice did not start", "diag scan: already running",
+    "command: unknown 'diag scan'"]) {
+    assert.equal(page.scanEnded(line), true, line);
+  }
+  assert.equal(page.scanEnded("diag scan: on 30 s, radio 50 ms of every 100 ms"), false);
+  assert.equal(page.SCAN_RUN_MS, 30000); // src/scan_dump.h DURATION_MS
+});
+
+test("diagnostics: how a scan ended, and the heading of what is copied", () => {
+  const done = ["diag scan: on 30 s", "diag scan: done, 0 device(s) shown, 5 reports received"];
+  assert.deepEqual(json(page.scanResultText(done, "1.5.0")), ["Scan done.", "good"]);
+  assert.match(page.scanResultText(["command: unknown 'diag scan'"], "1.4.0")[0], /^gpxcam 1\.4\.0 cannot scan/);
+  for (const lines of [[], ["diag scan: on 30 s"], ["diag scan: not possible, the SoftDevice did not start"],
+    ["diag scan: already running"]]) {
+    assert.equal(page.scanResultText(lines, "1.5.0")[1], "bad", JSON.stringify(lines));
+  }
+  const date = new Date(Date.UTC(2027, 6, 1, 19, 5, 12));
+  assert.equal(page.diagnosticsText("Card log", "gpxcam 1.5.0 (git 1234567)", ["a", "b"], date),
+    "Card log - gpxcam 1.5.0 (git 1234567) - 2027-07-01T19:05:12.000Z\na\nb\n");
+});
+
+test("Copy log reads the card's log, shows it and copies it", async () => {
+  const port = simulatedCard({ v: VERSION_1_3, status: STATUS_ANSWER, log: LOG_ANSWER });
+  const clipboard = simulatedClipboard();
+  const ui = openPage(port, { clipboard });
+  assert.equal(ui["copy-log"].disabled, true); // not connected
+  assert.equal(ui["diag-answer"].hidden, true);
+  await ui.connect.fire("click");
+  assert.equal(ui["copy-log"].disabled, false);
+  await ui["copy-log"].fire("click");
+  assert.equal(port.written.at(-1), "log\n");
+  const text = ui["diag-text"].value;
+  assert.match(text, /^Card log - gpxcam 1\.3\.0 \(git 1234567\) - \d{4}-\d\d-\d\dT/);
+  assert.match(text, /\n\[     12\.3 s\] gps: on\n.*\n\[  12345\.6 s\] link: position sent\n$/);
+  assert.deepEqual(clipboard.written, [text]);
+  assert.equal(ui["diag-status"].textContent, "The card's last 3 events. Copied: paste it into a private message.");
+  assert.equal(ui["diag-status"].className, "good");
+  assert.equal(ui["diag-answer"].hidden, false);
+  assert.equal(ui["diag-copy"].disabled, false);
+  await ui.disconnect.fire("click");
+  assert.equal(ui["diag-text"].value, text); // kept for copying after unplugging
+  assert.equal(ui["copy-log"].disabled, true);
+});
+
+test("Scan for cameras collects the run without the page's status answers; copy by hand when refused", async () => {
+  const port = simulatedCard({ v: VERSION_1_3, status: STATUS_ANSWER, "diag scan": SCAN_ANSWER });
+  const clipboard = simulatedClipboard(true);
+  const ui = openPage(port, { clipboard });
+  await ui.connect.fire("click");
+  await ui.scan.fire("click");
+  assert.equal(port.written.at(-1), "diag scan\n");
+  const lines = ui["diag-text"].value.trim().split("\n");
+  assert.match(lines[0], /^Scan for cameras - gpxcam 1\.3\.0 \(git 1234567\) - /);
+  assert.deepEqual(lines.slice(1), SCAN_ANSWER.filter((line) => !line.startsWith("status: "))
+    .map((line) => line.trim()));
+  assert.equal(ui["diag-status"].textContent, "Scan done. Click Copy, or select the text below and copy it.");
+  assert.equal(ui["diag-progress"].hidden, true);
+  assert.equal(ui.scan.disabled, false);
+  await ui["diag-copy"].fire("click");
+  assert.match(ui["diag-status"].textContent, /^Copying did not work here: select the text below/);
+  await ui.disconnect.fire("click");
+});
+
+test("Scan for cameras on a card without it says which gpxcam brought it", async () => {
+  const port = simulatedCard({
+    v: VERSION_1_4, status: STATUS_1_4, "diag scan": ["command: unknown 'diag scan'\r\n", ...OLD_FIRMWARE.slice(1)],
+  });
+  const ui = openPage(port, { clipboard: simulatedClipboard() });
+  await ui.connect.fire("click");
+  await ui.scan.fire("click");
+  assert.match(ui["diag-status"].textContent, /^gpxcam 1\.4\.0 cannot scan; the scan came with 1\.5\.0-beta\.1\./);
+  assert.equal(ui["diag-status"].className, "bad");
+  await ui.disconnect.fire("click");
 });

@@ -282,6 +282,21 @@ ol.steps li { margin: var(--s1) 0; }
   overflow-wrap: anywhere;
 }
 .card-lines:empty { display: none; }
+/* What 'log' or 'diag scan' gave, to copy by hand if copying by itself did not work */
+.diag-text {
+  display: block;
+  width: 100%;
+  min-height: 12rem;
+  margin: var(--s2) 0 0;
+  padding: var(--s2) var(--s3);
+  background: var(--field);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-s);
+  color: var(--text);
+  font: var(--fs-small)/1.45 ui-monospace, Menlo, Consolas, monospace;
+  resize: vertical;
+}
+progress { display: block; width: 100%; height: 8px; margin: var(--s2) 0 0; accent-color: var(--accent); }
 .good { color: var(--good); font-weight: 600; }
 /* Under way: a pulsing dot before the text (connecting, saving, pairing) */
 .busy::before {
@@ -608,6 +623,31 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
       <p id="sound-note" class="note">Connect the card to change this setting.</p>
       <p id="sound-answer" role="status"></p>
     </section>
+
+    <section class="panel section">
+      <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 12h4l2.5-6 5 12 2.5-6h4"/>
+        </svg>Diagnostics</h2>
+      <p>When something does not work, this collects what the card knows, ready to paste into a message.
+         <em>Copy log</em> takes the card's last events. <em>Scan for cameras</em> listens for 30 seconds and
+         lists the Bluetooth devices next to the card: put the camera next to it first, with Bluetooth pairing
+         started on the camera.</p>
+      <div class="row">
+        <button id="copy-log" type="button" class="secondary" disabled>Copy log</button>
+        <button id="scan" type="button" class="secondary" disabled>Scan for cameras</button>
+      </div>
+      <p class="note">The log and the scan contain your camera's serial number. Send them privately, not in a
+         public thread.</p>
+      <div id="diag-answer" class="gap-top hidden">
+        <p id="diag-status" role="status"></p>
+        <progress id="diag-progress" class="hidden" max="30000" value="0"></progress>
+        <textarea id="diag-text" class="diag-text" readonly rows="10" spellcheck="false"
+                  aria-label="What the card sent"></textarea>
+        <div class="row gap-top">
+          <button id="diag-copy" type="button" class="secondary small">Copy</button>
+        </div>
+      </div>
+    </section>
   </div>
 
   <details class="about">
@@ -617,7 +657,7 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
        115200 baud and sends it only <code>v</code>, <code>status</code>, <code>pair</code>, <code>pair off</code>,
        <code>pair older</code>, <code>unpair</code>, <code>clock on</code>, <code>clock off</code>, <code>updates normal</code>,
        <code>updates frequent</code>, <code>sound loud</code>, <code>sound quiet</code>, <code>sound off</code>,
-       <code>tz</code> and <code>tz</code> with the zone you chose.
+       <code>log</code>, <code>diag scan</code>, <code>tz</code> and <code>tz</code> with the zone you chose.
        Offsets in the list come from your browser and are only a guide; the card uses its own copy of the tz
        database.</p>
     <p id="about-link"><a href="https://github.com/TomaszBojanowski/gpxcam-t1000e">gpxcam-t1000e on GitHub</a></p>
@@ -1510,6 +1550,9 @@ const SOUND_SETTINGS = ["loud", "quiet", "off"]; // src/sound_rules.cpp settingN
 const UPDATES_TIMEOUT_MS = 6000; // saved in the same file as the sound
 const UPDATES_SETTINGS = ["normal", "frequent"]; // src/link_policy.cpp updatesName()
 const ANSWER_QUIET_MS = 400; // an answer is complete after this long without another of its lines
+const LOG_TIMEOUT_MS = 3000; // 'log' shows the card's last 32 lines at once (src/log.cpp dumpHistory())
+const SCAN_RUN_MS = 30000; // one 'diag scan' run (src/scan_dump.h DURATION_MS)
+const SCAN_TIMEOUT_MS = SCAN_RUN_MS + 10000; // the run ends with "diag scan: done"; this much is waited at most
 const MAX_RESULTS = 60;
 
 // ---- Zones (pure functions, tested with node --test test/web/card_page.test.mjs) ----
@@ -1641,11 +1684,11 @@ function computerZone() {
 // ---- The card's console (pure functions) ----
 
 // The only commands the page may send: v, status, pair, pair off, pair older, unpair, clock on,
-// clock off, updates normal, updates frequent, sound loud, sound quiet, sound off, tz, and tz with
-// a name exactly as the table spells it.
+// clock off, updates normal, updates frequent, sound loud, sound quiet, sound off, log, diag scan,
+// tz, and tz with a name exactly as the table spells it.
 const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "pair older", "unpair", "clock on", "clock off",
   ...UPDATES_SETTINGS.map((setting) => `updates ${setting}`), ...SOUND_SETTINGS.map((setting) => `sound ${setting}`),
-  "tz"]);
+  "log", "diag scan", "tz"]);
 function allowedCommand(command) {
   if (FIXED_COMMANDS.has(command)) return true;
   const match = /^tz ([A-Za-z0-9/_+-]{1,40})$/.exec(command);
@@ -2056,6 +2099,41 @@ function olderStartProgress(pairPhase) {
   }
 }
 
+// ---- Diagnostics (pure functions) ----
+
+// A line of the card's answer to 'log' (src/log.cpp dumpHistory()): "[  12345.6 s] text".
+function isLogLine(line) {
+  return /^\[ *\d+\.\d s\] /.test(line);
+}
+
+// While 'diag scan' runs, every line of the card belongs to it (its devices and the card's log
+// around them), but not the answers to the page's own 'status'.
+function belongsToScan(line) {
+  return !line.startsWith("status: ");
+}
+
+// The last line of a 'diag scan' run (src/bluetooth.cpp): its summary, a refusal, or a card
+// without the command (gpxcam before 1.5.0-beta.1).
+function scanEnded(line) {
+  return line.startsWith("diag scan: done") || line.startsWith("diag scan: not possible") ||
+    line.startsWith("diag scan: already running") || line.startsWith("command: unknown");
+}
+
+// How a 'diag scan' run ended, from its lines: [text, kind].
+function scanResultText(lines, version) {
+  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
+  if (has("command: unknown")) return [`gpxcam ${version} cannot scan; the scan came with 1.5.0-beta.1.`, "bad"];
+  if (has("diag scan: not possible")) return ["The card's Bluetooth did not start, so it cannot scan.", "bad"];
+  if (has("diag scan: already running")) return ["A scan is already running on the card. Try again in 30 s.", "bad"];
+  if (!has("diag scan: done")) return ["The scan did not end in time. What came so far is below.", "bad"];
+  return ["Scan done.", "good"];
+}
+
+// What the user sends: a heading with what it is, the firmware and the time, then the card's lines.
+function diagnosticsText(title, firmware, lines, date = new Date()) {
+  return [`${title} - ${firmware} - ${date.toISOString()}`, ...lines].join("\n") + "\n";
+}
+
 // ---- The connection to the card ----
 
 class Card {
@@ -2162,6 +2240,10 @@ class Card {
 
   unpair() {
     return this.ask("unpair", isPairAnswer, UNPAIR_TIMEOUT_MS, () => true);
+  }
+
+  log() {
+    return this.ask("log", isLogLine, LOG_TIMEOUT_MS);
   }
 
   // 'pair older' (app only): starts older-dialect pairing and waits for the card's one line with the
@@ -2358,6 +2440,13 @@ function startPage() {
     updatesSays: element("updates-says"),
     updatesNow: element("updates-now"),
     updatesAnswer: element("updates-answer"),
+    copyLog: element("copy-log"),
+    scan: element("scan"),
+    diagAnswer: element("diag-answer"),
+    diagStatus: element("diag-status"),
+    diagProgress: element("diag-progress"),
+    diagText: element("diag-text"),
+    diagCopy: element("diag-copy"),
   };
   const soundChoices = new Map(SOUND_SETTINGS.map((setting) => [setting, element(`sound-${setting}`)]));
   const updatesChoices = new Map(UPDATES_SETTINGS.map((setting) => [setting, element(`updates-${setting}`)]));
@@ -2415,6 +2504,9 @@ function startPage() {
     ui.olderCancel.disabled = card === null;
     ui.pairCancel.disabled = card === null || busy;
     for (const button of [ui.unpair, ui.unpairYes]) button.disabled = card === null || busy || storageDamaged;
+    ui.copyLog.disabled = card === null || busy;
+    ui.scan.disabled = card === null || busy;
+    ui.diagCopy.disabled = ui.diagText.value === ""; // what was collected stays after disconnecting
   };
 
   // The camera section from the card's last state: what to do, the stage or the result.
@@ -2555,6 +2647,10 @@ function startPage() {
     lastState = null;
     watchingPairing = false;
     pairMessage = null;
+    if (ui.diagStatus.className === "busy") { // a log or a scan cut short
+      ui.diagProgress.classList.add("hidden");
+      setStatus(ui.diagStatus, "Stopped: the connection to the card ended.", "bad");
+    }
   };
 
   // The zone that Save would send; the computer's zone is offered first, and it may not be the card's.
@@ -2933,6 +3029,102 @@ function startPage() {
     }
   };
 
+  // ---- Diagnostics: the card's log and a scan, shown and copied for a message ----
+
+  // The firmware for the heading of what is copied.
+  const firmwareText = () => {
+    if (lastState !== null) return `gpxcam ${lastState.version} (git ${lastState.git})`;
+    return oldVersion !== null ? `gpxcam ${oldVersion}` : "gpxcam";
+  };
+
+  // False where the page may not write the clipboard: no clipboard (the app's web view), or the
+  // window lost focus during a 30 s scan.
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  const startDiagnostics = (text) => {
+    busy = true;
+    ui.diagText.value = "";
+    refreshButtons();
+    ui.diagAnswer.classList.remove("hidden");
+    setStatus(ui.diagStatus, text, "busy");
+  };
+
+  // Shows what the card sent and copies it; result: [text, kind] of how the run ended.
+  const showDiagnostics = async (text, [resultText, kind]) => {
+    busy = false;
+    ui.diagProgress.classList.add("hidden");
+    ui.diagText.value = text;
+    refreshButtons();
+    const copied = await copyToClipboard(text);
+    setStatus(ui.diagStatus, `${resultText} ${copied ? "Copied: paste it into a private message." :
+      "Click Copy, or select the text below and copy it."}`, kind);
+  };
+
+  const copyLog = async () => {
+    const asked = card;
+    if (!asked || busy) return;
+    startDiagnostics("Reading the card's log...");
+    const lines = await asked.log().catch(() => []);
+    if (card !== asked) return;
+    if (lines.length === 0) {
+      busy = false;
+      refreshButtons();
+      setStatus(ui.diagStatus, "No answer from the card. Try again.", "bad");
+      return;
+    }
+    await showDiagnostics(diagnosticsText("Card log", firmwareText(), lines),
+      [`The card's last ${lines.length} events.`, "good"]);
+  };
+
+  // 'diag scan' outside the one-command queue, as pairOlder(): the status refresh keeps running,
+  // and its answers are left out. A bar shows the card's 30 s run.
+  const scanForCameras = async () => {
+    const asked = card;
+    if (!asked || busy) return;
+    startDiagnostics("Scanning for 30 seconds - keep the camera next to the card...");
+    ui.diagProgress.value = 0;
+    ui.diagProgress.classList.remove("hidden");
+    const lines = [];
+    let ended = false;
+    const stopWatch = asked.watchLines((line) => {
+      if (ended || !belongsToScan(line)) return;
+      lines.push(line);
+      ended = scanEnded(line);
+    });
+    try {
+      const started = Date.now();
+      await asked.send("diag scan");
+      while (!ended && Date.now() - started < SCAN_TIMEOUT_MS) {
+        ui.diagProgress.value = Math.min(Date.now() - started, SCAN_RUN_MS);
+        await sleep(250);
+        if (card !== asked) return;
+      }
+    } catch (error) {
+      // not sent: the card is gone, and its end is shown by onClosed
+    } finally {
+      stopWatch();
+    }
+    if (card !== asked) return;
+    const version = lastState !== null ? lastState.version : oldVersion;
+    await showDiagnostics(diagnosticsText("Scan for cameras", firmwareText(), lines), scanResultText(lines, version));
+  };
+
+  const copyAgain = async () => {
+    const copied = await copyToClipboard(ui.diagText.value);
+    setStatus(ui.diagStatus, copied ? "Copied: paste it into a private message." :
+      "Copying did not work here: select the text below and copy it (Ctrl+C, on a Mac Cmd+C).", copied ? "good" : "");
+  };
+
+  ui.copyLog.addEventListener("click", copyLog);
+  ui.scan.addEventListener("click", scanForCameras);
+  ui.diagCopy.addEventListener("click", copyAgain);
   ui.pair.addEventListener("click", () => pairCommand((asked) => asked.pair()));
   ui.pairCancel.addEventListener("click", () => pairCommand((asked) => asked.cancelPairing()));
   ui.unpair.addEventListener("click", () => ui.unpairConfirm.classList.remove("hidden"));
