@@ -2862,8 +2862,10 @@ function startPage() {
         setStatus(ui.olderProgress, "The card did not start. Give it a GPS fix, put the camera in pairing mode, " +
           "and try again.", "bad");
       } else {
-        setStatus(ui.olderProgress, "The camera now shows a Wi-Fi network and its password. Join that network on " +
-          "this computer and keep this window open.", "busy");
+        setStatus(ui.olderProgress, "Join the camera's Wi-Fi network shown on its screen and keep this window " +
+          "open. On the S5 and similar it has no password by default - just pick it from the list; if the camera " +
+          "asks for one, it is on the camera's screen or in its Wi-Fi setup (Setup → Wi-Fi → Wi-Fi Setup → " +
+          "Wi-Fi Password).", "busy");
         const outcome = await registerOlder(info.identity, info.name, (stage) => {
           if (card !== asked || olderCancelled) return;
           if (stage === "on-network")
