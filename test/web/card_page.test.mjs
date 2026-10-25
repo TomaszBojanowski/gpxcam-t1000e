@@ -19,7 +19,7 @@ const page = vm.runInContext(
     " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText, SOUND_SETTINGS," +
     " classifySoundAnswer, soundAnswerText, soundNoteText, soundText, UPDATES_SETTINGS, classifyUpdatesAnswer," +
     " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText, chooseTransport," +
-    " openProblemText, FIXED_COMMANDS })",
+    " openProblemText, parseOlderRegister, olderOutcomeText, FIXED_COMMANDS })",
   vm.createContext({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console }),
 );
 
@@ -310,6 +310,18 @@ test("only the commands of test/commands.json can be sent, and About names each 
   for (const alias of Object.keys(page.TZ_DATA.aliases)) assert.equal(page.allowedCommand(`tz ${alias}`), true, alias);
   assert.equal(page.tzCommand("america/new_york"), "tz America/New_York");
   assert.equal(page.tzCommand("Mars/Olympus_Mons"), null);
+});
+
+test("parseOlderRegister reads the card's line, and olderOutcomeText maps the result", () => {
+  assert.deepEqual(
+    json(page.parseOlderRegister("older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E")),
+    { identity: "4D454930-0100-1000-8001-A1B2C3D4E5F6", name: "T1000-E" },
+  );
+  assert.equal(page.parseOlderRegister("older: introduced - waiting up to 300 s for the camera's 01"), null);
+  assert.equal(page.olderOutcomeText("accepted")[1], "good");
+  for (const bad of ["not-confirmed", "not-on-network", "failed", "anything"]) {
+    assert.equal(page.olderOutcomeText(bad)[1], "bad");
+  }
 });
 
 test("the port is opened only at 115200 baud, with DTR", async () => {
