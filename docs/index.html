@@ -518,6 +518,31 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
       </div>
     </section>
 
+    <section id="older" class="panel section hidden">
+      <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 12.5a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/>
+          <circle cx="12" cy="19" r="1"/>
+        </svg>Pair an older camera</h2>
+      <p>Older LUMIX cameras (the ones that pair with the older Panasonic phone app, not LUMIX Lab) need one
+         extra step, over the camera's own Wi-Fi network, which the app does for you. Use this only for such a
+         camera &ndash; for an S5II and the like, use <em>Pair</em> above.</p>
+      <details class="help">
+        <summary>How it works</summary>
+        <ol class="steps">
+          <li>Put the card where its GPS gets a fix, and start pairing on the camera.</li>
+          <li>Click <em>Start</em>. The card introduces itself; the camera then shows a Wi-Fi network and a
+              password.</li>
+          <li>On this computer, join that Wi-Fi network by hand. The app finishes the pairing and tells you how
+              it went.</li>
+        </ol>
+      </details>
+      <div class="row">
+        <button id="older-start" type="button" disabled>Start</button>
+        <button id="older-cancel" type="button" class="secondary hidden">Cancel</button>
+      </div>
+      <p id="older-progress" role="status"></p>
+    </section>
+
     <section class="panel section">
       <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="12" cy="12" r="8.5"/>
@@ -590,7 +615,7 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
     <p><span id="about-runs">The page runs only in your browser and sends</span> nothing over the internet. It talks
        to the card over USB at
        115200 baud and sends it only <code>v</code>, <code>status</code>, <code>pair</code>, <code>pair off</code>,
-       <code>unpair</code>, <code>clock on</code>, <code>clock off</code>, <code>updates normal</code>,
+       <code>pair older</code>, <code>unpair</code>, <code>clock on</code>, <code>clock off</code>, <code>updates normal</code>,
        <code>updates frequent</code>, <code>sound loud</code>, <code>sound quiet</code>, <code>sound off</code>,
        <code>tz</code> and <code>tz</code> with the zone you chose.
        Offsets in the list come from your browser and are only a guide; the card uses its own copy of the tz
@@ -1473,6 +1498,7 @@ const STATUS_PERIOD_MS = 5000; // the card's state on the page refreshes itself 
 const PAIRING_STATUS_PERIOD_MS = 2000; // ... and this often while the card pairs
 const PAIR_TIMEOUT_MS = 3000;
 const UNPAIR_TIMEOUT_MS = 10000; // the card first puts its GPS to sleep (up to 7.5 s), then writes flash
+const OLDER_START_TIMEOUT_MS = 60000; // 'pair older': time for the card to connect and show its identity line
 // Pairing as the card does it (src/pairing.cpp): the limits the page tells.
 const PAIR_ATTEMPTS = 3;
 const PAIR_FIX_WAIT_TEXT = "2 minutes";
@@ -1614,10 +1640,10 @@ function computerZone() {
 
 // ---- The card's console (pure functions) ----
 
-// The only commands the page may send: v, status, pair, pair off, unpair, clock on, clock off,
-// updates normal, updates frequent, sound loud, sound quiet, sound off, tz, and tz with a name
-// exactly as the table spells it.
-const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "unpair", "clock on", "clock off",
+// The only commands the page may send: v, status, pair, pair off, pair older, unpair, clock on,
+// clock off, updates normal, updates frequent, sound loud, sound quiet, sound off, tz, and tz with
+// a name exactly as the table spells it.
+const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "pair older", "unpair", "clock on", "clock off",
   ...UPDATES_SETTINGS.map((setting) => `updates ${setting}`), ...SOUND_SETTINGS.map((setting) => `sound ${setting}`),
   "tz"]);
 function allowedCommand(command) {
@@ -1997,6 +2023,30 @@ function pairResultText(result) {
   }
 }
 
+// 'pair older' (app only): the card prints one line for the app with the identity and device name to
+// register over the camera's Wi-Fi (src/older_session.cpp): "older: app register identity <id> name <name>".
+function isOlderRegister(line) {
+  return line.startsWith("older: app register ");
+}
+
+function parseOlderRegister(line) {
+  const match = /^older: app register identity (\S+) name (\S+)/.exec(line);
+  return match ? { identity: match[1], name: match[2] } : null;
+}
+
+// How the app's Wi-Fi registration (register_older, app/src-tauri/src/older_wifi.rs) ended.
+function olderOutcomeText(outcome) {
+  switch (outcome) {
+    case "accepted": return ["The camera accepted the card. Older pairing done.", "good"];
+    case "not-confirmed": return ["The camera did not confirm. On the camera, allow the connection, then start over.",
+      "bad"];
+    case "not-on-network": return ["Could not reach the camera. Join the camera's Wi-Fi network on this computer, " +
+      "then start over.", "bad"];
+    case "cancelled": return ["Cancelled.", ""];
+    default: return ["Older pairing failed. Start over.", "bad"];
+  }
+}
+
 // ---- The connection to the card ----
 
 class Card {
@@ -2103,6 +2153,14 @@ class Card {
 
   unpair() {
     return this.ask("unpair", isPairAnswer, UNPAIR_TIMEOUT_MS, () => true);
+  }
+
+  // 'pair older' (app only): starts older-dialect pairing and waits for the card's one line with the
+  // identity and name to register over the camera's Wi-Fi. Null if the card did not start it in time.
+  olderRegister() {
+    return this.ask("pair older", isOlderRegister, OLDER_START_TIMEOUT_MS, (lines) => lines.length > 0).then(
+      (lines) => (lines.length ? parseOlderRegister(lines[0]) : null),
+    );
   }
 
   clock(on) {
@@ -2267,6 +2325,9 @@ function startPage() {
     unpairConfirm: element("unpair-confirm"),
     unpairYes: element("unpair-yes"),
     unpairNo: element("unpair-no"),
+    olderStart: element("older-start"),
+    olderCancel: element("older-cancel"),
+    olderProgress: element("older-progress"),
     clock: element("clock"),
     clockNote: element("clock-note"),
     clockAnswer: element("clock-answer"),
@@ -2303,6 +2364,7 @@ function startPage() {
   let shownPaired = null; // the pairing steps fold away when a camera is paired
   let watchingPairing = false; // a pairing ran since the last answer: its result is shown when it ends
   let pairMessage = null; // [text, kind] of the last pairing or unpairing
+  let olderCancelled = false; // the user pressed Cancel during older-camera pairing
   const transport = chooseTransport(navigator, window);
 
   if (transport !== null && transport.name === "app") {
@@ -2311,6 +2373,7 @@ function startPage() {
     element("about-runs").textContent = "The app sends";
     element("about-link").classList.add("hidden"); // the app opens no web pages
     element("about-address").classList.remove("hidden");
+    element("older").classList.remove("hidden"); // older-camera pairing needs the app's Wi-Fi step
   }
 
   if (transport === null) {
@@ -2335,6 +2398,8 @@ function startPage() {
     const pairing = lastState !== null && lastState.pair !== "idle";
     const storageDamaged = lastState !== null && lastState.storage === "damaged"; // the card would refuse
     ui.pair.disabled = card === null || busy || lastState === null || pairing || storageDamaged;
+    ui.olderStart.disabled = card === null || busy || lastState === null || pairing || storageDamaged;
+    ui.olderCancel.disabled = card === null;
     ui.pairCancel.disabled = card === null || busy;
     for (const button of [ui.unpair, ui.unpairYes]) button.disabled = card === null || busy || storageDamaged;
   };
@@ -2755,11 +2820,81 @@ function startPage() {
     showPairing();
   };
 
+  // 'pair older' (app only): start older-dialect pairing, then register the same identity over the
+  // camera's Wi-Fi. window.__TAURI__ is the app; this runs only there (the section is app-only).
+  const registerOlder = (identity, name, onStage) => {
+    const core = window.__TAURI__.core;
+    const channel = new core.Channel();
+    channel.onmessage = (event) => onStage(event.kind);
+    return core.invoke("register_older", { identity, name, onEvent: channel });
+  };
+
+  // Cancel is a direct command (not queued behind the card's console), so it stops the Wi-Fi wait at
+  // once; register_older returns "cancelled". A cancel during the first step (before the Wi-Fi wait)
+  // takes effect when that step ends.
+  const cancelOlder = () => {
+    if (!busy) return;
+    olderCancelled = true;
+    setStatus(ui.olderProgress, "Cancelling...", "busy");
+    try {
+      window.__TAURI__.core.invoke("cancel_older");
+    } catch (error) {
+      // the app is gone; nothing to stop
+    }
+  };
+
+  const pairOlder = async () => {
+    const asked = card;
+    if (!asked || busy) return;
+    busy = true;
+    olderCancelled = false;
+    ui.olderStart.classList.add("hidden");
+    ui.olderCancel.classList.remove("hidden");
+    refreshButtons();
+    setStatus(ui.olderProgress, "Starting - the card is connecting to the camera...", "busy");
+    let accepted = false;
+    try {
+      const info = await asked.olderRegister();
+      if (card !== asked) return;
+      if (olderCancelled) {
+        setStatus(ui.olderProgress, "Cancelled.", "");
+      } else if (!info) {
+        setStatus(ui.olderProgress, "The card did not start. Give it a GPS fix, put the camera in pairing mode, " +
+          "and try again.", "bad");
+      } else {
+        setStatus(ui.olderProgress, "The camera now shows a Wi-Fi network and its password. Join that network on " +
+          "this computer and keep this window open.", "busy");
+        const outcome = await registerOlder(info.identity, info.name, (stage) => {
+          if (card !== asked || olderCancelled) return;
+          if (stage === "on-network")
+            setStatus(ui.olderProgress, "On the camera's network - registering the card...", "busy");
+          else if (stage === "registering")
+            setStatus(ui.olderProgress, "Registering - allow the connection on the camera if it asks...", "busy");
+        });
+        if (card !== asked) return;
+        accepted = outcome === "accepted";
+        const [text, kind] = olderOutcomeText(outcome);
+        setStatus(ui.olderProgress, text, kind);
+      }
+      if (!accepted) await asked.cancelPairing().catch(() => {}); // any other end leaves the card waiting: stop it
+      await refresh();
+    } catch (error) {
+      if (card === asked) setStatus(ui.olderProgress, "Older pairing failed. Try again.", "bad");
+    } finally {
+      busy = false;
+      ui.olderCancel.classList.add("hidden");
+      ui.olderStart.classList.remove("hidden");
+      refreshButtons();
+    }
+  };
+
   ui.pair.addEventListener("click", () => pairCommand((asked) => asked.pair()));
   ui.pairCancel.addEventListener("click", () => pairCommand((asked) => asked.cancelPairing()));
   ui.unpair.addEventListener("click", () => ui.unpairConfirm.classList.remove("hidden"));
   ui.unpairNo.addEventListener("click", () => ui.unpairConfirm.classList.add("hidden"));
   ui.unpairYes.addEventListener("click", forgetCamera);
+  ui.olderStart.addEventListener("click", pairOlder);
+  ui.olderCancel.addEventListener("click", cancelOlder);
   ui.connect.addEventListener("click", connect);
   ui.disconnect.addEventListener("click", disconnect);
   ui.save.addEventListener("click", save);

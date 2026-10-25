@@ -1,6 +1,6 @@
 {
   "about": "The commands the card page and the desktop app may send to the card (docs/index.html allowedCommand(), app/src-tauri/src/commands.rs). fixed: exactly these; allowed: some more that pass (tz with a zone or alias of the card's table, spelled as the table spells it); refused: what must never reach the card. Tested by test/web/card_page.test.mjs and cargo test.",
-  "fixed": ["v", "status", "pair", "pair off", "unpair", "clock on", "clock off", "updates normal", "updates frequent",
+  "fixed": ["v", "status", "pair", "pair off", "pair older", "unpair", "clock on", "clock off", "updates normal", "updates frequent",
             "sound loud", "sound quiet", "sound off", "tz"],
   "allowed": ["tz Europe/Warsaw", "tz America/New_York", "tz Asia/Kolkata", "tz Poland", "tz Etc/GMT+5", "tz UTC"],
   "refused": ["dfu", "off", "link off", "link on", "log", "p", "bat log", "bat log on", "bat log clear", "status ",

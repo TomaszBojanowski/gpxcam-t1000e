@@ -1,10 +1,17 @@
-//! Before the app is compiled: its ACL manifest, so the page may call only the app's four commands
+//! Before the app is compiled: its ACL manifest, so the page may call only the app's six commands
 //! (capabilities/default.json), and the list of time zone names the card knows, from the card
 //! page's table (docs/index.html TZ_DATA, made by tools/gen_tz_table.py), so that 'tz NAME'
 //! passes here exactly as on the page.
 use std::{env, fs, path::Path};
 
-const COMMANDS: &[&str] = &["list_cards", "open_card", "send", "close_card"];
+const COMMANDS: &[&str] = &[
+    "list_cards",
+    "open_card",
+    "send",
+    "close_card",
+    "register_older",
+    "cancel_older",
+];
 const PAGE: &str = "../../docs/index.html";
 const TABLE_START: &str = "const TZ_DATA = ";
 const TABLE_END: &str = "\n};\n// END TZ_DATA";

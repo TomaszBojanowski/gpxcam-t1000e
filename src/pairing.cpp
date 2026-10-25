@@ -11,6 +11,8 @@
 #include "link_control.h"
 #include "link_policy.h"
 #include "lumix.h"
+#include "older_session.h"
+#include "pairing_record.h"
 #include "pairing_store.h"
 #include "sound.h"
 
@@ -33,6 +35,7 @@ bool scanWasOn = false;
 bool otherStateLogged = false; // "not in pairing mode" said once per session
 bool linkWasOn = false;        // the link is paused during a session
 bool paired = false;           // this session paired a camera
+bool olderMode = false;        // this session uses the older dialect ('pair older')
 Result lastResult = Result::None;
 uint8_t cameraSerial[lumix::SERIAL_LENGTH];
 
@@ -52,6 +55,7 @@ void formatSerial(const uint8_t serial[lumix::SERIAL_LENGTH], char (&out)[2 * lu
 void finish(bool resumeLink = true)
 {
     camera_session::cancel(); // does nothing when no session runs
+    older_session::cancel();
     phase = Phase::Idle;
     if (resumeLink && (linkWasOn || paired)) {
         link_control::start();
@@ -77,7 +81,8 @@ void succeed()
 {
     char serial[2 * lumix::SERIAL_LENGTH + 1];
     formatSerial(cameraSerial, serial);
-    if (pairing_store::saveCamera(cameraSerial)) {
+    if (pairing_store::saveCamera(cameraSerial,
+                                 olderMode ? pairing_record::DIALECT_OLDER : pairing_record::DIALECT_NEWER)) {
         logger::line("pair: paired with camera %s", serial);
         sound::playPaired();
         paired = true;
@@ -110,8 +115,10 @@ void introduce(const camera_list::Entry &camera)
     formatSerial(cameraSerial, serial);
     logger::line("pair: attempt %d/%d - camera %s in pairing mode, %d dBm, connecting", attempt, MAX_ATTEMPTS, serial,
                  camera.last.rssi);
-    if (!camera_session::start(camera.last, pairing_store::record().uuid, false)) {
-        attemptFailed(camera_session::failure());
+    const bool ok = olderMode ? older_session::start(camera.last, pairing_store::record().uuid, false)
+                              : camera_session::start(camera.last, pairing_store::record().uuid, false);
+    if (!ok) {
+        attemptFailed(olderMode ? older_session::failure() : camera_session::failure());
         return;
     }
     enter(Phase::Introducing);
@@ -168,6 +175,20 @@ void search(uint32_t now)
 
 void introducing()
 {
+    if (olderMode) {
+        switch (older_session::poll()) {
+        case older_session::Result::Running:
+            break;
+        case older_session::Result::Accepted:
+            succeed();
+            break;
+        case older_session::Result::Rejected:
+        case older_session::Result::Failed:
+            attemptFailed(older_session::failure());
+            break;
+        }
+        return;
+    }
     switch (camera_session::poll()) {
     case camera_session::Result::Running:
         break;
@@ -202,7 +223,7 @@ const char *phaseText()
 
 namespace pairing {
 
-void start()
+static void startSession(bool older)
 {
     if (phase != Phase::Idle) {
         logger::line("pair: already running");
@@ -229,11 +250,23 @@ void start()
     otherStateLogged = false;
     paired = false;
     lastResult = Result::None;
+    olderMode = older;
     sound::playPairing();
     if (!gpsWasOn)
         gps::on();
-    logger::line("pair: started - waiting for GPS time (up to %lu s)", (unsigned long)(FIX_WAIT_MS / 1000));
+    logger::line("pair: %sstarted - waiting for GPS time (up to %lu s)", older ? "older " : "",
+                 (unsigned long)(FIX_WAIT_MS / 1000));
     enter(Phase::WaitingForFix);
+}
+
+void start()
+{
+    startSession(false);
+}
+
+void startOlder()
+{
+    startSession(true);
 }
 
 void stop(bool resumeLink)

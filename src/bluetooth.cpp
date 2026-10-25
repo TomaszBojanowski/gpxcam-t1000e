@@ -8,6 +8,7 @@
 #include "camera_list.h"
 #include "log.h"
 #include "lumix.h"
+#include "scan_dump.h"
 
 // Sources: Bluefruit52Lib 0.21.0 in the core (bluefruit.cpp, BLEScanner.cpp) and the
 // S140 7.3.0 API (ble_gap.h).
@@ -19,6 +20,9 @@ namespace {
 // variants/t1000-e/nrf52840_s140_v7.ld).
 constexpr uint8_t PERIPHERAL_LINKS = 0; // the card never accepts connections
 constexpr uint8_t CENTRAL_LINKS = 1;    // the camera
+// Both dialects' 128-bit vendor UUIDs (18), with two spare. The SoftDevice default is 10
+// (BLE_UUID_VS_COUNT_DEFAULT); raising it uses a little more SoftDevice RAM (checked at start).
+constexpr uint8_t VENDOR_UUID_COUNT = 20;
 
 // Scanning (M3 decision): active scan, the radio listens 50 ms of every 100 ms, until
 // stopped; slower in the M6 search modes (setScanTiming()).
@@ -61,6 +65,18 @@ constexpr UBaseType_t QUEUE_LENGTH = 8;
 StaticQueue_t queueControl;
 uint8_t queueStorage[QUEUE_LENGTH * sizeof(camera_list::Report)];
 QueueHandle_t reportQueue = nullptr;
+
+// 'diag scan' (startScanDump): the raw adverts to dump go through their own queue; the loop task
+// shows each device once. dumpActive gates the BLE task, so set it last when starting.
+constexpr UBaseType_t DUMP_QUEUE_LENGTH = 16;
+StaticQueue_t dumpQueueControl;
+uint8_t dumpQueueStorage[DUMP_QUEUE_LENGTH * sizeof(scan_dump::Advert)];
+QueueHandle_t dumpQueue = nullptr;
+volatile bool dumpActive = false; // BLE task reads it; loop task writes it
+uint32_t dumpDeadlineMs = 0;      // loop task only
+constexpr size_t DUMP_SEEN_MAX = 16;
+uint8_t dumpSeen[DUMP_SEEN_MAX][scan_dump::ADDRESS_LENGTH + 1]; // address + the scan-response flag
+size_t dumpSeenCount = 0;                                       // loop task only
 
 bool started = false;
 
@@ -119,6 +135,19 @@ void onBleEvent(ble_evt_t *event)
         break;
     case lumix::Advert::None:
         break;
+    }
+
+    // 'diag scan': keep every close-enough advert, not only cameras, for the loop task to show.
+    if (dumpActive && advert.rssi >= scan_dump::RSSI_THRESHOLD_DBM) {
+        scan_dump::Advert raw;
+        memcpy(raw.address, advert.peer_addr.addr, scan_dump::ADDRESS_LENGTH);
+        raw.addressType = advert.peer_addr.addr_type;
+        raw.rssi = advert.rssi;
+        raw.scanResponse = advert.type.scan_response;
+        raw.length = advert.data.len <= scan_dump::MAX_ADVERT_BYTES ? (uint8_t)advert.data.len
+                                                                    : (uint8_t)scan_dump::MAX_ADVERT_BYTES;
+        memcpy(raw.data, advert.data.p_data, raw.length);
+        xQueueSend(dumpQueue, &raw, 0); // full: dropped, the device is likely already shown
     }
 
     // The SoftDevice pauses scanning after each complete report until it is told to go on
@@ -183,11 +212,15 @@ bool begin()
     // other values are the SoftDevice defaults Bluefruit uses (bluefruit.cpp).
     Bluefruit.configCentralConn(camera_link::MAX_MTU, BLE_GAP_EVENT_LENGTH_DEFAULT, BLE_GATTS_HVN_TX_QUEUE_SIZE_DEFAULT,
                                 BLE_GATTC_WRITE_CMD_TX_QUEUE_SIZE_DEFAULT);
+    // Must come before begin(): it sizes the SoftDevice's vendor-UUID table (camera_link::begin
+    // registers 18). Without it the 11th sd_ble_uuid_vs_add() would fail.
+    Bluefruit.configUuid128Count(VENDOR_UUID_COUNT);
     if (!Bluefruit.begin(PERIPHERAL_LINKS, CENTRAL_LINKS) || !camera_link::begin())
         return false;
     // The handle is not used for this role. Should it fail, the card works at 0 dBm ('p' says so).
     txPowerSet = sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_SCAN_INIT, 0, TX_POWER_DBM) == NRF_SUCCESS;
     reportQueue = xQueueCreateStatic(QUEUE_LENGTH, sizeof(camera_list::Report), queueStorage, &queueControl);
+    dumpQueue = xQueueCreateStatic(DUMP_QUEUE_LENGTH, sizeof(scan_dump::Advert), dumpQueueStorage, &dumpQueueControl);
     Bluefruit.setEventCallback(onBleEvent);
     Bluefruit.Scanner.useActiveScan(true);
     Bluefruit.Scanner.setIntervalMS(SCAN_INTERVAL_MS, SCAN_WINDOW_MS);
@@ -286,11 +319,63 @@ void logState()
         logger::transient("ble: off, the SoftDevice did not start");
         return;
     }
-    logger::transient("ble: SoftDevice on, %s, transmit power %+d dBm, %lu camera events lost",
+    logger::transient("ble: SoftDevice on, %s, transmit power %+d dBm, %u vendor UUIDs, %lu camera events lost",
                       scanActive ? "scanning" : "not scanning", txPowerSet ? TX_POWER_DBM : 0,
-                      (unsigned long)camera_link::lostEvents());
+                      (unsigned)camera_link::registeredUuidCount(), (unsigned long)camera_link::lostEvents());
     if (scanActive)
         logStatus(millis());
+}
+
+namespace {
+
+// 'diag scan' shows each device once per advert and once per scan response; this remembers which.
+bool seenBefore(const scan_dump::Advert &raw)
+{
+    uint8_t key[scan_dump::ADDRESS_LENGTH + 1];
+    memcpy(key, raw.address, scan_dump::ADDRESS_LENGTH);
+    key[scan_dump::ADDRESS_LENGTH] = raw.scanResponse ? 1 : 0;
+    for (size_t i = 0; i < dumpSeenCount; i++)
+        if (memcmp(dumpSeen[i], key, sizeof(key)) == 0)
+            return true;
+    if (dumpSeenCount >= DUMP_SEEN_MAX)
+        return true; // the list is full: cap the output
+    memcpy(dumpSeen[dumpSeenCount++], key, sizeof(key));
+    return false;
+}
+
+// Loop task: logs the new adverts of a 'diag scan' run and ends the run at its deadline.
+void drainScanDump(uint32_t now)
+{
+    scan_dump::Advert raw;
+    char line[200];
+    while (xQueueReceive(dumpQueue, &raw, 0) == pdTRUE) {
+        if (!dumpActive || seenBefore(raw))
+            continue;
+        if (scan_dump::formatAdvert(raw, line, sizeof(line)) > 0)
+            logger::line("diag scan: %s", line);
+    }
+    if (dumpActive && (int32_t)(now - dumpDeadlineMs) >= 0) {
+        dumpActive = false;
+        logger::line("diag scan: done, %u device(s)", (unsigned)dumpSeenCount);
+    }
+}
+
+} // namespace
+
+void startScanDump()
+{
+    if (!started) {
+        logger::line("diag scan: not possible, the SoftDevice did not start");
+        return;
+    }
+    if (!scanActive)
+        scanOn();
+    xQueueReset(dumpQueue);
+    dumpSeenCount = 0;
+    dumpDeadlineMs = millis() + scan_dump::DURATION_MS;
+    dumpActive = true; // last: the BLE task may now queue adverts
+    logger::transient("diag scan: on %lu s, reports stronger than %d dBm; full bytes for Panasonic",
+                      (unsigned long)(scan_dump::DURATION_MS / 1000), (int)scan_dump::RSSI_THRESHOLD_DBM);
 }
 
 void poll()
@@ -298,6 +383,7 @@ void poll()
     if (!started)
         return;
     const uint32_t now = millis();
+    drainScanDump(now);
     camera_list::Report report;
     while (xQueueReceive(reportQueue, &report, 0) == pdTRUE) {
         if (!scanActive)

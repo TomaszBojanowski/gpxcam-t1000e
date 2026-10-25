@@ -32,6 +32,10 @@ struct Progress {
 // Starts a session; logs and refuses if one is running or pairing is not possible.
 void start();
 
+// Like start(), but pairs in the older LUMIX dialect ('pair older'): drives older_session and
+// saves the pairing with DIALECT_OLDER. Needs the desktop app for the one-time Wi-Fi step.
+void startOlder();
+
 // Cancels a running session: disconnects and puts GPS and scanning back as they were, or,
 // with resumeLink, starts the link again if it was on (System OFF passes false). Does
 // nothing when idle.

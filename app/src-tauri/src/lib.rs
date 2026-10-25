@@ -6,8 +6,10 @@
 mod card;
 mod commands;
 mod lines;
+mod older_wifi;
 
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::ipc::Channel;
@@ -16,6 +18,12 @@ use tauri::{State, Url};
 /// The card the page has open, at most one.
 #[derive(Default)]
 struct OpenCard(Mutex<Option<card::Connection>>);
+
+/// The cancel flag of a running older-camera Wi-Fi step (register_older); cancel_older sets it.
+#[derive(Default)]
+struct OlderPairing {
+    cancel: Arc<AtomicBool>,
+}
 
 #[derive(Serialize)]
 struct CardInfo {
@@ -61,6 +69,45 @@ fn close_card(open: State<'_, OpenCard>) {
     }
 }
 
+/// The one-time Wi-Fi step for pairing an older camera (older_wifi): the page passes the identity
+/// and device name the card showed over Bluetooth; the app registers them over the camera's own
+/// Wi-Fi access point and reports the stages over `on_event`. It reaches only 192.168.54.1, never
+/// the internet. A long call: it waits for the user to join the camera's network.
+#[tauri::command]
+async fn register_older(
+    identity: String,
+    name: String,
+    on_event: Channel<older_wifi::Progress>,
+    older: State<'_, OlderPairing>,
+) -> Result<older_wifi::Outcome, String> {
+    older_wifi::check_identity(&identity)?;
+    older_wifi::check_name(&name)?;
+    let cancel = older.cancel.clone(); // cloned out of State before the await, not held across it
+    cancel.store(false, Ordering::SeqCst);
+    // The step blocks on sockets and waits; run it off the main thread so the window stays responsive.
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut send = |event| {
+            let _ = on_event.send(event); // the window may be closing
+        };
+        older_wifi::register(
+            &older_wifi::camera_target(),
+            &identity,
+            &name,
+            &older_wifi::Timing::live(),
+            &cancel,
+            &mut send,
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())
+}
+
+/// Stops a running register_older, which checks the flag between connection attempts and requests.
+#[tauri::command]
+fn cancel_older(older: State<'_, OlderPairing>) {
+    older.cancel.store(true, Ordering::SeqCst);
+}
+
 /// The window shows only the app's own page: tauri://localhost on Linux and macOS,
 /// http://tauri.localhost on Windows, and in a development build (`cargo tauri dev`) the page
 /// server of the Tauri CLI at `dev_url`. A link to another site does nothing.
@@ -74,7 +121,15 @@ fn own_page(url: &Url, dev_url: Option<&Url>) -> bool {
 pub fn run() {
     tauri::Builder::default()
         .manage(OpenCard::default())
-        .invoke_handler(tauri::generate_handler![list_cards, open_card, send, close_card])
+        .manage(OlderPairing::default())
+        .invoke_handler(tauri::generate_handler![
+            list_cards,
+            open_card,
+            send,
+            close_card,
+            register_older,
+            cancel_older
+        ])
         .setup(|app| {
             // The window of tauri.conf.json, made here to add the navigation check.
             let config = app

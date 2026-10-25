@@ -50,4 +50,9 @@ void logState();
 // Call from loop(): turns the camera reports into log lines.
 void poll();
 
+// 'diag scan': for about 30 s, logs the advertisements of every close device (not only cameras),
+// each shown once, with the full bytes only for Panasonic manufacturer data (scan_dump.h). It
+// starts scanning if it was not. For telling an unknown camera's dialect from its advertisement.
+void startScanDump();
+
 } // namespace bluetooth

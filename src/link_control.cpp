@@ -12,7 +12,9 @@
 #include "link_policy.h"
 #include "log.h"
 #include "lumix.h"
+#include "older_session.h"
 #include "pairing.h"
+#include "pairing_record.h"
 #include "pairing_store.h"
 #include "settings_store.h"
 #include "sound.h"
@@ -40,8 +42,8 @@ constexpr uint16_t LONG_STANDBY_SCAN_WINDOW_MS = 100;
 constexpr uint8_t CCCD_NOTIFICATIONS[] = {0x01, 0x00};
 constexpr uint8_t CCCD_INDICATIONS[] = {0x02, 0x00};
 
-enum class Phase { Off, Searching, Introducing, GpsMode, FindingCccd, EnablingNotifications, Connected, Pausing,
-                   Rejected };
+enum class Phase { Off, Searching, Introducing, GpsMode, FindingCccd, EnablingNotifications, Connected, Older,
+                   Pausing, Rejected };
 
 Phase phase = Phase::Off;
 uint32_t phaseStart = 0;
@@ -49,6 +51,7 @@ uint32_t pauseLength = 0;
 uint32_t failuresInARow = 0;
 bool quickRetryUsed = false;
 uint32_t connectedAt = 0;
+bool olderAccepted = false; // Phase::Older: the older-dialect camera has taken the card
 char serialText[2 * lumix::SERIAL_LENGTH + 1] = "";
 
 // The connection in Connected (from camera_session::discovered()).
@@ -222,7 +225,7 @@ void applyMode(uint32_t now)
 bool connectionOpen()
 {
     return phase == Phase::GpsMode || phase == Phase::FindingCccd || phase == Phase::EnablingNotifications ||
-           phase == Phase::Connected;
+           phase == Phase::Connected || (phase == Phase::Older && olderAccepted);
 }
 
 // The setting chosen with 'updates', and the one in effect (link_control::updatesNow()).
@@ -265,7 +268,7 @@ void pause(const char *why, bool closedByCamera = false)
 void connectionFailed(const char *reason)
 {
     // After the introduction the link uses the session's handles; an error may mean a wrong one.
-    if (connectionOpen())
+    if (connectionOpen() && phase != Phase::Older)
         camera_session::forgetHandles(reason);
     char why[logger::LINE_MAX];
     snprintf(why, sizeof(why), "connection to camera %s failed (%s)", serialText, reason);
@@ -622,10 +625,17 @@ void search(uint32_t now)
             continue;
         bluetooth::scanOff(); // connecting needs the radio
         logger::transient("link: camera %s is on, %d dBm - connecting", serialText, camera->last.rssi);
-        if (camera_session::start(camera->last, record.uuid, true))
+        if (record.dialect == pairing_record::DIALECT_OLDER) {
+            olderAccepted = false;
+            if (older_session::start(camera->last, record.uuid, true))
+                enter(Phase::Older);
+            else
+                connectionFailed(older_session::failure());
+        } else if (camera_session::start(camera->last, record.uuid, true)) {
             enter(Phase::Introducing);
-        else
+        } else {
             connectionFailed(camera_session::failure());
+        }
         return;
     }
 }
@@ -644,6 +654,8 @@ const char *phaseText()
         return "connecting";
     case Phase::Connected:
         return "connected";
+    case Phase::Older:
+        return "connected (older dialect)";
     case Phase::Pausing:
         return "pause";
     case Phase::Rejected:
@@ -701,6 +713,7 @@ void stop(bool keepGps)
     if (!active() && phase != Phase::Rejected)
         return;
     camera_session::cancel();
+    older_session::cancel();
     if (camera_link::connected())
         camera_link::disconnect();
     if (bluetooth::scanning())
@@ -721,7 +734,7 @@ Activity activity()
 {
     if (!active())
         return Activity::Off;
-    if (phase == Phase::Connected)
+    if (phase == Phase::Connected || phase == Phase::Older)
         return Activity::Connected;
     switch (mode) {
     case link_policy::SearchMode::Rare:
@@ -756,6 +769,7 @@ State state()
     case Phase::EnablingNotifications:
         return State::Connecting;
     case Phase::Connected:
+    case Phase::Older:
         return State::Connected;
     case Phase::Pausing:
         return State::Pausing;
@@ -773,7 +787,7 @@ link_policy::Updates updatesNow()
 
 Indication indication()
 {
-    if (phase == Phase::Connected)
+    if (phase == Phase::Connected || phase == Phase::Older)
         return Indication::Connected;
     return active() ? Indication::Searching : Indication::Off;
 }
@@ -789,7 +803,10 @@ void logState()
                           "%s timing, %u late",
                           serialText, (unsigned long)((now - connectedAt) / 1000), last, (unsigned long)sentCount,
                           (unsigned long)failedCount, timingText(), (unsigned)rateGuard.lateAnswers());
-    else if (phase == Phase::Pausing)
+    else if (phase == Phase::Older) {
+        logger::transient("link: connected to camera %s (older dialect)", serialText);
+        older_session::logState();
+    } else if (phase == Phase::Pausing)
         logger::transient("link: pause, looking again in %lu s; last location %s, %lu sent",
                      (unsigned long)((pauseLength - min(pauseLength, now - phaseStart)) / 1000), last,
                      (unsigned long)sentCount);
@@ -798,6 +815,27 @@ void logState()
                      (unsigned long)sentCount);
     else
         logger::transient("link: %s; last location %s, %lu sent", phaseText(), last, (unsigned long)sentCount);
+}
+
+// The older dialect's whole connection is driven by older_session; this only pauses or stops the
+// link when it ends, like the newer-dialect phases.
+void olderPhase(uint32_t now)
+{
+    switch (older_session::poll()) {
+    case older_session::Result::Running:
+        break;
+    case older_session::Result::Accepted:
+        olderAccepted = true;
+        connectedAt = now;
+        logger::line("link: connected to camera %s (older dialect)", serialText);
+        break;
+    case older_session::Result::Rejected:
+        rejectedByCamera();
+        break;
+    case older_session::Result::Failed:
+        connectionFailed(older_session::failure());
+        break;
+    }
 }
 
 void poll()
@@ -820,6 +858,9 @@ void poll()
         break;
     case Phase::Connected:
         connected(now);
+        break;
+    case Phase::Older:
+        olderPhase(now);
         break;
     case Phase::Pausing:
         if (now - phaseStart >= pauseLength)

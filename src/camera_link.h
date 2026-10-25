@@ -29,6 +29,22 @@ enum Characteristic : uint8_t {
 };
 constexpr uint8_t INTRODUCTION_CHARACTERISTICS = TIME + 1;
 
+// The older dialect's characteristics, in the order camera_link registers them (lumix.h). Found
+// only on demand (findOlderCharacteristics), so a newer-dialect connection discovers exactly as
+// before. The older dialect has no service UUID: these are found across the whole handle range.
+enum OlderCharacteristic : uint8_t {
+    OLDER_KEY,
+    OLDER_DEVICE_ID,
+    OLDER_DEVICE_NAME,
+    OLDER_CAMERA_NAME,
+    OLDER_CAMERA_TEXT,
+    OLDER_TIME,
+    OLDER_TIME_NOTIFY,
+    OLDER_LOCATION,
+    OLDER_LOCATION_NOTIFY,
+    OLDER_CHARACTERISTIC_COUNT
+};
+
 enum class EventType : uint8_t {
     Connected,
     Disconnected,
@@ -55,6 +71,12 @@ struct FoundCharacteristic {
     uint16_t valueHandle;
 };
 
+struct FoundOlderCharacteristic {
+    OlderCharacteristic which;
+    uint8_t properties; // PROPERTY_* bits
+    uint16_t valueHandle;
+};
+
 constexpr uint8_t PROPERTY_READ = 0x01;
 constexpr uint8_t PROPERTY_WRITE = 0x02; // write with response
 constexpr uint8_t PROPERTY_NOTIFY = 0x04;
@@ -72,6 +94,8 @@ struct Event {
     struct {
         uint8_t count; // ours among those in this response
         FoundCharacteristic list[CHARACTERISTIC_COUNT];
+        uint8_t olderCount; // older-dialect ones in this response (only after findOlderCharacteristics)
+        FoundOlderCharacteristic olderList[OLDER_CHARACTERISTIC_COUNT];
         uint16_t lastHandle; // the last value handle in this response
     } characteristics;
     struct {
@@ -86,9 +110,13 @@ struct Event {
     } read; // also the data of Notified
 };
 
-// Registers the service and characteristic UUIDs with the SoftDevice. Call once after
-// Bluefruit.begin().
+// Registers the service and characteristic UUIDs of both dialects with the SoftDevice. Call once
+// after Bluefruit.begin() (which must raise the vendor-UUID count first).
 bool begin();
+
+// How many 128-bit vendor UUIDs begin() registered: the newer dialect's service and 8
+// characteristics plus the older dialect's 9 characteristics, so 18 when all succeed.
+uint8_t registeredUuidCount();
 
 // For bluetooth.cpp, in Bluefruit's BLE task: turns the events of the camera connection
 // into Events. Never blocks; an event that does not fit in the queue is counted as lost.
@@ -109,6 +137,11 @@ bool connected();
 bool exchangeMtu(uint16_t mtu);
 bool findService();
 bool findCharacteristics(uint16_t startHandle, uint16_t endHandle);
+// Like findCharacteristics, but the CharacteristicsFound events match the older dialect into
+// Event::characteristics::olderList instead. For the older-dialect session, which has no service
+// to search within and so reads across the whole handle range. A newer-dialect connection never
+// calls this, so its discovery is unchanged. Reset by connect().
+bool findOlderCharacteristics(uint16_t startHandle, uint16_t endHandle);
 bool findDescriptors(uint16_t startHandle, uint16_t endHandle);
 bool read(uint16_t handle);
 // Write with response. The data must stay unchanged until WriteDone.

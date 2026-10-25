@@ -29,7 +29,7 @@ pairing_record::Record current = {};
 bool sameRecord(const pairing_record::Record &a, const pairing_record::Record &b)
 {
     return memcmp(a.uuid, b.uuid, sizeof(a.uuid)) == 0 && a.paired == b.paired &&
-           memcmp(a.serial, b.serial, sizeof(a.serial)) == 0;
+           memcmp(a.serial, b.serial, sizeof(a.serial)) == 0 && a.dialect == b.dialect;
 }
 
 // False if the file is missing; otherwise *status says whether *record was read.
@@ -159,13 +159,14 @@ const pairing_record::Record &record()
     return current;
 }
 
-bool saveCamera(const uint8_t serial[lumix::SERIAL_LENGTH])
+bool saveCamera(const uint8_t serial[lumix::SERIAL_LENGTH], uint8_t dialect)
 {
     if (!writable())
         return false;
     pairing_record::Record changed = current;
     changed.paired = true;
     memcpy(changed.serial, serial, sizeof(changed.serial));
+    changed.dialect = dialect;
     if (!writeFile(changed))
         return false;
     pairing_copy::write(changed); // after the file: a copy older than the file is replaced at start

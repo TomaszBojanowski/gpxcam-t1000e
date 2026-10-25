@@ -66,6 +66,22 @@ const uint8_t *const CHARACTERISTIC_UUIDS[camera_link::CHARACTERISTIC_COUNT] = {
     lumix::KEY_UUID,  lumix::DEVICE_ID_UUID,  lumix::APP_NAME_UUID,  lumix::DEVICE_NAME_UUID,
     lumix::TIME_UUID, lumix::GPS_MODE_UUID, lumix::GPS_NOTIFY_UUID, lumix::LOCATION_UUID};
 
+// The older dialect's characteristics, registered so the card can speak it too (no service UUID:
+// found by reading across the handle range). Not used until the older-dialect session is wired in.
+ble_uuid_t olderCharacteristicUuids[lumix::OLDER_CHARACTERISTIC_COUNT] = {};
+const uint8_t *const OLDER_CHARACTERISTIC_UUIDS[lumix::OLDER_CHARACTERISTIC_COUNT] = {
+    lumix::OLDER_KEY_UUID,         lumix::OLDER_DEVICE_ID_UUID,   lumix::OLDER_DEVICE_NAME_UUID,
+    lumix::OLDER_CAMERA_NAME_UUID, lumix::OLDER_CAMERA_TEXT_UUID, lumix::OLDER_TIME_UUID,
+    lumix::OLDER_TIME_NOTIFY_UUID, lumix::OLDER_LOCATION_UUID,    lumix::OLDER_LOCATION_NOTIFY_UUID};
+
+uint8_t registeredCount = 0; // vendor UUIDs begin() registered
+static_assert(camera_link::OLDER_CHARACTERISTIC_COUNT == lumix::OLDER_CHARACTERISTIC_COUNT,
+              "the older-characteristic enum and UUID list agree");
+
+// Set by findOlderCharacteristics, cleared by connect(): the next discovery matches the older
+// dialect. The newer dialect never sets it, so its discovery is exactly as before.
+bool discoverOlder = false;
+
 bool registerUuid(const uint8_t bigEndian[lumix::UUID_LENGTH], ble_uuid_t *out)
 {
     ble_uuid128_t base;
@@ -90,6 +106,23 @@ void addCharacteristics(const ble_gattc_evt_char_disc_rsp_t &response, camera_li
     for (uint16_t i = 0; i < response.count; i++) {
         const ble_gattc_char_t &found = response.chars[i];
         out->characteristics.lastHandle = found.handle_value;
+        if (discoverOlder) {
+            for (uint8_t which = 0; which < camera_link::OLDER_CHARACTERISTIC_COUNT; which++) {
+                const ble_uuid_t &wanted = olderCharacteristicUuids[which];
+                if (found.uuid.type != wanted.type || found.uuid.uuid != wanted.uuid ||
+                    out->characteristics.olderCount >= camera_link::OLDER_CHARACTERISTIC_COUNT)
+                    continue;
+                camera_link::FoundOlderCharacteristic &entry =
+                    out->characteristics.olderList[out->characteristics.olderCount++];
+                entry.which = (camera_link::OlderCharacteristic)which;
+                entry.properties = (found.char_props.read ? camera_link::PROPERTY_READ : 0) |
+                                   (found.char_props.write ? camera_link::PROPERTY_WRITE : 0) |
+                                   (found.char_props.notify ? camera_link::PROPERTY_NOTIFY : 0) |
+                                   (found.char_props.indicate ? camera_link::PROPERTY_INDICATE : 0);
+                entry.valueHandle = found.handle_value;
+            }
+            continue; // older: do not also match the newer list
+        }
         for (uint8_t which = 0; which < camera_link::CHARACTERISTIC_COUNT; which++) {
             const ble_uuid_t &wanted = characteristicUuids[which];
             if (found.uuid.type != wanted.type || found.uuid.uuid != wanted.uuid ||
@@ -155,13 +188,26 @@ bool begin()
 {
     eventQueue = xQueueCreateStatic(QUEUE_LENGTH, sizeof(Event), queueStorage, &queueControl);
     paramsQueue = xQueueCreateStatic(PARAMS_QUEUE_LENGTH, sizeof(ParamsInfo), paramsQueueStorage, &paramsQueueControl);
+    registeredCount = 0;
     if (!registerUuid(lumix::SERVICE_UUID, &serviceUuid))
         return false;
+    registeredCount++;
     for (size_t i = 0; i < CHARACTERISTIC_COUNT; i++) {
         if (!registerUuid(CHARACTERISTIC_UUIDS[i], &characteristicUuids[i]))
             return false;
+        registeredCount++;
+    }
+    for (size_t i = 0; i < lumix::OLDER_CHARACTERISTIC_COUNT; i++) {
+        if (!registerUuid(OLDER_CHARACTERISTIC_UUIDS[i], &olderCharacteristicUuids[i]))
+            return false;
+        registeredCount++;
     }
     return true;
+}
+
+uint8_t registeredUuidCount()
+{
+    return registeredCount;
 }
 
 void onBleEvent(const ble_evt_t *event)
@@ -268,6 +314,7 @@ bool connect(const camera_list::Report &camera)
 {
     if (connHandle != BLE_CONN_HANDLE_INVALID)
         return false;
+    discoverOlder = false; // a new connection discovers the newer dialect unless asked otherwise
     xQueueReset(eventQueue); // answers from an earlier connection
     ble_gap_addr_t address = {};
     address.addr_type = camera.addressType;
@@ -298,6 +345,13 @@ bool findService()
 
 bool findCharacteristics(uint16_t startHandle, uint16_t endHandle)
 {
+    const ble_gattc_handle_range_t range = {startHandle, endHandle};
+    return sd_ble_gattc_characteristics_discover(connHandle, &range) == NRF_SUCCESS;
+}
+
+bool findOlderCharacteristics(uint16_t startHandle, uint16_t endHandle)
+{
+    discoverOlder = true;
     const ble_gattc_handle_range_t range = {startHandle, endHandle};
     return sd_ble_gattc_characteristics_discover(connHandle, &range) == NRF_SUCCESS;
 }

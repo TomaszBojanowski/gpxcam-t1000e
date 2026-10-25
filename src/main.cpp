@@ -165,6 +165,7 @@ void logHelp()
                       (unsigned long)logger::HISTORY_LINES);
     logger::transient("          link on / link off = work with the paired camera (on after start when paired),");
     logger::transient("          pair = pair with a camera in pairing mode (or click + hold 3 s), pair off = cancel,");
+    logger::transient("          pair older = pair an older LUMIX camera (the app does a one-time Wi-Fi step),");
     logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera),");
     logger::transient("          tz = time zone of the camera's clock: tz NAME (e.g. tz America/New_York),");
     logger::transient("          tz POSIX-RULE (e.g. tz <+0545>-5:45), tz alone shows it");
@@ -182,6 +183,8 @@ void logHelp()
     logger::transient("             diag hang (test of the watchdog: the card restarts after %lu s),",
                       (unsigned long)watchdog::TIMEOUT_S);
     logger::transient("             diag clk [S] (64 MHz crystal running, now or in S s, kept for 'log')");
+    logger::transient("             diag scan (30 s dump of nearby advertisements, to see a camera's dialect;");
+    logger::transient("                       it has the camera's serial number, so send the log privately)");
 }
 
 void rebootToUf2Bootloader()
@@ -450,6 +453,8 @@ void runCommand(char *cmd)
             logger::line("link: already off");
     } else if (strcmp(cmd, "pair") == 0) {
         pairing::start();
+    } else if (strcmp(cmd, "pair older") == 0) {
+        pairing::startOlder();
     } else if (strcmp(cmd, "pair off") == 0) {
         if (pairing::active())
             pairing::stop();
@@ -495,6 +500,8 @@ void runCommand(char *cmd)
         diag::hang();
     } else if (strcmp(cmd, "diag clk") == 0) {
         diag::checkClock(0);
+    } else if (strcmp(cmd, "diag scan") == 0) {
+        bluetooth::startScanDump();
     } else if (strncmp(cmd, CLOCK_CHECK_COMMAND, strlen(CLOCK_CHECK_COMMAND)) == 0) {
         runClockCheck(cmd + strlen(CLOCK_CHECK_COMMAND));
     } else if (cmd[0] != '\0') {
