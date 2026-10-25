@@ -19,6 +19,9 @@ namespace {
 // variants/t1000-e/nrf52840_s140_v7.ld).
 constexpr uint8_t PERIPHERAL_LINKS = 0; // the card never accepts connections
 constexpr uint8_t CENTRAL_LINKS = 1;    // the camera
+// Both dialects' 128-bit vendor UUIDs (18), with two spare. The SoftDevice default is 10
+// (BLE_UUID_VS_COUNT_DEFAULT); raising it uses a little more SoftDevice RAM (checked at start).
+constexpr uint8_t VENDOR_UUID_COUNT = 20;
 
 // Scanning (M3 decision): active scan, the radio listens 50 ms of every 100 ms, until
 // stopped; slower in the M6 search modes (setScanTiming()).
@@ -183,6 +186,9 @@ bool begin()
     // other values are the SoftDevice defaults Bluefruit uses (bluefruit.cpp).
     Bluefruit.configCentralConn(camera_link::MAX_MTU, BLE_GAP_EVENT_LENGTH_DEFAULT, BLE_GATTS_HVN_TX_QUEUE_SIZE_DEFAULT,
                                 BLE_GATTC_WRITE_CMD_TX_QUEUE_SIZE_DEFAULT);
+    // Must come before begin(): it sizes the SoftDevice's vendor-UUID table (camera_link::begin
+    // registers 18). Without it the 11th sd_ble_uuid_vs_add() would fail.
+    Bluefruit.configUuid128Count(VENDOR_UUID_COUNT);
     if (!Bluefruit.begin(PERIPHERAL_LINKS, CENTRAL_LINKS) || !camera_link::begin())
         return false;
     // The handle is not used for this role. Should it fail, the card works at 0 dBm ('p' says so).
@@ -286,9 +292,9 @@ void logState()
         logger::transient("ble: off, the SoftDevice did not start");
         return;
     }
-    logger::transient("ble: SoftDevice on, %s, transmit power %+d dBm, %lu camera events lost",
+    logger::transient("ble: SoftDevice on, %s, transmit power %+d dBm, %u vendor UUIDs, %lu camera events lost",
                       scanActive ? "scanning" : "not scanning", txPowerSet ? TX_POWER_DBM : 0,
-                      (unsigned long)camera_link::lostEvents());
+                      (unsigned)camera_link::registeredUuidCount(), (unsigned long)camera_link::lostEvents());
     if (scanActive)
         logStatus(millis());
 }

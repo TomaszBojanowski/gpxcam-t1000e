@@ -66,6 +66,16 @@ const uint8_t *const CHARACTERISTIC_UUIDS[camera_link::CHARACTERISTIC_COUNT] = {
     lumix::KEY_UUID,  lumix::DEVICE_ID_UUID,  lumix::APP_NAME_UUID,  lumix::DEVICE_NAME_UUID,
     lumix::TIME_UUID, lumix::GPS_MODE_UUID, lumix::GPS_NOTIFY_UUID, lumix::LOCATION_UUID};
 
+// The older dialect's characteristics, registered so the card can speak it too (no service UUID:
+// found by reading across the handle range). Not used until the older-dialect session is wired in.
+ble_uuid_t olderCharacteristicUuids[lumix::OLDER_CHARACTERISTIC_COUNT] = {};
+const uint8_t *const OLDER_CHARACTERISTIC_UUIDS[lumix::OLDER_CHARACTERISTIC_COUNT] = {
+    lumix::OLDER_KEY_UUID,         lumix::OLDER_DEVICE_ID_UUID,   lumix::OLDER_DEVICE_NAME_UUID,
+    lumix::OLDER_CAMERA_NAME_UUID, lumix::OLDER_CAMERA_TEXT_UUID, lumix::OLDER_TIME_UUID,
+    lumix::OLDER_TIME_NOTIFY_UUID, lumix::OLDER_LOCATION_UUID,    lumix::OLDER_LOCATION_NOTIFY_UUID};
+
+uint8_t registeredCount = 0; // vendor UUIDs begin() registered
+
 bool registerUuid(const uint8_t bigEndian[lumix::UUID_LENGTH], ble_uuid_t *out)
 {
     ble_uuid128_t base;
@@ -155,13 +165,26 @@ bool begin()
 {
     eventQueue = xQueueCreateStatic(QUEUE_LENGTH, sizeof(Event), queueStorage, &queueControl);
     paramsQueue = xQueueCreateStatic(PARAMS_QUEUE_LENGTH, sizeof(ParamsInfo), paramsQueueStorage, &paramsQueueControl);
+    registeredCount = 0;
     if (!registerUuid(lumix::SERVICE_UUID, &serviceUuid))
         return false;
+    registeredCount++;
     for (size_t i = 0; i < CHARACTERISTIC_COUNT; i++) {
         if (!registerUuid(CHARACTERISTIC_UUIDS[i], &characteristicUuids[i]))
             return false;
+        registeredCount++;
+    }
+    for (size_t i = 0; i < lumix::OLDER_CHARACTERISTIC_COUNT; i++) {
+        if (!registerUuid(OLDER_CHARACTERISTIC_UUIDS[i], &olderCharacteristicUuids[i]))
+            return false;
+        registeredCount++;
     }
     return true;
+}
+
+uint8_t registeredUuidCount()
+{
+    return registeredCount;
 }
 
 void onBleEvent(const ble_evt_t *event)

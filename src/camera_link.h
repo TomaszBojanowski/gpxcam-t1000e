@@ -86,9 +86,13 @@ struct Event {
     } read; // also the data of Notified
 };
 
-// Registers the service and characteristic UUIDs with the SoftDevice. Call once after
-// Bluefruit.begin().
+// Registers the service and characteristic UUIDs of both dialects with the SoftDevice. Call once
+// after Bluefruit.begin() (which must raise the vendor-UUID count first).
 bool begin();
+
+// How many 128-bit vendor UUIDs begin() registered: the newer dialect's service and 8
+// characteristics plus the older dialect's 9 characteristics, so 18 when all succeed.
+uint8_t registeredUuidCount();
 
 // For bluetooth.cpp, in Bluefruit's BLE task: turns the events of the camera connection
 // into Events. Never blocks; an event that does not fit in the queue is counted as lost.
