@@ -50,7 +50,7 @@ Most newer LUMIX cameras (S5II and the like) pair straight from the card page or
 need one extra step over the camera's own Wi-Fi, which only the app can do (a web page cannot reach
 the camera that way). In the app, use *Pair an older camera*:
 
-https://github.com/user-attachments/assets/21a5d4a4-dccd-4a46-86e8-fbeb340417f2
+https://github.com/user-attachments/assets/6de0f7d9-dfe0-4dd2-bccc-11901fb6f236
 
 The video is a schematic run-through; the on-screen steps may differ a little from your camera.
 
