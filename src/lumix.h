@@ -128,6 +128,10 @@ constexpr uint8_t GPS_MODE_ON = 0x01;
 // the older dialect is found by reading the characteristics across the whole handle range.
 constexpr size_t OLDER_CHARACTERISTIC_COUNT = 9;
 
+// Values on the older dialect's notify characteristics.
+constexpr uint8_t OLDER_KNOWN = 0x01;         // the camera knows the card
+constexpr uint8_t OLDER_SWITCHING_OFF = 0x02; // on the location notify, about 2 s before power-off
+
 // 03E23A31-A54C-40FA-A668-DE9ACDC910BB: key, read, 4 bytes
 constexpr uint8_t OLDER_KEY_UUID[UUID_LENGTH] = {0x03, 0xe2, 0x3a, 0x31, 0xa5, 0x4c, 0x40, 0xfa,
                                                  0xa6, 0x68, 0xde, 0x9a, 0xcd, 0xc9, 0x10, 0xbb};

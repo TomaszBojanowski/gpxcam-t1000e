@@ -159,13 +159,14 @@ const pairing_record::Record &record()
     return current;
 }
 
-bool saveCamera(const uint8_t serial[lumix::SERIAL_LENGTH])
+bool saveCamera(const uint8_t serial[lumix::SERIAL_LENGTH], uint8_t dialect)
 {
     if (!writable())
         return false;
     pairing_record::Record changed = current;
     changed.paired = true;
     memcpy(changed.serial, serial, sizeof(changed.serial));
+    changed.dialect = dialect;
     if (!writeFile(changed))
         return false;
     pairing_copy::write(changed); // after the file: a copy older than the file is replaced at start

@@ -165,6 +165,7 @@ void logHelp()
                       (unsigned long)logger::HISTORY_LINES);
     logger::transient("          link on / link off = work with the paired camera (on after start when paired),");
     logger::transient("          pair = pair with a camera in pairing mode (or click + hold 3 s), pair off = cancel,");
+    logger::transient("          pair older = pair an older LUMIX camera (the app does a one-time Wi-Fi step),");
     logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera),");
     logger::transient("          tz = time zone of the camera's clock: tz NAME (e.g. tz America/New_York),");
     logger::transient("          tz POSIX-RULE (e.g. tz <+0545>-5:45), tz alone shows it");
@@ -452,6 +453,8 @@ void runCommand(char *cmd)
             logger::line("link: already off");
     } else if (strcmp(cmd, "pair") == 0) {
         pairing::start();
+    } else if (strcmp(cmd, "pair older") == 0) {
+        pairing::startOlder();
     } else if (strcmp(cmd, "pair off") == 0) {
         if (pairing::active())
             pairing::stop();
