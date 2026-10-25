@@ -23,6 +23,7 @@ constexpr uint32_t FIX_WAIT_MS = 120000;
 constexpr uint32_t SEARCH_MS = 60000;
 constexpr int MAX_ATTEMPTS = 3;
 constexpr uint32_t PAUSE_MS[MAX_ATTEMPTS - 1] = {10000, 30000}; // after attempts 1 and 2
+constexpr uint32_t SCAN_RETRY_MS = 1000; // the search switches a stopped scan on again at most this often
 
 using pairing::Phase;
 using pairing::Result;
@@ -40,6 +41,7 @@ bool autoDialect = false;      // plain 'pair': pick the dialect from what the c
 Result lastResult = Result::None;
 uint8_t cameraSerial[lumix::SERIAL_LENGTH];
 camera_list::Report lastCamera; // the current attempt's camera, to switch dialect without a rescan
+uint32_t lastScanStartMs = 0;   // the search's last scanOn()
 
 void enter(Phase next)
 {
@@ -129,6 +131,7 @@ void introduce(const camera_list::Entry &camera)
 
 void startSearch()
 {
+    lastScanStartMs = millis();
     if (!bluetooth::scanning())
         bluetooth::scanOn();
     enter(Phase::Searching);
@@ -161,6 +164,11 @@ void logNotInPairingMode(const camera_list::Entry &camera)
 
 void search(uint32_t now)
 {
+    // The scan can stop under the search (a 'diag scan' run that had switched it on ends): on again.
+    if (!bluetooth::scanning() && now - lastScanStartMs >= SCAN_RETRY_MS) {
+        lastScanStartMs = now;
+        bluetooth::scanOn();
+    }
     for (size_t i = 0; i < camera_list::MAX_CAMERAS; i++) {
         const camera_list::Entry *camera = bluetooth::camera(i);
         if (camera == nullptr)
