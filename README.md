@@ -128,7 +128,9 @@ version numbers and releases: tags `app-vX.Y.Z`, named "gpxcam card" in
 [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases).
 [app/README.md](app/README.md#install) says how to install it, how to open it the first time and
 which gpxcam versions it works with. On Windows 11 the `.msi` has been tried with a card; the
-`-setup.exe` and the macOS version not yet.
+`-setup.exe` and the macOS version not yet. The app can also pair *older* LUMIX cameras (the ones
+that use the older Panasonic app), which need one extra step over the camera's own Wi-Fi; see
+[app/README.md](app/README.md#pairing-an-older-camera).
 
 ## Set the time zone
 

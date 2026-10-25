@@ -207,6 +207,27 @@ Made-up vectors in `test/device_identity_vectors.txt`, checked in `test/test_dev
 `a1b2c3d4e5f6`, key `11 22 33 44` → identity field `58677e5401223274b023b344f4f6f0f6eeddccb2`; name `T1000-E` →
 `21136743540f03741122334411223344eeddcc44`.
 
+## Older dialect: the one-time Wi-Fi step
+
+At the first pairing the camera opens its own Wi-Fi access point and shows its network name and password on its
+screen. A computer joins that network by hand and registers the same identity and device name over the camera's
+local HTTP service; the camera then accepts the card over Bluetooth, and later connections need no Wi-Fi. The
+gpxcam card desktop app does this step (`app/src-tauri/src/older_wifi.rs`); the card only waits for the camera's
+acceptance (up to 300 s).
+
+- The camera is at `192.168.54.1` on its access point (HTTP, no TLS; a UPnP description on port 60606, the
+  registration on port 80).
+- On one keep-alive connection: `GET /cam.cgi?mode=accctrl&type=req_acc_g` returns `ok,<token>` with a 4-byte
+  session token (hex); then `GET /cam.cgi?mode=accctrl&type=req_acc_e&value=<identity>&value2=<name>`.
+- **Wi-Fi encoding** of a text: pad its ASCII bytes with `0xFF` to a multiple of four, then for each 4-byte word
+  emit `byteSwap(word XOR token)` as eight lower-case hex digits — the same XOR-and-byte-swap as the Bluetooth
+  identity above, over the text form, keyed by the session token.
+- The camera answers `ok_under_research…` or `err_user_refused…` until it accepts (the user allows the device on
+  the camera, and the identity and name must match); then `ok,…`, and it sends the card `01` over Bluetooth.
+
+Made-up example (token `1a2b3c4d`, the seed and name above): `value2` for `T1000-E` is `7d0c1a4eb279062a`; the app's
+test (`app/src-tauri/src/older_wifi.rs`) checks the full encoding against `test/device_identity_vectors.txt`.
+
 ## Camera behaviour worth knowing
 
 - After a few refused connections the camera stops advertising – switching it off and on helps.

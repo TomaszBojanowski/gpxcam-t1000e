@@ -8,7 +8,8 @@ pairing, the camera's clock and time zone, location updates and sound.
   (USB 2886:8057).
 - It sends the card only the commands of [test/commands.json](../test/commands.json). The page
   checks them, and the app's Rust side checks them again.
-- It sends nothing over the internet, and it has no Tauri plugins.
+- It sends nothing over the internet and has no Tauri plugins. Pairing an *older* camera is the one
+  time it uses the network at all, and only to the camera's own Wi-Fi (see below).
 
 ## Install
 
@@ -41,6 +42,22 @@ missing, the installer downloads it.
 The `.msi` has been tried with a card on Windows 11. The `-setup.exe` and the macOS version are
 built the same way but have not been tried with a card yet.
 If something does not work there, please open an issue on GitHub.
+
+## Pairing an older camera
+
+Most newer LUMIX cameras (S5II and the like) pair straight from the card page or this app with
+*Pair*. **Older** cameras — the ones that pair with the older Panasonic phone app, not LUMIX Lab —
+need one extra step over the camera's own Wi-Fi, which only the app can do (a web page cannot reach
+the camera that way). In the app, use *Pair an older camera*:
+
+1. Give the card a GPS fix and start pairing on the camera.
+2. Click *Start*. The card introduces itself over Bluetooth; the camera then shows a Wi-Fi network
+   and a password on its screen.
+3. Join that Wi-Fi network on this computer, by hand. The app registers the card over the camera's
+   own address (192.168.54.1) — never the internet — and tells you how it went.
+
+After it succeeds, the card connects to the camera over Bluetooth alone, like any other pairing.
+The protocol is in [docs/PROTOCOL.md](../docs/PROTOCOL.md).
 
 ## How it is made
 
