@@ -1,7 +1,7 @@
 # The desktop app (app/): its tests, then its installers for Linux, macOS and Windows as files
 # of the run. Nothing is published from here: the files go to a GitHub Release by hand, after a
-# check, under a tag app-vX.Y.Z. No secrets: the macOS app is signed ad hoc, the Windows
-# installers are not signed.
+# check, under a tag app-vX.Y.Z. The macOS app is signed ad hoc. On a release tag (app-v*) the
+# Windows installers are signed by the SignPath Foundation; every other run leaves them unsigned.
 name: app
 
 on:
@@ -20,6 +20,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # the SignPath action reads the uploaded artifact on a release tag
 
 concurrency:
   group: app-${{ github.ref }}
@@ -117,7 +118,7 @@ jobs:
         env:
           ARGS: ${{ matrix.args }}
         run: cargo tauri build $ARGS
-      - name: Files without spaces in their names, and their checksums
+      - name: Collect the installers (no spaces in their names)
         env:
           BUNDLE: ${{ matrix.bundle }}
           FILES: ${{ matrix.files }}
@@ -129,7 +130,31 @@ jobs:
             name=$(basename "$file")
             cp "$file" "$out/${name// /-}"
           done
-          cd "$out"
+      # On a release tag the Windows installers are signed by the SignPath Foundation: the unsigned
+      # files go up as an artifact, SignPath signs them, and the signed ones come back into out/.
+      # SIGNPATH_* are set once the SignPath subscription is granted; other runs skip these steps.
+      - name: Upload the unsigned Windows installers for signing
+        id: unsigned-windows
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/app-v')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gpxcam-card-windows-unsigned
+          path: out/
+          if-no-files-found: error
+      - name: Sign the Windows installers (SignPath Foundation)
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/app-v')
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.unsigned-windows.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: out # the signed installers replace the unsigned ones
+      - name: Checksums (over the signed installers on a release)
+        run: |
+          cd out
           if command -v sha256sum >/dev/null; then sha256sum -- * > SHA256SUMS; else shasum -a 256 -- * > SHA256SUMS; fi
           cat SHA256SUMS
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
