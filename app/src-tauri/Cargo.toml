@@ -1,6 +1,6 @@
 [package]
 name = "gpxcam-card"
-version = "1.1.0"
+version = "1.1.1"
 description = "Sets up a SenseCAP T1000-E running gpxcam over USB"
 authors = ["Tomasz Bojanowski"]
 license = "GPL-3.0-only"

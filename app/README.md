@@ -50,11 +50,21 @@ Most newer LUMIX cameras (S5II and the like) pair straight from the card page or
 need one extra step over the camera's own Wi-Fi, which only the app can do (a web page cannot reach
 the camera that way). In the app, use *Pair an older camera*:
 
+https://github.com/user-attachments/assets/21a5d4a4-dccd-4a46-86e8-fbeb340417f2
+
+The video is a schematic run-through; the on-screen steps may differ a little from your camera.
+
 1. Give the card a GPS fix and start pairing on the camera.
 2. Click *Start*. The card introduces itself over Bluetooth; the camera then shows a Wi-Fi network
    and a password on its screen.
 3. Join that Wi-Fi network on this computer, by hand. The app registers the card over the camera's
    own address (192.168.54.1) — never the internet — and tells you how it went.
+
+Join the camera's Wi-Fi network shown on its screen. On the S5 and similar it has **no password by
+default**, so just pick it from the list. If the camera asks for one, the password is on the camera's
+screen or in its Wi-Fi setup: **[Setup] → [Wi-Fi] → [Wi-Fi Setup] → [Wi-Fi Password]** (see the
+[S5 manual](https://eww.pavc.panasonic.co.jp/dscoi/DC-S5/GA_GW_GC_GH_GN_GT_GD/DC-S5_DVQP2213ZD_full_eng.pdf),
+pages 424–426).
 
 After it succeeds, the card connects to the camera over Bluetooth alone, like any other pairing.
 The protocol is in [docs/PROTOCOL.md](../docs/PROTOCOL.md).

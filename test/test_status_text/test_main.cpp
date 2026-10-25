@@ -119,6 +119,15 @@ void test_pairing_results()
     TEST_ASSERT_EQUAL_STRING("status: pair=idle pair_attempt=0 pair_result=not_in_pairing_mode", lines[4]);
 }
 
+// 'pair' that switched to the older dialect waits for the one-time Wi-Fi step.
+void test_pairing_waiting_wifi()
+{
+    State state = someState();
+    state.pairing = {pairing::Phase::WaitingForWifi, 1, pairing::Result::None};
+    status_text::format(state, collect);
+    TEST_ASSERT_EQUAL_STRING("status: pair=waiting_wifi pair_attempt=1 pair_result=none", lines[4]);
+}
+
 // Every line fits a log line, also with the longest values.
 void test_longest_lines_fit()
 {
@@ -144,6 +153,7 @@ int main(int, char **)
     RUN_TEST(test_other_values);
     RUN_TEST(test_frequent_in_effect);
     RUN_TEST(test_pairing_results);
+    RUN_TEST(test_pairing_waiting_wifi);
     RUN_TEST(test_longest_lines_fit);
     return UNITY_END();
 }
