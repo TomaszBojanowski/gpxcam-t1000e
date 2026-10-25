@@ -38,6 +38,12 @@ constexpr uint16_t SCAN_UNTIL_STOPPED = 0; // BLEScanner::start() timeout: 0 = n
 constexpr uint32_t STATUS_PERIOD_MS = 10000;
 constexpr uint32_t MS_PER_DECISECOND = 100;
 
+// Scan watchdog: a scan that is on but has had no report for this long is stopped and started
+// again, in every mode (pairing, 'diag scan', the link's search). After each report the SoftDevice
+// pauses the scan until it is resumed (ble_gap.h, sd_ble_gap_scan_start()); a tester's card got
+// 1-3 reports in 30 s with a phone and a camera next to it (1.5.0-beta.2).
+constexpr uint32_t SCAN_SILENCE_MS = 5000;
+
 // Transmit power +8 dBm, the most the nRF52840 has (ble_gap.h, sd_ble_gap_tx_power_set(): the
 // accepted values go up to +8 dBm), instead of the SoftDevice's default 0 dBm: on the walk of
 // 2026-10-24 the connection to the camera was lost when the card was only a few metres away,
@@ -82,6 +88,8 @@ volatile uint32_t dumpReports = 0; // every report of a run, weak ones and scan 
 uint16_t afterDumpIntervalMs = SCAN_INTERVAL_MS; // loop task only
 uint16_t afterDumpWindowMs = SCAN_WINDOW_MS;
 bool dumpStartedScan = false; // the run switched the scan on, so it switches it off at its end
+uint32_t dumpResumeFailuresAtStart = 0; // loop task only: the totals when the run started
+uint32_t dumpRestartsAtStart = 0;
 
 bool started = false;
 
@@ -92,12 +100,15 @@ volatile bool scanActive = false;
 // The loop task keeps the values from the start of a scan and reports the difference.
 volatile uint32_t reportsTotal = 0;
 volatile uint32_t otherPanasonicTotal = 0;
+volatile uint32_t resumeFailuresTotal = 0; // Scanner.resume() failed while the scan was on
+volatile uint32_t lastReportMs = 0;
 volatile uint32_t droppedTotal = 0;
 
 struct Counts {
     uint32_t reports;
     uint32_t otherPanasonic;
     uint32_t dropped;
+    uint32_t resumeFailures;
 };
 Counts atScanStart = {};
 
@@ -107,11 +118,15 @@ uint32_t cameraReports = 0;
 uint32_t untracked = 0; // reports of cameras beyond MAX_CAMERAS
 uint32_t scanStartMs = 0;
 uint32_t lastStatusMs = 0;
+uint32_t scanWatchStartMs = 0; // the scan watchdog: when the scan was last (re)started
+uint32_t restarts = 0;         // by the watchdog, in the current scan
+uint32_t restartsTotal = 0;
+bool restartLogged = false; // one line per silence: where no device advertises at all, it restarts every 5 s
 
 Counts sinceScanStart()
 {
     return Counts{reportsTotal - atScanStart.reports, otherPanasonicTotal - atScanStart.otherPanasonic,
-                  droppedTotal - atScanStart.dropped};
+                  droppedTotal - atScanStart.dropped, resumeFailuresTotal - atScanStart.resumeFailures};
 }
 
 // Runs in Bluefruit's BLE task for every SoftDevice event, after the library's own
@@ -124,6 +139,7 @@ void onBleEvent(ble_evt_t *event)
     }
     const ble_gap_evt_adv_report_t &advert = event->evt.gap_evt.params.adv_report;
     reportsTotal++;
+    lastReportMs = millis();
 
     camera_list::Report report;
     switch (lumix::parseAdvert(advert.data.p_data, advert.data.len, &report.camera)) {
@@ -162,9 +178,11 @@ void onBleEvent(ble_evt_t *event)
     // The SoftDevice pauses scanning after each complete report until it is told to go on
     // (ble_gap.h, sd_ble_gap_scan_start()). BLEScanner only does that itself for reports
     // its filters reject or when a report callback is set (BLEScanner.cpp,
-    // _eventHandler()); we use neither, so we resume here.
-    if (scanActive && advert.type.status != BLE_GAP_ADV_DATA_STATUS_INCOMPLETE_MORE_DATA)
-        Bluefruit.Scanner.resume();
+    // _eventHandler()); we use neither, so we resume here. A failure while the scan is still on
+    // (not stopped meanwhile by the loop task) leaves it paused: counted, and the watchdog restarts it.
+    if (scanActive && advert.type.status != BLE_GAP_ADV_DATA_STATUS_INCOMPLETE_MORE_DATA &&
+        !Bluefruit.Scanner.resume() && scanActive)
+        resumeFailuresTotal++;
 }
 
 void logCamera(const char *what, const camera_list::Report &report)
@@ -189,10 +207,12 @@ void logLost(const camera_list::Entry &entry)
 void logStatus(uint32_t nowMs)
 {
     const Counts counts = sinceScanStart();
-    logger::transient("scan: on %lu s, %lu reports, %lu camera, %lu other Panasonic, %lu dropped, %lu untracked",
+    logger::transient("scan: on %lu s, %lu reports, %lu camera, %lu other Panasonic, %lu dropped, %lu untracked, "
+                      "%lu resume failed, %lu restarts",
                       (unsigned long)((nowMs - scanStartMs) / 1000), (unsigned long)counts.reports,
                       (unsigned long)cameraReports, (unsigned long)counts.otherPanasonic,
-                      (unsigned long)counts.dropped, (unsigned long)untracked);
+                      (unsigned long)counts.dropped, (unsigned long)untracked, (unsigned long)counts.resumeFailures,
+                      (unsigned long)restarts);
     for (size_t i = 0; i < camera_list::MAX_CAMERAS; i++) {
         const camera_list::Entry *entry = cameras.at(i);
         if (entry == nullptr)
@@ -252,7 +272,9 @@ void scanOn()
     cameras.clear();
     cameraReports = 0;
     untracked = 0;
-    atScanStart = Counts{reportsTotal, otherPanasonicTotal, droppedTotal};
+    atScanStart = Counts{reportsTotal, otherPanasonicTotal, droppedTotal, resumeFailuresTotal};
+    restarts = 0;
+    restartLogged = false;
     scanActive = true; // before starting: the first report must already resume the scan
     if (!Bluefruit.Scanner.start(SCAN_UNTIL_STOPPED)) {
         scanActive = false;
@@ -261,6 +283,7 @@ void scanOn()
     }
     scanStartMs = millis();
     lastStatusMs = scanStartMs;
+    scanWatchStartMs = scanStartMs;
     logger::line("scan: on - active, radio %u ms of every %u ms, logging LUMIX cameras only", scanWindowMs,
                  scanIntervalMs);
 }
@@ -290,6 +313,7 @@ bool setScanTiming(uint16_t intervalMs, uint16_t windowMs)
         logger::line("scan: could not restart with the new timing");
         return false;
     }
+    scanWatchStartMs = millis();
     return true;
 }
 
@@ -357,6 +381,34 @@ bool seenBefore(const scan_dump::Advert &raw)
     return false;
 }
 
+// Loop task: the scan watchdog. A scan with no report for SCAN_SILENCE_MS since it was last (re)started
+// is stopped and started again with the same timing; the camera list and the counters stay.
+void watchScan()
+{
+    const uint32_t lastReport = lastReportMs; // first: a report after this read is not older than now
+    const uint32_t now = millis();
+    const bool reportSinceStart = (int32_t)(lastReport - scanWatchStartMs) >= 0;
+    if (reportSinceStart)
+        restartLogged = false; // the next silence gets its line again
+    if ((int32_t)(now - (reportSinceStart ? lastReport : scanWatchStartMs)) < (int32_t)SCAN_SILENCE_MS)
+        return;
+    scanActive = false; // the BLE task stops resuming
+    Bluefruit.Scanner.stop();
+    scanActive = true;
+    scanWatchStartMs = now;
+    restarts++;
+    restartsTotal++;
+    if (!Bluefruit.Scanner.start(SCAN_UNTIL_STOPPED)) {
+        scanActive = false; // the link and pairing switch it on again
+        logger::line("scan: could not restart after %lu s without reports", (unsigned long)(SCAN_SILENCE_MS / 1000));
+        return;
+    }
+    if (!restartLogged) {
+        restartLogged = true;
+        logger::line("scan: restarted (no reports for %lu s)", (unsigned long)(SCAN_SILENCE_MS / 1000));
+    }
+}
+
 // Loop task: logs the new adverts of a 'diag scan' run and ends the run at its deadline.
 void drainScanDump(uint32_t now)
 {
@@ -370,8 +422,10 @@ void drainScanDump(uint32_t now)
     }
     if (dumpActive && (int32_t)(now - dumpDeadlineMs) >= 0) {
         dumpActive = false;
-        logger::line("diag scan: done, %u device(s) shown, %lu reports received", (unsigned)dumpSeenCount,
-                     (unsigned long)dumpReports);
+        logger::line("diag scan: done, %u device(s) shown, %lu reports received, %lu resume failed, %lu restarts",
+                     (unsigned)dumpSeenCount, (unsigned long)dumpReports,
+                     (unsigned long)(resumeFailuresTotal - dumpResumeFailuresAtStart),
+                     (unsigned long)(restartsTotal - dumpRestartsAtStart));
         if (dumpStartedScan)
             scanOff(); // as before the run; the link and pairing switch it on again when they need it
         setScanTiming(afterDumpIntervalMs, afterDumpWindowMs);
@@ -400,6 +454,8 @@ void startScanDump()
     xQueueReset(dumpQueue);
     dumpSeenCount = 0;
     dumpReports = 0;
+    dumpResumeFailuresAtStart = resumeFailuresTotal;
+    dumpRestartsAtStart = restartsTotal;
     dumpDeadlineMs = millis() + scan_dump::DURATION_MS;
     dumpActive = true; // last: the BLE task may now queue adverts
     logger::transient("diag scan: on %lu s, radio %u ms of every %u ms, reports stronger than %d dBm; full bytes "
@@ -435,6 +491,7 @@ void poll()
     }
     if (!scanActive)
         return;
+    watchScan();
     camera_list::Entry lost;
     while (cameras.removeLost(now, &lost))
         logLost(lost);
