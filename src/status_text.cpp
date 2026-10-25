@@ -51,6 +51,8 @@ const char *pairPhaseValue(pairing::Phase phase)
         return "searching";
     case pairing::Phase::Introducing:
         return "connecting";
+    case pairing::Phase::WaitingForWifi:
+        return "waiting_wifi";
     case pairing::Phase::Pausing:
         return "pausing";
     }

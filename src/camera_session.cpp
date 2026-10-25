@@ -48,6 +48,7 @@ bool accepted = false;
 bool rejected = false; // a refusal that means the camera does not know the card (link_policy)
 bool establishFailed = false; // HCI 0x3e: the connection was not established
 bool endedEarly = false;      // the connection ended after it was made, during the introduction
+bool newerServiceAbsent = false; // the newer-dialect service (1FE71B85) was not on the camera
 char failureText[80] = "";
 
 uint8_t cardUuid[lumix::UUID_LENGTH];
@@ -365,7 +366,8 @@ void onMtu(const camera_link::Event &event)
 void onService(const camera_link::Event &event)
 {
     if (!event.service.found) {
-        setFailure("service: not on this camera (GATT 0x%04x)", event.status);
+        newerServiceAbsent = true; // 'pair' uses this to switch to the older dialect (pairing.cpp)
+        setFailure("service: the newer dialect is not on this camera (GATT 0x%04x)", event.status);
         fail();
         return;
     }
@@ -530,6 +532,7 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     rejected = false;
     establishFailed = false;
     endedEarly = false;
+    newerServiceAbsent = false;
     failureText[0] = '\0';
     if (!camera_link::connect(camera)) {
         setFailure("connect: refused by the SoftDevice");
@@ -569,6 +572,11 @@ bool notEstablished()
 bool endedAfterConnecting()
 {
     return endedEarly;
+}
+
+bool lacksNewerService()
+{
+    return newerServiceAbsent;
 }
 
 bool writesTime()

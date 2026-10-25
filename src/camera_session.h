@@ -47,6 +47,10 @@ const Discovered &discovered();
 // 0x3e, a connection that was never made).
 bool endedAfterConnecting();
 
+// True if the last session failed because the camera has no newer-dialect service (1FE71B85):
+// it speaks only the older dialect, so 'pair' switches to it (pairing.cpp).
+bool lacksNewerService();
+
 // Whether the last session wrote the time: always when pairing; in a connection that stays
 // open unless the clock is off ('clock off', tz_store). link_control judges refusals by it.
 bool writesTime();

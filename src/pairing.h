@@ -8,7 +8,10 @@
 
 namespace pairing {
 
-enum class Phase : uint8_t { Idle, WaitingForFix, Searching, Introducing, Pausing };
+// WaitingForWifi: the older dialect; the card has introduced itself and waits for the one-time
+// Wi-Fi registration a computer does (the desktop app). 'pair' enters it after it finds the camera
+// has no newer-dialect service; 'pair older' uses it throughout.
+enum class Phase : uint8_t { Idle, WaitingForFix, Searching, Introducing, WaitingForWifi, Pausing };
 
 // How the last session ended, for 'status'.
 enum class Result : uint8_t {

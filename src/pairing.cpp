@@ -36,8 +36,10 @@ bool otherStateLogged = false; // "not in pairing mode" said once per session
 bool linkWasOn = false;        // the link is paused during a session
 bool paired = false;           // this session paired a camera
 bool olderMode = false;        // this session uses the older dialect ('pair older')
+bool autoDialect = false;      // plain 'pair': pick the dialect from what the camera has
 Result lastResult = Result::None;
 uint8_t cameraSerial[lumix::SERIAL_LENGTH];
+camera_list::Report lastCamera; // the current attempt's camera, to switch dialect without a rescan
 
 void enter(Phase next)
 {
@@ -111,6 +113,7 @@ void introduce(const camera_list::Entry &camera)
     bluetooth::scanOff(); // connecting needs the radio
     attempt++;
     memcpy(cameraSerial, camera.last.camera.serial, sizeof(cameraSerial));
+    lastCamera = camera.last; // kept in case 'pair' must switch to the older dialect
     char serial[2 * lumix::SERIAL_LENGTH + 1];
     formatSerial(cameraSerial, serial);
     logger::line("pair: attempt %d/%d - camera %s in pairing mode, %d dBm, connecting", attempt, MAX_ATTEMPTS, serial,
@@ -121,7 +124,7 @@ void introduce(const camera_list::Entry &camera)
         attemptFailed(olderMode ? older_session::failure() : camera_session::failure());
         return;
     }
-    enter(Phase::Introducing);
+    enter(olderMode ? Phase::WaitingForWifi : Phase::Introducing);
 }
 
 void startSearch()
@@ -173,6 +176,23 @@ void search(uint32_t now)
         giveUp(otherStateLogged ? Result::NotInPairingMode : Result::NoCamera, "no camera in pairing mode in time");
 }
 
+// 'pair' found no newer-dialect service: the camera speaks only the older dialect. Switch to it on a
+// fresh connection and wait for the one-time Wi-Fi step (the desktop app does it). Not a failed
+// attempt - the newer dialect was simply not there.
+void switchToOlder()
+{
+    char serial[2 * lumix::SERIAL_LENGTH + 1];
+    formatSerial(cameraSerial, serial);
+    logger::line("pair: camera %s has no newer-dialect service - switching to the older dialect", serial);
+    olderMode = true;
+    autoDialect = false;
+    if (!older_session::start(lastCamera, pairing_store::record().uuid, false)) {
+        attemptFailed(older_session::failure());
+        return;
+    }
+    enter(Phase::WaitingForWifi);
+}
+
 void introducing()
 {
     if (olderMode) {
@@ -197,7 +217,10 @@ void introducing()
         break;
     case camera_session::Result::Rejected: // not expected in pairing mode
     case camera_session::Result::Failed:
-        attemptFailed(camera_session::failure());
+        if (autoDialect && camera_session::lacksNewerService())
+            switchToOlder();
+        else
+            attemptFailed(camera_session::failure());
         break;
     }
 }
@@ -213,6 +236,8 @@ const char *phaseText()
         return "looking for a camera in pairing mode";
     case Phase::Introducing:
         return "talking to the camera";
+    case Phase::WaitingForWifi:
+        return "waiting for the Wi-Fi step (older dialect)";
     case Phase::Pausing:
         return "pause before the next attempt";
     }
@@ -251,6 +276,7 @@ static void startSession(bool older)
     paired = false;
     lastResult = Result::None;
     olderMode = older;
+    autoDialect = !older;
     sound::playPairing();
     if (!gpsWasOn)
         gps::on();
@@ -311,6 +337,7 @@ void poll()
         search(now);
         break;
     case Phase::Introducing:
+    case Phase::WaitingForWifi:
         introducing();
         break;
     case Phase::Pausing:
