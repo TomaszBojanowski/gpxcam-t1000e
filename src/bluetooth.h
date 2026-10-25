@@ -29,8 +29,9 @@ void scanOn();
 void scanOff();
 
 // Radio on windowMs of every intervalMs (M6: slower when the camera is away or in
-// standby); applied at once if scanning, kept for the next scanOn(). False if out of the
-// SoftDevice's range (interval up to 10.24 s, window up to the interval).
+// standby); applied at once if scanning, kept for the next scanOn(). During a 'diag scan'
+// run it is kept for when the run ends. False if out of the SoftDevice's range (interval up
+// to 10.24 s, window up to the interval).
 bool setScanTiming(uint16_t intervalMs, uint16_t windowMs);
 
 // Back to the M3 timing: 50 ms of every 100 ms.
@@ -51,8 +52,10 @@ void logState();
 void poll();
 
 // 'diag scan': for about 30 s, logs the advertisements of every close device (not only cameras),
-// each shown once, with the full bytes only for Panasonic manufacturer data (scan_dump.h). It
-// starts scanning if it was not. For telling an unknown camera's dialect from its advertisement.
+// each shown once, with the full bytes only for Panasonic manufacturer data (scan_dump.h), then
+// how many reports came in all. It listens at the normal timing whatever the link's search mode,
+// and switches scanning on for the run if it was off (and off again at its end). For telling an
+// unknown camera's dialect from its advertisement.
 void startScanDump();
 
 } // namespace bluetooth

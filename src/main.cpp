@@ -143,6 +143,7 @@ void logStatus()
     state.gpsOn = gps::isOn();
     state.gpsFix = gps::hasFix();
     state.gpsSatellites = (uint8_t)max(0, gps::satellites());
+    state.gpsHoldSeconds = pairing::gpsHoldSeconds();
     state.paired = pairing_store::ready() && pairing_store::record().paired;
     state.link = link_control::state();
     state.pairing = pairing::progress();
@@ -166,6 +167,7 @@ void logHelp()
     logger::transient("          link on / link off = work with the paired camera (on after start when paired),");
     logger::transient("          pair = pair with a camera in pairing mode (or click + hold 3 s), pair off = cancel,");
     logger::transient("          pair older = pair an older LUMIX camera (the app does a one-time Wi-Fi step),");
+    logger::transient("          pair prepare = GPS on for 10 min, so that pairing finds the time ready,");
     logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera),");
     logger::transient("          tz = time zone of the camera's clock: tz NAME (e.g. tz America/New_York),");
     logger::transient("          tz POSIX-RULE (e.g. tz <+0545>-5:45), tz alone shows it");
@@ -455,6 +457,8 @@ void runCommand(char *cmd)
         pairing::start();
     } else if (strcmp(cmd, "pair older") == 0) {
         pairing::startOlder();
+    } else if (strcmp(cmd, "pair prepare") == 0) {
+        pairing::prepare();
     } else if (strcmp(cmd, "pair off") == 0) {
         if (pairing::active())
             pairing::stop();

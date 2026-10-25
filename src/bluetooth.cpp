@@ -77,6 +77,11 @@ uint32_t dumpDeadlineMs = 0;      // loop task only
 constexpr size_t DUMP_SEEN_MAX = 16;
 uint8_t dumpSeen[DUMP_SEEN_MAX][scan_dump::ADDRESS_LENGTH + 1]; // address + the scan-response flag
 size_t dumpSeenCount = 0;                                       // loop task only
+volatile uint32_t dumpReports = 0; // every report of a run, weak ones and scan responses too (BLE task)
+// A run listens at the normal timing; a timing the link asks for meanwhile is used when it ends.
+uint16_t afterDumpIntervalMs = SCAN_INTERVAL_MS; // loop task only
+uint16_t afterDumpWindowMs = SCAN_WINDOW_MS;
+bool dumpStartedScan = false; // the run switched the scan on, so it switches it off at its end
 
 bool started = false;
 
@@ -137,17 +142,21 @@ void onBleEvent(ble_evt_t *event)
         break;
     }
 
-    // 'diag scan': keep every close-enough advert, not only cameras, for the loop task to show.
-    if (dumpActive && advert.rssi >= scan_dump::RSSI_THRESHOLD_DBM) {
-        scan_dump::Advert raw;
-        memcpy(raw.address, advert.peer_addr.addr, scan_dump::ADDRESS_LENGTH);
-        raw.addressType = advert.peer_addr.addr_type;
-        raw.rssi = advert.rssi;
-        raw.scanResponse = advert.type.scan_response;
-        raw.length = advert.data.len <= scan_dump::MAX_ADVERT_BYTES ? (uint8_t)advert.data.len
-                                                                    : (uint8_t)scan_dump::MAX_ADVERT_BYTES;
-        memcpy(raw.data, advert.data.p_data, raw.length);
-        xQueueSend(dumpQueue, &raw, 0); // full: dropped, the device is likely already shown
+    // 'diag scan': count every report, and keep every close-enough one, not only cameras, for the
+    // loop task to show.
+    if (dumpActive) {
+        dumpReports++;
+        if (advert.rssi >= scan_dump::RSSI_THRESHOLD_DBM) {
+            scan_dump::Advert raw;
+            memcpy(raw.address, advert.peer_addr.addr, scan_dump::ADDRESS_LENGTH);
+            raw.addressType = advert.peer_addr.addr_type;
+            raw.rssi = advert.rssi;
+            raw.scanResponse = advert.type.scan_response;
+            raw.length = advert.data.len <= scan_dump::MAX_ADVERT_BYTES ? (uint8_t)advert.data.len
+                                                                        : (uint8_t)scan_dump::MAX_ADVERT_BYTES;
+            memcpy(raw.data, advert.data.p_data, raw.length);
+            xQueueSend(dumpQueue, &raw, 0); // full: dropped, the device is likely already shown
+        }
     }
 
     // The SoftDevice pauses scanning after each complete report until it is told to go on
@@ -260,6 +269,11 @@ bool setScanTiming(uint16_t intervalMs, uint16_t windowMs)
 {
     if (!started || intervalMs > SCAN_INTERVAL_MAX_MS || windowMs == 0 || windowMs > intervalMs)
         return false;
+    if (dumpActive) { // 'diag scan' keeps the normal timing; this one is used when the run ends
+        afterDumpIntervalMs = intervalMs;
+        afterDumpWindowMs = windowMs;
+        return true;
+    }
     if (intervalMs == scanIntervalMs && windowMs == scanWindowMs)
         return true;
     scanIntervalMs = intervalMs;
@@ -356,7 +370,11 @@ void drainScanDump(uint32_t now)
     }
     if (dumpActive && (int32_t)(now - dumpDeadlineMs) >= 0) {
         dumpActive = false;
-        logger::line("diag scan: done, %u device(s)", (unsigned)dumpSeenCount);
+        logger::line("diag scan: done, %u device(s) shown, %lu reports received", (unsigned)dumpSeenCount,
+                     (unsigned long)dumpReports);
+        if (dumpStartedScan)
+            scanOff(); // as before the run; the link and pairing switch it on again when they need it
+        setScanTiming(afterDumpIntervalMs, afterDumpWindowMs);
     }
 }
 
@@ -368,14 +386,26 @@ void startScanDump()
         logger::line("diag scan: not possible, the SoftDevice did not start");
         return;
     }
+    if (dumpActive) {
+        logger::line("diag scan: already running");
+        return;
+    }
+    // Listen at the normal timing whatever the link's search mode; its timing is kept for after the run.
+    afterDumpIntervalMs = scanIntervalMs;
+    afterDumpWindowMs = scanWindowMs;
+    setNormalScanTiming();
+    dumpStartedScan = !scanActive;
     if (!scanActive)
         scanOn();
     xQueueReset(dumpQueue);
     dumpSeenCount = 0;
+    dumpReports = 0;
     dumpDeadlineMs = millis() + scan_dump::DURATION_MS;
     dumpActive = true; // last: the BLE task may now queue adverts
-    logger::transient("diag scan: on %lu s, reports stronger than %d dBm; full bytes for Panasonic",
-                      (unsigned long)(scan_dump::DURATION_MS / 1000), (int)scan_dump::RSSI_THRESHOLD_DBM);
+    logger::transient("diag scan: on %lu s, radio %u ms of every %u ms, reports stronger than %d dBm; full bytes "
+                      "for Panasonic",
+                      (unsigned long)(scan_dump::DURATION_MS / 1000), scanWindowMs, scanIntervalMs,
+                      (int)scan_dump::RSSI_THRESHOLD_DBM);
 }
 
 void poll()

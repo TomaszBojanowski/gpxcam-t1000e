@@ -1,7 +1,9 @@
 // Pairing with a LUMIX camera (M4), started only on request ('pair' or click + hold).
 // Needs UTC time from the GPS (switched on for the session if it was off) and connects
 // only to a camera in pairing state 03 - never in standby 06. A failed attempt is
-// followed by a pause; after 3 attempts pairing gives up. Loop task only.
+// followed by a pause; after 3 attempts pairing gives up. A session that ends without
+// pairing leaves a GPS it switched on running for 10 min, so another try looks for the camera
+// at once. Loop task only.
 #pragma once
 
 #include <stdint.h>
@@ -38,6 +40,15 @@ void start();
 // Like start(), but pairs in the older LUMIX dialect ('pair older'): drives older_session and
 // saves the pairing with DIALECT_OLDER. Needs the desktop app for the one-time Wi-Fi step.
 void startOlder();
+
+// 'pair prepare': the GPS on for 10 min (until a session starts), so that a session started
+// meanwhile skips the wait for GPS time; the card page sends it on connecting to an unpaired
+// card. Refused while a session runs, and not needed while the link runs (it has the GPS).
+void prepare();
+
+// Seconds left of the GPS kept on for a pairing ('pair prepare', another try), 0 without:
+// 'status' gps_hold.
+uint32_t gpsHoldSeconds();
 
 // Cancels a running session: disconnects and puts GPS and scanning back as they were, or,
 // with resumeLink, starts the link again if it was on (System OFF passes false). Does

@@ -423,6 +423,12 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   menu – paired at the first attempt in about 1.8 s, the camera showed "Pairing completed", and "T1000-E" in its device
   list; the gesture starts the session, a short press interrupts it; the camera's number is kept after switching off and on.
 - **Not tested on the card:** the failure path with 10 s and 30 s pauses – no attempt ended in failure.
+- **Timing (1.5.0-beta.2):** an S5 stays in pairing mode only about 30 s (a tester's nRF Connect: 29 advertisements,
+  then silence), so the card must already be looking when pairing starts on the camera. The search lasts 120 s
+  (60 s before). A session that ends without pairing keeps a GPS it switched on running for 10 min, and `pair
+  prepare` (sent by the card page on connecting to an unpaired card) switches it on for 10 min; a session started
+  meanwhile skips the wait for GPS time. When the hold runs out the GPS goes back to Backup mode, unless the link
+  uses it; `status` shows the seconds left as `gps_hold`.
 
 ## Normal work (M5)
 

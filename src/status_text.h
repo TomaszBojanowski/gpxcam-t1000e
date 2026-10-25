@@ -5,7 +5,7 @@
 //
 //   status: format=1 fw=1.3.0 git=1234567
 //   status: battery_mv=4100 battery_pct=89 charger=charging
-//   status: gps=on gps_fix=1 gps_sat=11
+//   status: gps=on gps_fix=1 gps_sat=11 gps_hold=0
 //   status: paired=1 link=connected
 //   status: pair=idle pair_attempt=0 pair_result=none
 //   status: clock=on tz=Europe/Warsaw
@@ -47,6 +47,7 @@ struct State {
     bool gpsOn;
     bool gpsFix;
     uint8_t gpsSatellites; // 0 when not known
+    uint32_t gpsHoldSeconds; // the GPS kept on for a pairing to come, 0 without (pairing::gpsHoldSeconds())
     bool paired;
     link_control::State link;
     pairing::Progress pairing;
