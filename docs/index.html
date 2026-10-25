@@ -590,7 +590,7 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
     <p><span id="about-runs">The page runs only in your browser and sends</span> nothing over the internet. It talks
        to the card over USB at
        115200 baud and sends it only <code>v</code>, <code>status</code>, <code>pair</code>, <code>pair off</code>,
-       <code>unpair</code>, <code>clock on</code>, <code>clock off</code>, <code>updates normal</code>,
+       <code>pair older</code>, <code>unpair</code>, <code>clock on</code>, <code>clock off</code>, <code>updates normal</code>,
        <code>updates frequent</code>, <code>sound loud</code>, <code>sound quiet</code>, <code>sound off</code>,
        <code>tz</code> and <code>tz</code> with the zone you chose.
        Offsets in the list come from your browser and are only a guide; the card uses its own copy of the tz
@@ -1614,10 +1614,10 @@ function computerZone() {
 
 // ---- The card's console (pure functions) ----
 
-// The only commands the page may send: v, status, pair, pair off, unpair, clock on, clock off,
-// updates normal, updates frequent, sound loud, sound quiet, sound off, tz, and tz with a name
-// exactly as the table spells it.
-const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "unpair", "clock on", "clock off",
+// The only commands the page may send: v, status, pair, pair off, pair older, unpair, clock on,
+// clock off, updates normal, updates frequent, sound loud, sound quiet, sound off, tz, and tz with
+// a name exactly as the table spells it.
+const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "pair older", "unpair", "clock on", "clock off",
   ...UPDATES_SETTINGS.map((setting) => `updates ${setting}`), ...SOUND_SETTINGS.map((setting) => `sound ${setting}`),
   "tz"]);
 function allowedCommand(command) {

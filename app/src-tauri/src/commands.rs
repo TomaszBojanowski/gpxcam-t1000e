@@ -6,11 +6,12 @@
 include!(concat!(env!("OUT_DIR"), "/zones.rs"));
 
 /// Sent exactly as written.
-pub const FIXED: [&str; 13] = [
+pub const FIXED: [&str; 14] = [
     "v",
     "status",
     "pair",
     "pair off",
+    "pair older",
     "unpair",
     "clock on",
     "clock off",
