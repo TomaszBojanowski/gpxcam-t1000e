@@ -182,6 +182,8 @@ void logHelp()
     logger::transient("             diag hang (test of the watchdog: the card restarts after %lu s),",
                       (unsigned long)watchdog::TIMEOUT_S);
     logger::transient("             diag clk [S] (64 MHz crystal running, now or in S s, kept for 'log')");
+    logger::transient("             diag scan (30 s dump of nearby advertisements, to see a camera's dialect;");
+    logger::transient("                       it has the camera's serial number, so send the log privately)");
 }
 
 void rebootToUf2Bootloader()
@@ -495,6 +497,8 @@ void runCommand(char *cmd)
         diag::hang();
     } else if (strcmp(cmd, "diag clk") == 0) {
         diag::checkClock(0);
+    } else if (strcmp(cmd, "diag scan") == 0) {
+        bluetooth::startScanDump();
     } else if (strncmp(cmd, CLOCK_CHECK_COMMAND, strlen(CLOCK_CHECK_COMMAND)) == 0) {
         runClockCheck(cmd + strlen(CLOCK_CHECK_COMMAND));
     } else if (cmd[0] != '\0') {
