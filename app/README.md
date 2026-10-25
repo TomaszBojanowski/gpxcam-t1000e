@@ -50,6 +50,10 @@ Most newer LUMIX cameras (S5II and the like) pair straight from the card page or
 need one extra step over the camera's own Wi-Fi, which only the app can do (a web page cannot reach
 the camera that way). In the app, use *Pair an older camera*:
 
+https://github.com/user-attachments/assets/be798559-20e4-4041-9bb5-081d97a6180e
+
+The video is a schematic run-through; the on-screen steps may differ a little from your camera.
+
 1. Give the card a GPS fix and start pairing on the camera.
 2. Click *Start*. The card introduces itself over Bluetooth; the camera then shows a Wi-Fi network
    and a password on its screen.
