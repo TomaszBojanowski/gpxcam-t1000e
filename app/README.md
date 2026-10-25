@@ -54,10 +54,15 @@ https://github.com/user-attachments/assets/21a5d4a4-dccd-4a46-86e8-fbeb340417f2
 
 The video is a schematic run-through; the on-screen steps may differ a little from your camera.
 
-1. Give the card a GPS fix and start pairing on the camera.
-2. Click *Start*. The card introduces itself over Bluetooth; the camera then shows a Wi-Fi network
-   and a password on its screen.
-3. Join that Wi-Fi network on this computer, by hand. The app registers the card over the camera's
+1. Put the card where its GPS gets a fix, outdoors or by a window. The app switches the card's GPS
+   on as soon as it connects (gpxcam 1.5.0-beta.2 or newer); the GPS tile shows *Fix* when it is
+   ready, which can take a few minutes after a fresh start.
+2. Click *Start*. Do not start pairing on the camera yet.
+3. **Only when the app says *Now start Bluetooth pairing on the camera*** do it (the camera's
+   Bluetooth menu → Pairing). The order matters: the camera stays in pairing mode only about 30
+   seconds, so the card must already be looking for it (for up to 2 minutes). The card introduces
+   itself over Bluetooth; the camera then shows a Wi-Fi network and a password on its screen.
+4. Join that Wi-Fi network on this computer, by hand. The app registers the card over the camera's
    own address (192.168.54.1) — never the internet — and tells you how it went.
 
 Join the camera's Wi-Fi network shown on its screen. On the S5 and similar it has **no password by
@@ -65,6 +70,9 @@ default**, so just pick it from the list. If the camera asks for one, the passwo
 screen or in its Wi-Fi setup: **[Setup] → [Wi-Fi] → [Wi-Fi Setup] → [Wi-Fi Password]** (see the
 [S5 manual](https://eww.pavc.panasonic.co.jp/dscoi/DC-S5/GA_GW_GC_GH_GN_GT_GD/DC-S5_DVQP2213ZD_full_eng.pdf),
 pages 424–426).
+
+If the card does not find the camera, click *Start* again: the card keeps its GPS on for 10 minutes
+after a pairing that did not succeed, so it starts looking for the camera at once.
 
 After it succeeds, the card connects to the camera over Bluetooth alone, like any other pairing.
 The protocol is in [docs/PROTOCOL.md](../docs/PROTOCOL.md).

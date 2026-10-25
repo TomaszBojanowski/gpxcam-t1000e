@@ -298,6 +298,14 @@ ol.steps li { margin: var(--s1) 0; }
 }
 progress { display: block; width: 100%; height: 8px; margin: var(--s2) 0 0; accent-color: var(--accent); }
 .good { color: var(--good); font-weight: 600; }
+/* The user's turn while the card waits: what to do now, on the camera */
+.act {
+  padding: var(--s2) var(--s3);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-s);
+  background: var(--accent-tint);
+  font-weight: 600;
+}
 /* Under way: a pulsing dot before the text (connecting, saving, pairing) */
 .busy::before {
   content: "";
@@ -510,11 +518,14 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
       <details id="pair-help" class="help" open>
         <summary>How to pair</summary>
         <ol class="steps">
-          <li>Put the card where its GPS gets a fix, outdoors or by a window: pairing needs the time from it.</li>
-          <li>On the camera, start pairing in its Bluetooth menu. If the camera lists T1000&#8209;E from an earlier
-              pairing, delete it there first: the camera does not pair a card it already knows.</li>
-          <li>Click <em>Pair</em>. The card waits up to 2 minutes for GPS time, looks for the camera for up to
-              1 minute and tries up to 3 times.</li>
+          <li>Put the card where its GPS gets a fix, outdoors or by a window: pairing needs the time from it.
+              The GPS tile above shows <em>Fix</em> when it is ready.</li>
+          <li>If the camera lists T1000&#8209;E from an earlier pairing, delete it there first: the camera does
+              not pair a card it already knows.</li>
+          <li>Click <em>Pair</em>. Do not start pairing on the camera yet: some cameras stay in pairing mode only
+              about 30 seconds, so the card must already be looking for them.</li>
+          <li>When the page says <em>Now start Bluetooth pairing on the camera</em>, start pairing in the
+              camera's Bluetooth menu. The card looks for it for up to 2 minutes and tries up to 3 times.</li>
         </ol>
       </details>
       <div id="pair-row" class="row">
@@ -544,9 +555,13 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
       <details class="help">
         <summary>How it works</summary>
         <ol class="steps">
-          <li>Put the card where its GPS gets a fix, and start pairing on the camera.</li>
-          <li>Click <em>Start</em>. The card introduces itself; the camera then shows a Wi-Fi network and a
-              password.</li>
+          <li>Put the card where its GPS gets a fix, outdoors or by a window. The app switches the GPS on
+              when it connects; the GPS tile above shows <em>Fix</em> when it is ready.</li>
+          <li>Click <em>Start</em>. Do not start pairing on the camera yet: it stays in pairing mode only about
+              30 seconds, so the card must already be looking for it.</li>
+          <li>When the app says <em>Now start Bluetooth pairing on the camera</em>, do it (the camera's
+              Bluetooth menu &rarr; Pairing). The card introduces itself; the camera then shows a Wi-Fi network
+              and a password.</li>
           <li>On this computer, join that Wi-Fi network by hand. The app finishes the pairing and tells you how
               it went.</li>
         </ol>
@@ -655,9 +670,10 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
     <p><span id="about-runs">The page runs only in your browser and sends</span> nothing over the internet. It talks
        to the card over USB at
        115200 baud and sends it only <code>v</code>, <code>status</code>, <code>pair</code>, <code>pair off</code>,
-       <code>pair older</code>, <code>unpair</code>, <code>clock on</code>, <code>clock off</code>, <code>updates normal</code>,
-       <code>updates frequent</code>, <code>sound loud</code>, <code>sound quiet</code>, <code>sound off</code>,
-       <code>log</code>, <code>diag scan</code>, <code>tz</code> and <code>tz</code> with the zone you chose.
+       <code>pair older</code>, <code>pair prepare</code>, <code>unpair</code>, <code>clock on</code>,
+       <code>clock off</code>, <code>updates normal</code>, <code>updates frequent</code>, <code>sound loud</code>,
+       <code>sound quiet</code>, <code>sound off</code>, <code>log</code>, <code>diag scan</code>, <code>tz</code>
+       and <code>tz</code> with the zone you chose.
        Offsets in the list come from your browser and are only a guide; the card uses its own copy of the tz
        database.</p>
     <p id="about-link"><a href="https://github.com/TomaszBojanowski/gpxcam-t1000e">gpxcam-t1000e on GitHub</a></p>
@@ -1538,11 +1554,12 @@ const STATUS_PERIOD_MS = 5000; // the card's state on the page refreshes itself 
 const PAIRING_STATUS_PERIOD_MS = 2000; // ... and this often while the card pairs
 const PAIR_TIMEOUT_MS = 3000;
 const UNPAIR_TIMEOUT_MS = 10000; // the card first puts its GPS to sleep (up to 7.5 s), then writes flash
-const OLDER_START_TIMEOUT_MS = 210000; // 'pair older': the card may wait 2 min for a GPS fix and 1 min for the camera, then introduce
+// 'pair older': the card may wait 2 min for a GPS fix and 2 min for the camera, then introduce.
+const OLDER_START_TIMEOUT_MS = 270000;
 // Pairing as the card does it (src/pairing.cpp): the limits the page tells.
 const PAIR_ATTEMPTS = 3;
 const PAIR_FIX_WAIT_TEXT = "2 minutes";
-const PAIR_SEARCH_TEXT = "1 minute";
+const PAIR_SEARCH_TEXT = "2 minutes"; // 1 minute up to gpxcam 1.5.0-beta.1
 const TZ_TIMEOUT_MS = 6000; // saving writes flash: about 1 s, more the first time
 const CLOCK_TIMEOUT_MS = 6000; // the clock setting is saved in the same file as the time zone
 const SOUND_TIMEOUT_MS = 6000; // saving writes flash, like the time zone
@@ -1683,10 +1700,11 @@ function computerZone() {
 
 // ---- The card's console (pure functions) ----
 
-// The only commands the page may send: v, status, pair, pair off, pair older, unpair, clock on,
-// clock off, updates normal, updates frequent, sound loud, sound quiet, sound off, log, diag scan,
-// tz, and tz with a name exactly as the table spells it.
-const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "pair older", "unpair", "clock on", "clock off",
+// The only commands the page may send: v, status, pair, pair off, pair older, pair prepare, unpair,
+// clock on, clock off, updates normal, updates frequent, sound loud, sound quiet, sound off, log,
+// diag scan, tz, and tz with a name exactly as the table spells it.
+const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "pair older", "pair prepare", "unpair",
+  "clock on", "clock off",
   ...UPDATES_SETTINGS.map((setting) => `updates ${setting}`), ...SOUND_SETTINGS.map((setting) => `sound ${setting}`),
   "log", "diag scan", "tz"]);
 function allowedCommand(command) {
@@ -1972,6 +1990,8 @@ function parseStatus(lines) {
       updates: values.updates ?? null, // null: gpxcam before 1.4.0, always normal
       updatesNow: values.updates_now ?? null,
       storage: values.storage ?? null, // null: gpxcam before 1.4.0
+      // null: gpxcam before 1.5.0-beta.2, without 'pair prepare'
+      gpsHold: values.gps_hold !== undefined ? Number(values.gps_hold) : null,
     },
   };
 }
@@ -2035,9 +2055,9 @@ function zoneTile(state) {
 function pairingText(state) {
   const satellites = state.gpsSatellites === 1 ? "1 satellite" : `${state.gpsSatellites} satellites`;
   switch (state.pair) {
-    case "waiting_gps": return `Waiting for GPS time, up to ${PAIR_FIX_WAIT_TEXT} (${satellites} so far)...`;
-    case "searching": return state.pairAttempt === 0 ?
-      `Looking for a camera in pairing mode, up to ${PAIR_SEARCH_TEXT}...` :
+    case "waiting_gps": return `Waiting for GPS time, up to ${PAIR_FIX_WAIT_TEXT} (${satellites} so far). Do not ` +
+      "start pairing on the camera yet...";
+    case "searching": return state.pairAttempt === 0 ? NOW_START_TEXT :
       `Looking for the camera again (attempt ${state.pairAttempt + 1} of ${PAIR_ATTEMPTS})...`;
     case "connecting": return `Talking to the camera (attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS})...`;
     case "waiting_wifi": return "This is an older camera - use \"Pair an older camera\" in the gpxcam card app for the one-time Wi-Fi step.";
@@ -2046,8 +2066,23 @@ function pairingText(state) {
   }
 }
 
-// [text, kind] for how a pairing ended ('status': pair_result), or null for none.
-function pairResultText(result) {
+// The user's turn: the card is looking, so the camera's short pairing mode (an S5: about 30 s) is not
+// lost while the card waits for GPS time. Shown as 'act' (pairingKind()).
+const NOW_START_TEXT = "Now start Bluetooth pairing on the camera (its Bluetooth menu \u2192 Pairing). The card " +
+  `looks for it for up to ${PAIR_SEARCH_TEXT}.`;
+
+// The class of the pairing stage: 'busy act' when it is the user's turn on the camera.
+function pairingKind(state) {
+  return state.pair === "searching" && state.pairAttempt === 0 ? "busy act" : "busy";
+}
+
+// [text, kind] for how a pairing ended ('status': pair_result), or null for none. button: what
+// starts it again (Pair, or Start of older-camera pairing); gpsReady: the card keeps its GPS on
+// for another try (gpxcam 1.5.0-beta.2).
+function pairResultText(result, button = "Pair", gpsReady = false) {
+  const again = `Click ${button} again, and start pairing on the camera only when this says "Now start ` +
+    "Bluetooth pairing on the camera\"." + (gpsReady ? " The GPS stays ready for 10 minutes, so the card starts " +
+    "looking at once." : "");
   switch (result) {
     case "none": return null;
     case "paired": return ["Paired. From now on the card connects to the camera by itself.", "good"];
@@ -2055,13 +2090,10 @@ function pairResultText(result) {
     case "not_possible": return ["The card cannot pair now: its Bluetooth or its storage is not ready.", "bad"];
     case "no_gps_fix": return [`No GPS time within ${PAIR_FIX_WAIT_TEXT}. Put the card outdoors or by a window ` +
       "and try again.", "bad"];
-    case "no_camera": return [`No camera in pairing mode within ${PAIR_SEARCH_TEXT}. Start pairing on the camera ` +
-      "and try again.", "bad"];
-    case "not_in_pairing_mode": return ["The card saw a LUMIX camera, but not in pairing mode. Start pairing in the " +
-      "camera's Bluetooth menu and try again.", "bad"];
+    case "no_camera": return [`No camera in pairing mode within ${PAIR_SEARCH_TEXT}. ${again}`, "bad"];
+    case "not_in_pairing_mode": return [`The card saw a LUMIX camera, but not in pairing mode. ${again}`, "bad"];
     case "failed": return [`The camera did not take the card in ${PAIR_ATTEMPTS} attempts. If the camera lists ` +
-      "T1000\u2011E from an earlier pairing, delete it there. Then start pairing on the camera again and retry.",
-    "bad"];
+      `T1000\u2011E from an earlier pairing, delete it there. ${again}`, "bad"];
     case "cancelled": return ["Pairing cancelled.", ""];
     default: return [`Pairing ended: ${result}.`, ""];
   }
@@ -2088,15 +2120,27 @@ function olderOutcomeText(outcome) {
 }
 
 // While 'pair older' works toward the Wi-Fi step, the card's pairing phase (status 'pair=...') as
-// wizard text, or null for a phase with nothing to add.
-function olderStartProgress(pairPhase) {
+// wizard text, or null for a phase with nothing to add. cameraSeen: the card saw the camera, but not
+// in pairing mode. While the card looks for the camera, it is the user's turn: the camera stays in
+// pairing mode only about 30 seconds, so it must be started then, not before (shown as 'act').
+function olderStartProgress(pairPhase, cameraSeen = false) {
   switch (pairPhase) {
-    case "waiting_gps": return "Waiting for a GPS fix - put the card outdoors or by a window; this can take a few minutes after a fresh start...";
-    case "searching": return "Looking for the camera in pairing mode...";
+    case "waiting_gps": return "Waiting for a GPS fix - put the card outdoors or by a window; this can take a few " +
+      "minutes after a fresh start. Do not start pairing on the camera yet...";
+    case "searching": return cameraSeen
+      ? "Now start Bluetooth pairing on the camera - the card sees it, but not in pairing mode yet (Bluetooth " +
+        `pairing, not Wi-Fi). The card looks for it for up to ${PAIR_SEARCH_TEXT}.`
+      : NOW_START_TEXT;
     case "connecting": return "Connecting to the camera...";
     case "waiting_wifi": return "Introducing the card to the camera...";
     default: return null;
   }
+}
+
+// On connecting: an unpaired card that can ('pair prepare', gpxcam 1.5.0-beta.2) switches its GPS on
+// for 10 minutes, so that pairing finds the time ready. The card is on USB then: it costs no battery.
+function shouldPrepareGps(state) {
+  return state.gpsHold !== null && !state.paired && state.pair === "idle";
 }
 
 // ---- Diagnostics (pure functions) ----
@@ -2244,6 +2288,10 @@ class Card {
 
   log() {
     return this.ask("log", isLogLine, LOG_TIMEOUT_MS);
+  }
+
+  prepareGps() {
+    return this.ask("pair prepare", isPairAnswer, PAIR_TIMEOUT_MS, () => true);
   }
 
   // 'pair older' (app only): starts older-dialect pairing and waits for the card's one line with the
@@ -2528,7 +2576,7 @@ function startPage() {
     ui.pairCancel.classList.toggle("hidden", !pairing);
     ui.unpair.classList.toggle("hidden", !paired || pairing);
     if (!paired || pairing) ui.unpairConfirm.classList.add("hidden");
-    const [text, kind] = pairing ? [pairingText(lastState), "busy"] : pairMessage || ["", ""];
+    const [text, kind] = pairing ? [pairingText(lastState), pairingKind(lastState)] : pairMessage || ["", ""];
     setStatus(ui.pairProgress, text, kind);
     refreshButtons();
   };
@@ -2540,7 +2588,7 @@ function startPage() {
       pairMessage = null;
     } else if (watchingPairing) {
       watchingPairing = false;
-      pairMessage = pairResultText(state.pairResult);
+      pairMessage = pairResultText(state.pairResult, "Pair", state.gpsHold !== null);
     }
   };
 
@@ -2800,6 +2848,7 @@ function startPage() {
     if (status.kind === "ok") {
       setStatus(ui.cardStatus, "Connected to the card", "good");
       showState(status.state);
+      if (shouldPrepareGps(status.state)) opened.prepareGps().catch(() => {}); // the next refresh shows it
       refreshTimer = setTimeout(refresh, STATUS_PERIOD_MS);
     }
     showClock();
@@ -2960,7 +3009,8 @@ function startPage() {
     ui.olderStart.classList.add("hidden");
     ui.olderCancel.classList.remove("hidden");
     refreshButtons();
-    setStatus(ui.olderProgress, "Starting - the card needs a GPS fix and a camera in pairing mode...", "busy");
+    setStatus(ui.olderProgress, "Starting - wait for \"Looking for the camera\" before you start pairing on the " +
+      "camera...", "busy");
     let accepted = false;
     let info = null;
     let notInPairingMode = false; // the card saw a camera, but not in Bluetooth pairing mode
@@ -2982,10 +3032,8 @@ function startPage() {
         if (card !== asked) return;
         if (lastState && lastState.pair !== "idle") {
           started = true;
-          const text = notInPairingMode && lastState.pair === "searching"
-            ? "A camera is here but not in pairing mode - start Bluetooth pairing on it (not Wi-Fi), then wait."
-            : olderStartProgress(lastState.pair);
-          if (text) setStatus(ui.olderProgress, text, "busy");
+          const text = olderStartProgress(lastState.pair, notInPairingMode);
+          if (text) setStatus(ui.olderProgress, text, lastState.pair === "searching" ? "busy act" : "busy");
         } else if (started) {
           break; // the card ended its pairing before the Wi-Fi step
         }
@@ -3012,7 +3060,7 @@ function startPage() {
       } else {
         // The card gave up (or the wait ran out): show the card's own result.
         await refresh();
-        const result = lastState ? pairResultText(lastState.pairResult) : null;
+        const result = lastState ? pairResultText(lastState.pairResult, "Start", lastState.gpsHold !== null) : null;
         setStatus(ui.olderProgress, result ? result[0] : "The card did not reach the Wi-Fi step. Try again.",
           result ? result[1] : "bad");
       }

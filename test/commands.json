@@ -1,12 +1,12 @@
 {
   "about": "The commands the card page and the desktop app may send to the card (docs/index.html allowedCommand(), app/src-tauri/src/commands.rs). fixed: exactly these; allowed: some more that pass (tz with a zone or alias of the card's table, spelled as the table spells it); refused: what must never reach the card. Tested by test/web/card_page.test.mjs and cargo test.",
-  "fixed": ["v", "status", "pair", "pair off", "pair older", "unpair", "clock on", "clock off", "updates normal", "updates frequent",
-            "sound loud", "sound quiet", "sound off", "log", "diag scan", "tz"],
+  "fixed": ["v", "status", "pair", "pair off", "pair older", "pair prepare", "unpair", "clock on", "clock off",
+            "updates normal", "updates frequent", "sound loud", "sound quiet", "sound off", "log", "diag scan", "tz"],
   "allowed": ["tz Europe/Warsaw", "tz America/New_York", "tz Asia/Kolkata", "tz Poland", "tz Etc/GMT+5", "tz UTC"],
   "refused": ["dfu", "off", "link off", "link on", "log ", "Log", "p", "bat log", "bat log on", "bat log clear",
               "status ", "clock", "clock  on", "Clock off", "sound", "sound on", "sound  off", "Sound loud",
-              "diag snd 10", "diag bat", "diag scan ", "diag  scan", "Diag scan", "diag", "pair on", "Pair",
-              "unpair now", "updates", "updates fast", "updates  normal", "Updates frequent", "updates frequent ",
-              "tz ", "tz europe/warsaw", "tz Mars/Olympus_Mons", "tz <+0545>-5:45", "tz Europe/Warsaw\ndfu",
-              "tz Europe/Warsaw ", "tz Europe/Warsaw\r", "v\n", "V", ""]
+              "diag snd 10", "diag bat", "diag scan ", "diag  scan", "Diag scan", "diag", "pair on", "pair prepare ",
+              "Pair", "unpair now", "updates", "updates fast", "updates  normal", "Updates frequent",
+              "updates frequent ", "tz ", "tz europe/warsaw", "tz Mars/Olympus_Mons", "tz <+0545>-5:45",
+              "tz Europe/Warsaw\ndfu", "tz Europe/Warsaw ", "tz Europe/Warsaw\r", "v\n", "V", ""]
 }

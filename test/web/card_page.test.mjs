@@ -20,7 +20,7 @@ const page = vm.runInContext(
     " classifySoundAnswer, soundAnswerText, soundNoteText, soundText, UPDATES_SETTINGS, classifyUpdatesAnswer," +
     " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText, chooseTransport," +
     " openProblemText, parseOlderRegister, olderOutcomeText, olderStartProgress, FIXED_COMMANDS, isLogLine," +
-    " belongsToScan, scanEnded, scanResultText, diagnosticsText, SCAN_RUN_MS })",
+    " belongsToScan, scanEnded, scanResultText, diagnosticsText, SCAN_RUN_MS, shouldPrepareGps, pairingKind })",
   vm.createContext({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console }),
 );
 
@@ -52,7 +52,7 @@ const STATE = {
   version: "1.3.0", git: "1234567", batteryMv: 4100, batteryPercent: 89, charger: "charging", gpsOn: true,
   gpsFix: true, gpsSatellites: 11, paired: true, link: "connected", pair: "idle", pairAttempt: 0,
   pairResult: "none", clockOn: true, timeZone: "Europe/Warsaw", sound: "loud", updates: null, updatesNow: null,
-  storage: null,
+  storage: null, gpsHold: null,
 };
 const NO_STATUS = ["command: unknown 'status'\r\n", "commands: v = version and reset reason,\r\n"];
 const statusLines = (text) => text.trim().split("\n");
@@ -330,6 +330,11 @@ test("parseOlderRegister reads the card's line, and olderOutcomeText maps the re
     assert.notEqual(page.olderStartProgress(phase), null, phase);
   }
   for (const phase of ["idle", "pausing"]) assert.equal(page.olderStartProgress(phase), null, phase);
+  // The order matters: an S5 stays in pairing mode only about 30 s, so the card must already be looking.
+  assert.match(page.olderStartProgress("waiting_gps"), /Do not start pairing on the camera yet/);
+  assert.match(page.olderStartProgress("searching"), /^Now start Bluetooth pairing on the camera \(its Bluetooth menu/);
+  const seen = page.olderStartProgress("searching", true); // the camera is there, but not in pairing mode
+  assert.match(seen, /^Now start Bluetooth pairing on the camera - the card sees it/);
 });
 
 test("the port is opened only at 115200 baud, with DTR", async () => {
@@ -1153,8 +1158,11 @@ test("with gpxcam 1.2 the sound stays loud and cannot be changed", async () => {
 
 test("the pairing stages and results are explained", () => {
   const pairing = (pair, pairAttempt, gpsSatellites = 3) => page.pairingText({ ...STATE, pair, pairAttempt, gpsSatellites });
-  assert.equal(pairing("waiting_gps", 0), "Waiting for GPS time, up to 2 minutes (3 satellites so far)...");
-  assert.equal(pairing("searching", 0), "Looking for a camera in pairing mode, up to 1 minute...");
+  assert.equal(pairing("waiting_gps", 0),
+    "Waiting for GPS time, up to 2 minutes (3 satellites so far). Do not start pairing on the camera yet...");
+  assert.equal(pairing("searching", 0),
+    "Now start Bluetooth pairing on the camera (its Bluetooth menu \u2192 Pairing). The card looks for it for up to " +
+    "2 minutes.");
   assert.equal(pairing("searching", 1), "Looking for the camera again (attempt 2 of 3)...");
   assert.equal(pairing("connecting", 2), "Talking to the camera (attempt 2 of 3)...");
   assert.equal(pairing("pausing", 1), "Attempt 1 of 3 did not work; trying again in a moment...");
@@ -1194,7 +1202,8 @@ test("pairing from the page: the stages, the result, then forgetting the camera"
   answers.status = statusWith({ ...NOT_PAIRED, pair: "waiting_gps", gps_fix: 0, gps_sat: 3 });
   await ui.pair.fire("click");
   assert.deepEqual(port.written.slice(-2), ["pair\n", "status\n"]);
-  assert.equal(ui["pair-progress"].textContent, "Waiting for GPS time, up to 2 minutes (3 satellites so far)...");
+  assert.equal(ui["pair-progress"].textContent,
+    "Waiting for GPS time, up to 2 minutes (3 satellites so far). Do not start pairing on the camera yet...");
   assert.equal(ui["pair-progress"].className, "busy"); // under way: a pulsing dot
   assert.equal(ui.pair.disabled, true);
   assert.equal(ui["pair-cancel"].hidden, false);
@@ -1260,7 +1269,8 @@ test("a cancelled pairing, one refused at once and one started with the card's b
 
   answers.status = statusWith({ ...NOT_PAIRED, pair: "searching" }); // click + hold on the card
   await ui.refresh.fire("click");
-  assert.match(ui["pair-progress"].textContent, /^Looking for a camera in pairing mode/);
+  assert.match(ui["pair-progress"].textContent, /^Now start Bluetooth pairing on the camera/);
+  assert.equal(ui["pair-progress"].className, "busy act"); // the user's turn, set apart
   answers.status = statusWith({ ...NOT_PAIRED, pair_result: "not_in_pairing_mode" });
   await ui.refresh.fire("click");
   assert.match(ui["pair-progress"].textContent, /^The card saw a LUMIX camera, but not in pairing mode/);
@@ -1391,4 +1401,56 @@ test("Scan for cameras on a card without it says which gpxcam brought it", async
   assert.match(ui["diag-status"].textContent, /^gpxcam 1\.4\.0 cannot scan; the scan came with 1\.5\.0-beta\.1\./);
   assert.equal(ui["diag-status"].className, "bad");
   await ui.disconnect.fire("click");
+});
+
+// ---- The GPS ready for pairing (gpxcam 1.5.0-beta.2) ----
+
+// STATUS_ANSWER of a card with 'pair prepare': the GPS line has gps_hold.
+const STATUS_GPS_HOLD = [STATUS_ANSWER.join("").replace("gps_sat=11", "gps_sat=11 gps_hold=0")];
+
+test("gps_hold tells a card with 'pair prepare'; only an unpaired, idle one gets its GPS ready", async () => {
+  const { card } = await openCard({ status: statusWith({ gps_hold: 540 }, STATUS_GPS_HOLD) });
+  const { state } = await card.status();
+  assert.equal(state.gpsHold, 540);
+  const unpaired = { ...STATE, paired: false, link: "off", gpsHold: 0 };
+  assert.equal(page.shouldPrepareGps(unpaired), true);
+  assert.equal(page.shouldPrepareGps({ ...unpaired, gpsHold: null }), false); // gpxcam before 1.5.0-beta.2
+  assert.equal(page.shouldPrepareGps({ ...unpaired, paired: true }), false); // the link has the GPS
+  assert.equal(page.shouldPrepareGps({ ...unpaired, pair: "searching" }), false);
+});
+
+test("connecting to an unpaired card switches its GPS on for pairing; a paired one is left alone", async () => {
+  const unpaired = simulatedCard({ v: VERSION_1_4, status: statusWith(NOT_PAIRED, STATUS_GPS_HOLD),
+    "pair prepare": ["pair: GPS on for 600 s, ready for pairing\r\n"] });
+  const ui = openPage(unpaired);
+  await ui.connect.fire("click");
+  await tick();
+  assert.deepEqual(unpaired.written, ["v\n", "status\n", "pair prepare\n"]);
+  await ui.disconnect.fire("click");
+
+  const paired = { v: VERSION_1_4, status: STATUS_GPS_HOLD };
+  const withoutPrepare = { v: VERSION_1_4, status: statusWith(NOT_PAIRED) }; // before 1.5.0-beta.2
+  for (const answers of [paired, withoutPrepare]) {
+    const port = simulatedCard(answers);
+    const other = openPage(port);
+    await other.connect.fire("click");
+    await tick();
+    assert.deepEqual(port.written, ["v\n", "status\n"]);
+    await other.disconnect.fire("click");
+  }
+});
+
+test("a pairing that found no camera asks for the order that works, with the button that starts it", () => {
+  for (const result of ["no_camera", "not_in_pairing_mode", "failed"]) {
+    const [text, kind] = page.pairResultText(result, "Start", true);
+    assert.match(text, /Click Start again, and start pairing on the camera only when this says "Now start Bluetooth/);
+    assert.match(text, /The GPS stays ready for 10 minutes/);
+    assert.equal(kind, "bad");
+    assert.match(page.pairResultText(result)[0], /Click Pair again/);
+    assert.doesNotMatch(page.pairResultText(result)[0], /GPS stays ready/); // before 1.5.0-beta.2
+  }
+  assert.equal(page.pairingKind({ ...STATE, pair: "searching", pairAttempt: 0 }), "busy act");
+  for (const [pair, pairAttempt] of [["searching", 1], ["waiting_gps", 0], ["connecting", 1]]) {
+    assert.equal(page.pairingKind({ ...STATE, pair, pairAttempt }), "busy", `${pair} ${pairAttempt}`);
+  }
 });

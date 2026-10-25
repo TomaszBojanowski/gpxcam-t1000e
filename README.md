@@ -115,10 +115,12 @@ computer without Chrome or Edge use [the desktop app](#the-desktop-app)):
 3. Click **Connect** and choose **T1000-E gpxcam**.
 
 The page runs only in the browser and sends nothing over the internet. It sends the card only `v`,
-`status`, `pair`, `pair off`, `unpair`, `clock on`, `clock off`, `sound loud`, `sound quiet`,
-`sound off`, `updates normal`, `updates frequent`, `log`, `diag scan`, `tz` and `tz` with a zone from
-its list. With gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or newer, the location
-updates 1.4.0 and the scan 1.5.0-beta.1.
+`status`, `pair`, `pair off`, `pair prepare`, `unpair`, `clock on`, `clock off`, `sound loud`,
+`sound quiet`, `sound off`, `updates normal`, `updates frequent`, `log`, `diag scan`, `tz` and `tz`
+with a zone from its list. With gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or
+newer, the location updates 1.4.0 and the scan 1.5.0-beta.1. On connecting to a card that is not
+paired yet, the page sends `pair prepare` (gpxcam 1.5.0-beta.2): the card switches its GPS on for 10
+minutes, so that pairing finds the time ready.
 
 On Linux, if the page says "Reading from the card failed" after a serial monitor (for example
 `pio device monitor`) used the card: unplug the card and plug it in again. Such programs leave the
@@ -269,15 +271,18 @@ Coming back to gpxcam 1.4.0 later:
 
 1. Put the card where the GPS can get a fix (outdoors or near a window): the camera needs the
    time from the GPS.
-2. On the camera start pairing in its Bluetooth menu (the screen that waits for a new device).
-   If the camera lists "T1000-E" from an earlier pairing, delete it there first: the camera does not
-   pair a card it already knows.
-3. On the card: a short click, and within 0.5 s press again and hold for 3 s – two short high
-   beeps. Or click **Pair** on [the card page](#the-card-page): it shows each stage and, if
-   pairing fails, why.
-4. The card waits up to 120 s for GPS time and looks for the camera for up to 60 s. On success
-   the camera shows "Pairing completed" and lists "T1000-E"; the card plays a rising melody.
-   If it gives up: two clicks.
+2. If the camera lists "T1000-E" from an earlier pairing, delete it there first: the camera does
+   not pair a card it already knows.
+3. Start pairing on the card: click **Pair** on [the card page](#the-card-page), which shows each
+   stage and, if pairing fails, why. Or on the card: a short click, and within 0.5 s press again
+   and hold for 3 s – two short high beeps. Do not start pairing on the camera yet.
+4. The card waits up to 120 s for GPS time, then looks for the camera for up to 120 s. **Only
+   now** start pairing in the camera's Bluetooth menu (the screen that waits for a new device):
+   some cameras stay in pairing mode only about 30 seconds, so the card must already be looking.
+   The card page says when: *Now start Bluetooth pairing on the camera*. On success the camera
+   shows "Pairing completed" and lists "T1000-E"; the card plays a rising melody. If it gives up:
+   two clicks. The card then keeps its GPS on for 10 minutes, so that another try starts looking
+   for the camera at once.
 
 A short press cancels pairing. The card only connects to a camera that is in pairing mode, and
 it pairs with one camera at a time: a new pairing replaces the old one.
