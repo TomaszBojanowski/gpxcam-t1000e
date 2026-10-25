@@ -538,6 +538,7 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
       </details>
       <div class="row">
         <button id="older-start" type="button" disabled>Start</button>
+        <button id="older-cancel" type="button" class="secondary hidden">Cancel</button>
       </div>
       <p id="older-progress" role="status"></p>
     </section>
@@ -2041,6 +2042,7 @@ function olderOutcomeText(outcome) {
       "bad"];
     case "not-on-network": return ["Could not reach the camera. Join the camera's Wi-Fi network on this computer, " +
       "then start over.", "bad"];
+    case "cancelled": return ["Cancelled.", ""];
     default: return ["Older pairing failed. Start over.", "bad"];
   }
 }
@@ -2324,6 +2326,7 @@ function startPage() {
     unpairYes: element("unpair-yes"),
     unpairNo: element("unpair-no"),
     olderStart: element("older-start"),
+    olderCancel: element("older-cancel"),
     olderProgress: element("older-progress"),
     clock: element("clock"),
     clockNote: element("clock-note"),
@@ -2361,6 +2364,7 @@ function startPage() {
   let shownPaired = null; // the pairing steps fold away when a camera is paired
   let watchingPairing = false; // a pairing ran since the last answer: its result is shown when it ends
   let pairMessage = null; // [text, kind] of the last pairing or unpairing
+  let olderCancelled = false; // the user pressed Cancel during older-camera pairing
   const transport = chooseTransport(navigator, window);
 
   if (transport !== null && transport.name === "app") {
@@ -2395,6 +2399,7 @@ function startPage() {
     const storageDamaged = lastState !== null && lastState.storage === "damaged"; // the card would refuse
     ui.pair.disabled = card === null || busy || lastState === null || pairing || storageDamaged;
     ui.olderStart.disabled = card === null || busy || lastState === null || pairing || storageDamaged;
+    ui.olderCancel.disabled = card === null;
     ui.pairCancel.disabled = card === null || busy;
     for (const button of [ui.unpair, ui.unpairYes]) button.disabled = card === null || busy || storageDamaged;
   };
@@ -2824,41 +2829,62 @@ function startPage() {
     return core.invoke("register_older", { identity, name, onEvent: channel });
   };
 
+  // Cancel is a direct command (not queued behind the card's console), so it stops the Wi-Fi wait at
+  // once; register_older returns "cancelled". A cancel during the first step (before the Wi-Fi wait)
+  // takes effect when that step ends.
+  const cancelOlder = () => {
+    if (!busy) return;
+    olderCancelled = true;
+    setStatus(ui.olderProgress, "Cancelling...", "busy");
+    try {
+      window.__TAURI__.core.invoke("cancel_older");
+    } catch (error) {
+      // the app is gone; nothing to stop
+    }
+  };
+
   const pairOlder = async () => {
     const asked = card;
     if (!asked || busy) return;
     busy = true;
+    olderCancelled = false;
+    ui.olderStart.classList.add("hidden");
+    ui.olderCancel.classList.remove("hidden");
     refreshButtons();
     setStatus(ui.olderProgress, "Starting - the card is connecting to the camera...", "busy");
+    let accepted = false;
     try {
       const info = await asked.olderRegister();
       if (card !== asked) return;
-      if (!info) {
+      if (olderCancelled) {
+        setStatus(ui.olderProgress, "Cancelled.", "");
+      } else if (!info) {
         setStatus(ui.olderProgress, "The card did not start. Give it a GPS fix, put the camera in pairing mode, " +
           "and try again.", "bad");
-        return;
-      }
-      setStatus(ui.olderProgress, "The camera now shows a Wi-Fi network and its password. Join that network on " +
-        "this computer and keep this window open.", "busy");
-      const outcome = await registerOlder(info.identity, info.name, (stage) => {
+      } else {
+        setStatus(ui.olderProgress, "The camera now shows a Wi-Fi network and its password. Join that network on " +
+          "this computer and keep this window open.", "busy");
+        const outcome = await registerOlder(info.identity, info.name, (stage) => {
+          if (card !== asked || olderCancelled) return;
+          if (stage === "on-network")
+            setStatus(ui.olderProgress, "On the camera's network - registering the card...", "busy");
+          else if (stage === "registering")
+            setStatus(ui.olderProgress, "Registering - allow the connection on the camera if it asks...", "busy");
+        });
         if (card !== asked) return;
-        if (stage === "on-network")
-          setStatus(ui.olderProgress, "On the camera's network - registering the card...", "busy");
-        else if (stage === "registering")
-          setStatus(ui.olderProgress, "Registering - allow the connection on the camera if it asks...", "busy");
-      });
-      if (card !== asked) return;
-      const [text, kind] = olderOutcomeText(outcome);
-      setStatus(ui.olderProgress, text, kind);
-      if (outcome !== "accepted") await asked.cancelPairing().catch(() => {}); // stop the card's wait
+        accepted = outcome === "accepted";
+        const [text, kind] = olderOutcomeText(outcome);
+        setStatus(ui.olderProgress, text, kind);
+      }
+      if (!accepted) await asked.cancelPairing().catch(() => {}); // any other end leaves the card waiting: stop it
       await refresh();
     } catch (error) {
       if (card === asked) setStatus(ui.olderProgress, "Older pairing failed. Try again.", "bad");
     } finally {
-      if (card === asked) {
-        busy = false;
-        refreshButtons();
-      }
+      busy = false;
+      ui.olderCancel.classList.add("hidden");
+      ui.olderStart.classList.remove("hidden");
+      refreshButtons();
     }
   };
 
@@ -2868,6 +2894,7 @@ function startPage() {
   ui.unpairNo.addEventListener("click", () => ui.unpairConfirm.classList.add("hidden"));
   ui.unpairYes.addEventListener("click", forgetCamera);
   ui.olderStart.addEventListener("click", pairOlder);
+  ui.olderCancel.addEventListener("click", cancelOlder);
   ui.connect.addEventListener("click", connect);
   ui.disconnect.addEventListener("click", disconnect);
   ui.save.addEventListener("click", save);

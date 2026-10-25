@@ -10,6 +10,7 @@
 
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, UdpSocket};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -70,6 +71,7 @@ pub enum Outcome {
     NotConfirmed, // reached the camera, but it never accepted (the user did not confirm in time)
     NotOnNetwork, // never reached the camera's Wi-Fi
     Failed,       // an unexpected reply or a connection problem
+    Cancelled,    // the user stopped the step
 }
 
 const USER_AGENT: &str = "gpxcam-card";
@@ -184,7 +186,13 @@ fn parse_token(reply: &str) -> Option<u32> {
 
 /// req_acc_g then req_acc_e until the camera decides. A reply of "ok_under_research" or
 /// "err_user_refused" means it is still waiting for the user; any other reply is final.
-fn request_access(target: &Target, identity: &str, name: &str, timing: &Timing) -> io::Result<Outcome> {
+fn request_access(
+    target: &Target,
+    identity: &str,
+    name: &str,
+    timing: &Timing,
+    cancel: &AtomicBool,
+) -> io::Result<Outcome> {
     let mut stream = TcpStream::connect_timeout(&target.camera, timing.connect_timeout)?;
     stream.set_read_timeout(Some(timing.io_timeout))?;
     stream.set_write_timeout(Some(timing.io_timeout))?;
@@ -199,6 +207,9 @@ fn request_access(target: &Target, identity: &str, name: &str, timing: &Timing) 
         encode(name, token)
     );
     for attempt in 0..timing.tries {
+        if cancel.load(Ordering::SeqCst) {
+            return Ok(Outcome::Cancelled);
+        }
         let reply = http_get(&mut stream, &host, &path)?;
         if reply.starts_with("ok_under_research") || reply.starts_with("err_user_refused") {
             if attempt + 1 < timing.tries {
@@ -217,9 +228,12 @@ fn request_access(target: &Target, identity: &str, name: &str, timing: &Timing) 
 
 /// Waits until a connection to the camera succeeds (the user has joined its network) or the time
 /// runs out.
-fn wait_for_network(target: &Target, timing: &Timing) -> bool {
+fn wait_for_network(target: &Target, timing: &Timing, cancel: &AtomicBool) -> bool {
     let deadline = Instant::now() + timing.network_wait;
     loop {
+        if cancel.load(Ordering::SeqCst) {
+            return false;
+        }
         if TcpStream::connect_timeout(&target.camera, timing.connect_timeout).is_ok() {
             return true;
         }
@@ -266,18 +280,23 @@ pub fn register(
     identity: &str,
     name: &str,
     timing: &Timing,
+    cancel: &AtomicBool,
     progress: &mut dyn FnMut(Progress),
 ) -> Outcome {
     progress(Progress::WaitingForNetwork);
-    if !wait_for_network(target, timing) {
-        return Outcome::NotOnNetwork;
+    if !wait_for_network(target, timing, cancel) {
+        return if cancel.load(Ordering::SeqCst) {
+            Outcome::Cancelled
+        } else {
+            Outcome::NotOnNetwork
+        };
     }
     progress(Progress::OnNetwork);
     if timing.warmup {
         warm_up(target);
     }
     progress(Progress::Registering);
-    request_access(target, identity, name, timing).unwrap_or(Outcome::Failed)
+    request_access(target, identity, name, timing, cancel).unwrap_or(Outcome::Failed)
 }
 
 #[cfg(test)]
@@ -368,8 +387,9 @@ mod tests {
         let identity = vectors()["identity_text"].clone();
         let name = vectors()["name"].clone();
         let target = Target { camera, upnp_port: 0 };
+        let cancel = AtomicBool::new(false);
         let mut events = Vec::new();
-        let outcome = register(&target, &identity, &name, &test_timing(), &mut |event| {
+        let outcome = register(&target, &identity, &name, &test_timing(), &cancel, &mut |event| {
             events.push(event)
         });
         (outcome, events)
@@ -440,6 +460,28 @@ mod tests {
         let (outcome, events) = run(address);
         assert_eq!(outcome, Outcome::NotOnNetwork);
         assert_eq!(events, [Progress::WaitingForNetwork]);
+    }
+
+    #[test]
+    fn cancelled_stops_the_step() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        let cancel = AtomicBool::new(true); // already cancelled: it stops before the network
+        let target = Target {
+            camera: address,
+            upnp_port: 0,
+        };
+        let vectors = vectors();
+        let outcome = register(
+            &target,
+            &vectors["identity_text"],
+            &vectors["name"],
+            &test_timing(),
+            &cancel,
+            &mut |_| {},
+        );
+        assert_eq!(outcome, Outcome::Cancelled);
     }
 
     #[test]

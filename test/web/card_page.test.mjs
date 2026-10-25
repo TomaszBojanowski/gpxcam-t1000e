@@ -319,6 +319,7 @@ test("parseOlderRegister reads the card's line, and olderOutcomeText maps the re
   );
   assert.equal(page.parseOlderRegister("older: introduced - waiting up to 300 s for the camera's 01"), null);
   assert.equal(page.olderOutcomeText("accepted")[1], "good");
+  assert.equal(page.olderOutcomeText("cancelled")[1], "");
   for (const bad of ["not-confirmed", "not-on-network", "failed", "anything"]) {
     assert.equal(page.olderOutcomeText(bad)[1], "bad");
   }
