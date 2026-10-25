@@ -11,6 +11,10 @@ document is the public description of the protocol.
 - Manufacturer specific data: `3a 00 <state> <5-byte serial number>`.
 - `<state>`: `00` camera on, `03` pairing mode ("Add New Device"), `06` switched off with the switch
   (standby). **Never connect in state `06` – a connection wakes the camera.**
+- The older Panasonic app knows more states: `01` asleep, `02` waking up, `04` off, `05` on but asleep, `07` on
+  but asleep with a quick wake, `08`–`0A` the same with automatic transfer. It registers a new camera only in
+  `03`; a camera it already knows it also connects to in `05` and `07`. Seen so far: `00`, `03`, `06` on the
+  S5II (both dialects); `07` on an S5 (1st generation) that showed its pairing screen (2026-10-25).
 - Advertised service: `054AC620-3214-11E6-AC0D-0002A5D5C51B`.
 - On: a resolvable private address (RPA). Standby: the public address. Legacy ADV_IND, connectable.
 - Connect only when the state and the serial number are known and the number matches the paired one.

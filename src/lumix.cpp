@@ -78,15 +78,32 @@ Advert parseAdvert(const uint8_t *data, size_t length, Camera *camera)
     return Advert::None;
 }
 
+// The states of the older Panasonic app's own table (docs/PROTOCOL.md); only 03 means pairing.
 const char *stateName(uint8_t state)
 {
     switch (state) {
     case STATE_ON:
         return "on";
+    case 0x01:
+        return "asleep";
+    case 0x02:
+        return "waking up";
     case STATE_PAIRING:
         return "pairing";
+    case 0x04:
+        return "off";
+    case 0x05:
+        return "on, asleep";
     case STATE_STANDBY:
         return "standby";
+    case 0x07:
+        return "on, asleep (quick wake)";
+    case 0x08:
+        return "on, asleep (auto transfer)";
+    case 0x09:
+        return "standby (auto transfer)";
+    case 0x0A:
+        return "on, asleep (quick wake, auto transfer)";
     default:
         return "unknown";
     }
