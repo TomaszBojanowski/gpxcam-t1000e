@@ -1,7 +1,7 @@
 #pragma once
 
 #define FW_NAME "gpxcam-t1000e"
-#define FW_VERSION "1.5.0-beta.3"
+#define FW_VERSION "1.5.0-beta.4"
 
 // Set by tools/version.py from `git describe`.
 #ifndef FW_GIT
