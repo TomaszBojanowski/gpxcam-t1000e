@@ -24,12 +24,14 @@ struct Advert {
     uint8_t addressType;
     int8_t rssi; // dBm
     advert_kind::Kind kind;
-    uint8_t length; // bytes of data in use, at most MAX_ADVERT_BYTES
+    uint8_t channel; // ch_index: 37, 38 or 39
+    uint8_t length;  // bytes of data in use, at most MAX_ADVERT_BYTES
     uint8_t data[MAX_ADVERT_BYTES];
 };
 
 // The body of one "diag scan:" log line for the advert: the address with all but its last byte
-// hidden (**:**:**:**:**:xx, as the logs are masked), the address type, RSSI, "rsp" for a scan
+// hidden (**:**:**:**:**:xx, as the logs are masked), the address type, RSSI, the advertising channel
+// ("ch 37".."ch 39"), "rsp" for a scan
 // response or "adv" and the advertisement's kind (connectable, scan-only, non-connectable), and the
 // length. Panasonic manufacturer data ("camera" for a
 // LUMIX camera, "Panasonic" otherwise) is then printed in full; anything else has no bytes.

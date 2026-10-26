@@ -437,6 +437,14 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   pauses, which are kept for what fails after the link was made (at most 3 attempts). The logs give the kind of
   each camera advertisement (connectable, scan-only, non-connectable) and, at each connect, the camera's reports in
   the last 10 s.
+- **Channels and a startup scan (1.5.0-beta.5, diagnostics only):** the same tester's S5, with the phone's and the
+  computer's Bluetooth off, was still heard once in 10-30 s at -32 to -39 dBm. Each report now carries its advertising
+  channel (37, 38, 39 - `ch_index` of the report): it is in the camera lines and the `diag scan` lines, and the
+  reports per channel, of all devices and of LUMIX cameras, are counted in the 10 s scan line, in the summary of every
+  scan (so in Copy log) and in the summary of `diag scan`. A card that is not paired scans for 30 s, 10 s after it
+  starts, and keeps what it heard in the log, for a test in a wall charger away from a computer. The SoftDevice does
+  not report CRC errors while scanning; its channel survey (`sd_ble_gap_qos_channel_survey_start`, energy per channel)
+  needs a role flag that Bluefruit's `begin()` does not set.
 
 ## Normal work (M5)
 
