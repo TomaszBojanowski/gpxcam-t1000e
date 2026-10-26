@@ -18,9 +18,11 @@ size_t formatAdvert(const Advert &advert, char *out, size_t size)
                        : kind == lumix::Advert::OtherPanasonic ? ", Panasonic"
                                                                : "";
     // The last address byte is address[0] (formatAddress prints most significant byte first).
-    const int header = snprintf(out, size, "**:**:**:**:**:%02x %s %d dBm %s %u B%s", advert.address[0],
+    const bool response = advert.kind == advert_kind::Kind::ScanResponse;
+    const int header = snprintf(out, size, "**:**:**:**:**:%02x %s %d dBm %s%s%s %u B%s", advert.address[0],
                                 camera_list::addressTypeName(advert.addressType), advert.rssi,
-                                advert.scanResponse ? "rsp" : "adv", (unsigned)length, what);
+                                response ? "rsp" : "adv", response ? "" : " ",
+                                response ? "" : advert_kind::name(advert.kind), (unsigned)length, what);
     if (header < 0 || (size_t)header >= size)
         return 0;
     size_t pos = (size_t)header;

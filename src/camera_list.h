@@ -5,12 +5,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "advert_kind.h"
 #include "lumix.h"
 
 namespace camera_list {
 
 constexpr size_t MAX_CAMERAS = 4;      // M3 decision
 constexpr uint32_t LOST_AFTER_MS = 30000; // M3 decision: "not seen" after 30 s
+constexpr uint32_t RECENT_SECONDS = 10;    // recentReports(): the reports of the last 10 s, logged at a connect
 
 constexpr size_t ADDRESS_LENGTH = 6;
 
@@ -26,16 +28,21 @@ struct Report {
     lumix::Camera camera;
     uint8_t address[ADDRESS_LENGTH]; // as the SoftDevice gives it: least significant byte first
     uint8_t addressType;
-    int8_t rssi;       // dBm
-    bool scanResponse; // false: from an advertisement
+    int8_t rssi; // dBm
+    advert_kind::Kind kind;
 };
 
 struct Entry {
     bool used;
     Report last;
     uint32_t lastSeenMs;
-    uint32_t advertCount;
+    uint32_t advertCount;      // advertisements of any kind
+    uint32_t connectableCount; // ... of them connectable
     uint32_t scanResponseCount;
+    // Reports per second of the last RECENT_SECONDS seconds: the count of the second recentSecond[i]
+    // (millis() / 1000), in slot second % RECENT_SECONDS.
+    uint16_t recentCount[RECENT_SECONDS];
+    uint32_t recentSecond[RECENT_SECONDS];
 };
 
 enum class Change {
@@ -62,6 +69,10 @@ public:
 private:
     Entry entries_[MAX_CAMERAS] = {};
 };
+
+// Reports of the camera (advertisements and scan responses) in the last RECENT_SECONDS seconds,
+// the current one included; works across the 49-day wrap of millis() but for that one moment.
+uint32_t recentReports(const Entry &entry, uint32_t nowMs);
 
 // "public", "random static", "RPA", "random", "anonymous" or "unknown".
 const char *addressTypeName(uint8_t type);

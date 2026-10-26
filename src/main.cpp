@@ -155,10 +155,22 @@ void logStatus()
     status_text::format(state, [](const char *line) { logger::transient("%s", line); });
 }
 
+// The RAM left, for 'p' (Adafruit core utility/debug.cpp): the heap is malloc's, from the end of
+// .bss to the main stack, and the FreeRTOS task stacks come from it; the loop task's stack never
+// used is its high water mark (FreeRTOS, INCLUDE_uxTaskGetStackHighWaterMark); the main stack is
+// the interrupts', painted with a pattern at start-up (gcc_startup_nrf52840.S).
+void logMemory()
+{
+    logger::transient("memory: heap %d B free of %d B, loop stack %lu B never used, main stack %d B used of %d B",
+                      dbgHeapTotal() - dbgHeapUsed(), dbgHeapTotal(),
+                      (unsigned long)(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)), dbgStackUsed(),
+                      dbgStackTotal());
+}
+
 void logHelp()
 {
     logger::transient("commands: v = version and reset reason,");
-    logger::transient("          p = state of GPS, BLE, pairing, time zone, settings, link and battery,");
+    logger::transient("          p = state of GPS, BLE, pairing, time zone, settings, link, battery and memory,");
     logger::transient("          status = the same in short key=value lines, for the card page,");
     logger::transient("          dfu = UF2 bootloader (for flashing),");
     logger::transient("          off = System OFF after a 15 s countdown (refused with USB connected),");
@@ -438,6 +450,7 @@ void runCommand(char *cmd)
         watchdog::logState();
         usb_power::logState();
         logBattery(BatteryCheck::None);
+        logMemory();
     } else if (strcmp(cmd, "status") == 0) {
         logStatus();
     } else if (strcmp(cmd, "dfu") == 0) {

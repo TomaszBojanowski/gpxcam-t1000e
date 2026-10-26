@@ -11,7 +11,7 @@
 // Sources: S140 7.3.0 API (ble.h, ble_gap.h, ble_gattc.h), Bluefruit52Lib 0.21.0
 // (BLECentral.cpp: connect() uses the scanner's parameters and the central link
 // configuration set in Bluefruit.begin(); it cannot set the supervision timeout, so the
-// card connects with sd_ble_gap_connect() itself, with the same scan parameters).
+// card connects with sd_ble_gap_connect() itself, listening all the time while it connects).
 
 namespace {
 
@@ -31,6 +31,13 @@ constexpr uint16_t CONN_INTERVAL = 39;        // in 1.25 ms: 48.75 ms
 constexpr uint16_t SLAVE_LATENCY = 0;
 constexpr uint16_t SUPERVISION_TIMEOUT = 500; // in 10 ms: 5 s
 constexpr uint16_t DATA_LENGTH = 61;          // bytes per packet, both ways
+
+// While connecting, the radio listens all the time (window = interval) instead of the scanner's
+// 50 ms of every 100 ms, so it does not miss half of the camera's advertisements; it lasts at most
+// CONNECT_TIMEOUT_MS. Units of ble_gap_scan_params_t (ble_gap.h): 0.625 ms; a window may equal the
+// interval. The other fields are the scanner's (Bluefruit BLEScanner: legacy, 1 Mb/s, accept all).
+constexpr uint16_t INITIATOR_INTERVAL = 80; // 50 ms
+constexpr uint16_t INITIATOR_WINDOW = INITIATOR_INTERVAL;
 
 // Connection parameters travel from the BLE task to poll() through their own queue, so the
 // GATT steps of camera_session and link_control never see them.
@@ -320,7 +327,11 @@ bool connect(const camera_list::Report &camera)
     address.addr_type = camera.addressType;
     memcpy(address.addr, camera.address, camera_list::ADDRESS_LENGTH);
     const ble_gap_conn_params_t params = {CONN_INTERVAL, CONN_INTERVAL, SLAVE_LATENCY, SUPERVISION_TIMEOUT};
-    return sd_ble_gap_connect(&address, Bluefruit.Scanner.getParams(), &params, CONN_CFG_CENTRAL) == NRF_SUCCESS;
+    ble_gap_scan_params_t initiator = *Bluefruit.Scanner.getParams();
+    initiator.interval = INITIATOR_INTERVAL;
+    initiator.window = INITIATOR_WINDOW;
+    initiator.timeout = BLE_GAP_SCAN_TIMEOUT_UNLIMITED; // the sessions cancel after CONNECT_TIMEOUT_MS
+    return sd_ble_gap_connect(&address, &initiator, &params, CONN_CFG_CENTRAL) == NRF_SUCCESS;
 }
 
 void cancelConnect()

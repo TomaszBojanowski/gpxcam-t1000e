@@ -20,7 +20,6 @@
 namespace {
 
 // Time limits, as camera_session.cpp.
-constexpr uint32_t CONNECT_MS = 10000;
 constexpr uint32_t MTU_MS = 3000;
 constexpr uint32_t STEP_MS = 5000; // every discovery answer, read and write
 // Waiting for the camera's 01 (lumix::OLDER_KNOWN). Pairing: the camera waits for the one-time
@@ -49,6 +48,7 @@ bool keepOpen = false; // true: send locations after the camera accepts; false: 
 bool accepted = false;
 bool justAccepted = false; // Accepted returned once
 bool rejected = false;     // the camera did not take the card (vs a connection problem)
+camera_link::LinkFailure linkFailed = camera_link::LinkFailure::None; // the session got no link at all
 uint8_t cardUuid[lumix::UUID_LENGTH];
 uint16_t handles[camera_link::OLDER_CHARACTERISTIC_COUNT];
 uint8_t key[lumix::KEY_LENGTH];
@@ -456,6 +456,8 @@ bool handleCommonEvent(const camera_link::Event &event)
     case EventType::Disconnected:
         if (step == Step::Done)
             return true; // already accepted; the caller cancels
+        if (event.status == BLE_HCI_CONN_FAILED_TO_BE_ESTABLISHED)
+            linkFailed = camera_link::LinkFailure::NotEstablished;
         fail("the camera disconnected (HCI 0x%02x)", event.status);
         return true;
     case EventType::GattTimeout:
@@ -540,10 +542,13 @@ void handleEvent(const camera_link::Event &event)
 
 void handleTimeout()
 {
-    if (step == Step::WaitKnown)
+    if (step == Step::WaitKnown) {
         reject("no 01 from the camera in %lu s", (unsigned long)(stepLimit / 1000));
-    else
-        fail("no answer in step '%s' in %lu s", stepName(step), (unsigned long)(stepLimit / 1000));
+        return;
+    }
+    if (step == Step::Connecting)
+        linkFailed = camera_link::LinkFailure::NoAnswer;
+    fail("no answer in step '%s' in %lu s", stepName(step), (unsigned long)(stepLimit / 1000));
 }
 
 } // namespace
@@ -570,6 +575,7 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     accepted = false;
     justAccepted = false;
     rejected = false;
+    linkFailed = camera_link::LinkFailure::None;
     writePending = false;
     locationsWritten = 0;
     locationsRefused = 0;
@@ -581,7 +587,7 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
         snprintf(failureText, sizeof(failureText), "connect: refused by the SoftDevice");
         return false;
     }
-    enter(Step::Connecting, CONNECT_MS);
+    enter(Step::Connecting, camera_link::CONNECT_TIMEOUT_MS);
     return true;
 }
 
@@ -613,6 +619,11 @@ Result poll()
 const char *failure()
 {
     return failureText;
+}
+
+camera_link::LinkFailure linkFailure()
+{
+    return linkFailed;
 }
 
 void cancel()

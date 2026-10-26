@@ -47,6 +47,9 @@ const Discovered &discovered();
 // 0x3e, a connection that was never made).
 bool endedAfterConnecting();
 
+// Whether the last session got no link at all (no answer, or HCI 0x3e), for pairing's quick retries.
+camera_link::LinkFailure linkFailure();
+
 // True if the last session failed because the camera has no newer-dialect service (1FE71B85):
 // it speaks only the older dialect, so 'pair' switches to it (pairing.cpp).
 bool lacksNewerService();
