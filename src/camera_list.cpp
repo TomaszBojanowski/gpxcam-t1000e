@@ -42,6 +42,9 @@ void store(Entry &entry, const Report &report, uint32_t nowMs)
         if (report.kind == advert_kind::Kind::Connectable)
             entry.connectableCount++;
     }
+    const size_t slot = channelSlot(report.channel);
+    if (slot < ADV_CHANNELS)
+        entry.channelCount[slot]++;
     countRecent(entry, nowMs);
 }
 

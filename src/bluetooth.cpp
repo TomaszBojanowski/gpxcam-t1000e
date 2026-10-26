@@ -91,6 +91,9 @@ uint16_t afterDumpWindowMs = SCAN_WINDOW_MS;
 bool dumpStartedScan = false; // the run switched the scan on, so it switches it off at its end
 uint32_t dumpResumeFailuresAtStart = 0; // loop task only: the totals when the run started
 uint32_t dumpRestartsAtStart = 0;
+// Reports of a run per advertising channel 37..39: all, and those of LUMIX cameras (BLE task).
+volatile uint32_t dumpByChannel[camera_list::ADV_CHANNELS] = {};
+volatile uint32_t dumpCameraByChannel[camera_list::ADV_CHANNELS] = {};
 
 bool started = false;
 
@@ -102,6 +105,7 @@ volatile bool scanActive = false;
 volatile uint32_t reportsTotal = 0;
 volatile uint32_t otherPanasonicTotal = 0;
 volatile uint32_t resumeFailuresTotal = 0; // Scanner.resume() failed while the scan was on
+volatile uint32_t byChannelTotal[camera_list::ADV_CHANNELS] = {}; // reports per advertising channel 37..39
 volatile uint32_t lastReportMs = 0;
 volatile uint32_t droppedTotal = 0;
 
@@ -110,6 +114,7 @@ struct Counts {
     uint32_t otherPanasonic;
     uint32_t dropped;
     uint32_t resumeFailures;
+    uint32_t byChannel[camera_list::ADV_CHANNELS];
 };
 Counts atScanStart = {};
 
@@ -122,12 +127,42 @@ uint32_t lastStatusMs = 0;
 uint32_t scanWatchStartMs = 0; // the scan watchdog: when the scan was last (re)started
 uint32_t restarts = 0;         // by the watchdog, in the current scan
 uint32_t restartsTotal = 0;
+uint32_t cameraByChannel[camera_list::ADV_CHANNELS] = {}; // camera reports of the current scan per channel
 bool restartLogged = false; // one line per silence: where no device advertises at all, it restarts every 5 s
+
+Counts countsNow()
+{
+    Counts counts = {reportsTotal, otherPanasonicTotal, droppedTotal, resumeFailuresTotal, {}};
+    for (size_t i = 0; i < camera_list::ADV_CHANNELS; i++)
+        counts.byChannel[i] = byChannelTotal[i];
+    return counts;
+}
 
 Counts sinceScanStart()
 {
-    return Counts{reportsTotal - atScanStart.reports, otherPanasonicTotal - atScanStart.otherPanasonic,
-                  droppedTotal - atScanStart.dropped, resumeFailuresTotal - atScanStart.resumeFailures};
+    Counts now = countsNow();
+    now.reports -= atScanStart.reports;
+    now.otherPanasonic -= atScanStart.otherPanasonic;
+    now.dropped -= atScanStart.dropped;
+    now.resumeFailures -= atScanStart.resumeFailures;
+    for (size_t i = 0; i < camera_list::ADV_CHANNELS; i++)
+        now.byChannel[i] -= atScanStart.byChannel[i];
+    return now;
+}
+
+// "<prefix> by channel 37/38/39: a/b/c reports, x/y/z from LUMIX cameras" - kept in the history (the
+// summaries) or only sent (the 10 s line).
+void logByChannel(const char *prefix, const uint32_t all[camera_list::ADV_CHANNELS],
+                  const uint32_t cameras[camera_list::ADV_CHANNELS], bool keep)
+{
+    char line[logger::LINE_MAX];
+    snprintf(line, sizeof(line), "%s by channel 37/38/39: %lu/%lu/%lu reports, %lu/%lu/%lu from LUMIX cameras", prefix,
+             (unsigned long)all[0], (unsigned long)all[1], (unsigned long)all[2], (unsigned long)cameras[0],
+             (unsigned long)cameras[1], (unsigned long)cameras[2]);
+    if (keep)
+        logger::line("%s", line);
+    else
+        logger::transient("%s", line);
 }
 
 // Runs in Bluefruit's BLE task for every SoftDevice event, after the library's own
@@ -143,14 +178,19 @@ void onBleEvent(ble_evt_t *event)
     lastReportMs = millis();
     const advert_kind::Kind kind =
         advert_kind::fromReport(advert.type.connectable, advert.type.scannable, advert.type.scan_response);
+    const size_t channelSlot = camera_list::channelSlot(advert.ch_index);
+    if (channelSlot < camera_list::ADV_CHANNELS)
+        byChannelTotal[channelSlot]++;
 
     camera_list::Report report;
-    switch (lumix::parseAdvert(advert.data.p_data, advert.data.len, &report.camera)) {
+    const lumix::Advert parsed = lumix::parseAdvert(advert.data.p_data, advert.data.len, &report.camera);
+    switch (parsed) {
     case lumix::Advert::Camera:
         memcpy(report.address, advert.peer_addr.addr, camera_list::ADDRESS_LENGTH);
         report.addressType = advert.peer_addr.addr_type;
         report.rssi = advert.rssi;
         report.kind = kind;
+        report.channel = advert.ch_index;
         if (xQueueSend(reportQueue, &report, 0) != pdTRUE)
             droppedTotal++;
         break;
@@ -165,12 +205,18 @@ void onBleEvent(ble_evt_t *event)
     // loop task to show.
     if (dumpActive) {
         dumpReports++;
+        if (channelSlot < camera_list::ADV_CHANNELS) {
+            dumpByChannel[channelSlot]++;
+            if (parsed == lumix::Advert::Camera)
+                dumpCameraByChannel[channelSlot]++;
+        }
         if (advert.rssi >= scan_dump::RSSI_THRESHOLD_DBM) {
             scan_dump::Advert raw;
             memcpy(raw.address, advert.peer_addr.addr, scan_dump::ADDRESS_LENGTH);
             raw.addressType = advert.peer_addr.addr_type;
             raw.rssi = advert.rssi;
             raw.kind = kind;
+            raw.channel = advert.ch_index;
             raw.length = advert.data.len <= scan_dump::MAX_ADVERT_BYTES ? (uint8_t)advert.data.len
                                                                         : (uint8_t)scan_dump::MAX_ADVERT_BYTES;
             memcpy(raw.data, advert.data.p_data, raw.length);
@@ -194,11 +240,10 @@ void logCamera(const char *what, const camera_list::Report &report)
     char address[3 * camera_list::ADDRESS_LENGTH];
     lumix::formatSerial(report.camera.serial, serial, sizeof(serial));
     camera_list::formatAddress(report.address, address, sizeof(address));
-    const bool response = report.kind == advert_kind::Kind::ScanResponse;
-    logger::line("scan: camera %s %s: %s (%02x), %s %s, %d dBm, %s%s", serial, what,
+    logger::line("scan: camera %s %s: %s (%02x), %s %s, %d dBm, ch %u, %s", serial, what,
                  lumix::stateName(report.camera.state), report.camera.state, address,
-                 camera_list::addressTypeName(report.addressType), report.rssi, advert_kind::name(report.kind),
-                 response ? "" : " advert");
+                 camera_list::addressTypeName(report.addressType), report.rssi, (unsigned)report.channel,
+                 advert_kind::name(report.kind));
 }
 
 void logLost(const camera_list::Entry &entry)
@@ -217,6 +262,7 @@ void logStatus(uint32_t nowMs)
                       (unsigned long)cameraReports, (unsigned long)counts.otherPanasonic,
                       (unsigned long)counts.dropped, (unsigned long)untracked, (unsigned long)counts.resumeFailures,
                       (unsigned long)restarts);
+    logByChannel("scan:", counts.byChannel, cameraByChannel, false);
     for (size_t i = 0; i < camera_list::MAX_CAMERAS; i++) {
         const camera_list::Entry *entry = cameras.at(i);
         if (entry == nullptr)
@@ -230,6 +276,9 @@ void logStatus(uint32_t nowMs)
                           entry->last.rssi, (unsigned long)entry->advertCount, (unsigned long)entry->connectableCount,
                           (unsigned long)entry->scanResponseCount, (unsigned long)(agoDs / 10),
                           (unsigned long)(agoDs % 10));
+        logger::transient("scan: camera %s by channel 37/38/39: %lu/%lu/%lu", serial,
+                          (unsigned long)entry->channelCount[0], (unsigned long)entry->channelCount[1],
+                          (unsigned long)entry->channelCount[2]);
     }
 }
 
@@ -276,8 +325,9 @@ void scanOn()
     xQueueReset(reportQueue);
     cameras.clear();
     cameraReports = 0;
+    memset(cameraByChannel, 0, sizeof(cameraByChannel));
     untracked = 0;
-    atScanStart = Counts{reportsTotal, otherPanasonicTotal, droppedTotal, resumeFailuresTotal};
+    atScanStart = countsNow();
     restarts = 0;
     restartLogged = false;
     scanActive = true; // before starting: the first report must already resume the scan
@@ -339,11 +389,21 @@ void scanOff()
                  (unsigned long)((millis() - scanStartMs) / 1000), stopped ? "" : " (stop error)",
                  (unsigned long)counts.reports, (unsigned long)cameraReports, (unsigned long)counts.otherPanasonic,
                  (unsigned long)counts.dropped, (unsigned long)untracked);
+    logByChannel("scan:", counts.byChannel, cameraByChannel, true);
 }
 
 bool scanning()
 {
     return scanActive;
+}
+
+void releaseScan()
+{
+    if (dumpActive) {
+        dumpStartedScan = true; // the run switches it off when it ends
+        return;
+    }
+    scanOff();
 }
 
 bool ready()
@@ -431,6 +491,13 @@ void drainScanDump(uint32_t now)
                      (unsigned)dumpSeenCount, (unsigned long)dumpReports,
                      (unsigned long)(resumeFailuresTotal - dumpResumeFailuresAtStart),
                      (unsigned long)(restartsTotal - dumpRestartsAtStart));
+        uint32_t all[camera_list::ADV_CHANNELS];
+        uint32_t fromCameras[camera_list::ADV_CHANNELS];
+        for (size_t i = 0; i < camera_list::ADV_CHANNELS; i++) {
+            all[i] = dumpByChannel[i];
+            fromCameras[i] = dumpCameraByChannel[i];
+        }
+        logByChannel("diag scan:", all, fromCameras, true);
         if (dumpStartedScan)
             scanOff(); // as before the run; the link and pairing switch it on again when they need it
         setScanTiming(afterDumpIntervalMs, afterDumpWindowMs);
@@ -461,6 +528,10 @@ void startScanDump()
     dumpReports = 0;
     dumpResumeFailuresAtStart = resumeFailuresTotal;
     dumpRestartsAtStart = restartsTotal;
+    for (size_t i = 0; i < camera_list::ADV_CHANNELS; i++) {
+        dumpByChannel[i] = 0;
+        dumpCameraByChannel[i] = 0;
+    }
     dumpDeadlineMs = millis() + scan_dump::DURATION_MS;
     dumpActive = true; // last: the BLE task may now queue adverts
     logger::transient("diag scan: on %lu s, radio %u ms of every %u ms, reports stronger than %d dBm; full bytes "
@@ -480,6 +551,9 @@ void poll()
         if (!scanActive)
             continue; // left over from before 'scan off'
         cameraReports++;
+        const size_t slot = camera_list::channelSlot(report.channel);
+        if (slot < camera_list::ADV_CHANNELS)
+            cameraByChannel[slot]++;
         switch (cameras.add(report, now)) {
         case camera_list::Change::New:
             logCamera("seen", report);

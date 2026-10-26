@@ -20,6 +20,7 @@ scan_dump::Advert make(const uint8_t *data, uint8_t length, uint8_t addr0, uint8
     advert.addressType = type;
     advert.rssi = rssi;
     advert.kind = kind;
+    advert.channel = 38;
     advert.length = length;
     memcpy(advert.data, data, length);
     return advert;
@@ -33,8 +34,8 @@ void test_a_lumix_camera_shows_full_bytes()
     char out[200];
     const size_t n = scan_dump::formatAdvert(make(data, sizeof(data), 0xe2, 0x02, -48, Kind::Connectable), out,
                                              sizeof(out));
-    TEST_ASSERT_EQUAL_STRING("**:**:**:**:**:e2 RPA -48 dBm adv connectable 13 B, camera, bytes: 02 01 06 09 ff 3a 00 "
-                             "00 12 34 56 78 9a",
+    TEST_ASSERT_EQUAL_STRING("**:**:**:**:**:e2 RPA -48 dBm ch 38 adv connectable 13 B, camera, bytes: 02 01 06 09 ff "
+                             "3a 00 00 12 34 56 78 9a",
                              out);
     TEST_ASSERT_EQUAL(strlen(out), n);
 }
@@ -44,10 +45,10 @@ void test_other_panasonic_shows_full_bytes()
     const uint8_t data[] = {0x05, 0xff, 0x3a, 0x00, 0x01, 0x02};
     char out[200];
     scan_dump::formatAdvert(make(data, sizeof(data), 0x11, 0x00, -60, Kind::ScanOnly), out, sizeof(out));
-    TEST_ASSERT_EQUAL_STRING("**:**:**:**:**:11 public -60 dBm adv scan-only 6 B, Panasonic, bytes: 05 ff 3a 00 01 02",
-                             out);
+    TEST_ASSERT_EQUAL_STRING(
+        "**:**:**:**:**:11 public -60 dBm ch 38 adv scan-only 6 B, Panasonic, bytes: 05 ff 3a 00 01 02", out);
     scan_dump::formatAdvert(make(data, sizeof(data), 0x11, 0x00, -60, Kind::NonConnectable), out, sizeof(out));
-    TEST_ASSERT_NOT_NULL(strstr(out, " dBm adv non-connectable 6 B,"));
+    TEST_ASSERT_NOT_NULL(strstr(out, " dBm ch 38 adv non-connectable 6 B,"));
 }
 
 void test_a_non_panasonic_device_is_a_summary_without_bytes()
@@ -55,7 +56,7 @@ void test_a_non_panasonic_device_is_a_summary_without_bytes()
     const uint8_t data[] = {0x02, 0x01, 0x06, 0x03, 0x03, 0x0f, 0x18}; // flags + a service UUID
     char out[200];
     scan_dump::formatAdvert(make(data, sizeof(data), 0x33, 0x02, -40, Kind::ScanResponse), out, sizeof(out));
-    TEST_ASSERT_EQUAL_STRING("**:**:**:**:**:33 RPA -40 dBm rsp 7 B", out);
+    TEST_ASSERT_EQUAL_STRING("**:**:**:**:**:33 RPA -40 dBm ch 38 rsp 7 B", out);
 }
 
 void test_the_length_is_capped_and_a_short_buffer_is_refused()

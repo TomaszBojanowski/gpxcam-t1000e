@@ -17,6 +17,7 @@
 #include "pairing_record.h"
 #include "pairing_store.h"
 #include "sound.h"
+#include "startup_scan.h"
 
 namespace {
 
@@ -356,6 +357,7 @@ static void startSession(bool older)
         link_control::stop(true); // keeps the GPS on
     gpsWasOn = gps::isOn() && !gpsHeld; // a GPS on only for this pairing goes off after it
     gpsHeld = false;
+    startup_scan::stop(); // pairing takes the radio; the startup scan's scan is not one to put back after it
     scanWasOn = bluetooth::scanning();
     attempt = 0;
     quickRetries = 0;
