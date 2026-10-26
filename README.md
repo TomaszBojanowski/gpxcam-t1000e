@@ -13,6 +13,11 @@ Status: pairing, everyday use with the camera and power saving all work and are 
 LUMIX S5II. The latest version is on the
 [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases) page.
 
+> [!WARNING]
+> **Older cameras (LUMIX Sync generation): experimental, and not working yet for everyone.**
+> Pairing an older camera is built and works on my bench, but the one field test so far, a LUMIX S5, has not managed to connect to the card at all, for reasons still under investigation. If you own an S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H or BGH1 and are willing to spend an hour testing with me, please say so in [issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2). The more cameras and setups we see, the faster this gets fixed.
+> The older-camera support is in the 1.5.0 pre-releases: https://github.com/TomaszBojanowski/gpxcam-t1000e/releases.
+
 ## What's new in 1.4.0
 
 - **Location updates: Normal or Frequent.** Normal sends the position every 25 s, sooner after
