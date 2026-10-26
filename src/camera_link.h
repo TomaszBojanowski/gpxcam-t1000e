@@ -126,9 +126,19 @@ void onBleEvent(const ble_evt_t *event);
 // by connect().
 bool nextEvent(Event *event);
 
+// How long the sessions wait for a connection to come up (10 s up to 1.5.0-beta.3): with the
+// radio listening all the time (connect()) a camera that advertises is reached well within it,
+// and pairing tries again at once on the camera's next advertisement.
+constexpr uint32_t CONNECT_TIMEOUT_MS = 5000;
+
+// Why a session got no link at all, for pairing's quick retries: no answer within
+// CONNECT_TIMEOUT_MS, or the connection not established (HCI 0x3e: the camera sent nothing in
+// its first connection events). None: a link was made, or the session ended some other way.
+enum class LinkFailure : uint8_t { None, NoAnswer, NotEstablished };
+
 // Starts connecting to the camera of the report (its address and type), with the phone's
-// connection parameters (camera_link.cpp). Scanning must be off. False if the SoftDevice
-// refused.
+// connection parameters (camera_link.cpp), the radio listening all the time until it connects.
+// Scanning must be off. False if the SoftDevice refused.
 bool connect(const camera_list::Report &camera);
 void cancelConnect();
 bool connected();

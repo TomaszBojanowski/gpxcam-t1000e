@@ -19,7 +19,7 @@ const uint8_t RPA_ADDRESS[camera_list::ADDRESS_LENGTH] = {0x01, 0x00, 0x53, 0x00
 const uint8_t OTHER_RPA_ADDRESS[camera_list::ADDRESS_LENGTH] = {0x02, 0x00, 0x53, 0x00, 0x5e, 0x4a};
 
 camera_list::Report report(uint8_t lastSerialByte, uint8_t state, const uint8_t *address, uint8_t addressType,
-                           bool scanResponse = false)
+                           advert_kind::Kind kind = advert_kind::Kind::Connectable)
 {
     camera_list::Report r = {};
     const uint8_t serial[lumix::SERIAL_LENGTH] = {0x12, 0x34, 0x56, 0x78, lastSerialByte};
@@ -28,7 +28,7 @@ camera_list::Report report(uint8_t lastSerialByte, uint8_t state, const uint8_t 
     memcpy(r.address, address, camera_list::ADDRESS_LENGTH);
     r.addressType = addressType;
     r.rssi = -60;
-    r.scanResponse = scanResponse;
+    r.kind = kind;
     return r;
 }
 
@@ -58,9 +58,47 @@ void test_counts_adverts_and_scan_responses()
     camera_list::CameraList list;
     list.add(onRpa(), 0);
     list.add(onRpa(), 10);
-    list.add(report(0x9a, lumix::STATE_ON, RPA_ADDRESS, camera_list::ADDRESS_RANDOM_RESOLVABLE, true), 20);
-    TEST_ASSERT_EQUAL_UINT32(2, list.at(0)->advertCount);
+    list.add(report(0x9a, lumix::STATE_ON, RPA_ADDRESS, camera_list::ADDRESS_RANDOM_RESOLVABLE,
+                    advert_kind::Kind::ScanResponse),
+             20);
+    list.add(report(0x9a, lumix::STATE_ON, RPA_ADDRESS, camera_list::ADDRESS_RANDOM_RESOLVABLE,
+                    advert_kind::Kind::ScanOnly),
+             30);
+    TEST_ASSERT_EQUAL_UINT32(3, list.at(0)->advertCount);
+    TEST_ASSERT_EQUAL_UINT32(2, list.at(0)->connectableCount); // the scan-only one is not
     TEST_ASSERT_EQUAL_UINT32(1, list.at(0)->scanResponseCount);
+}
+
+// The reports of the last 10 s, as logged when the card connects: older seconds drop out.
+void test_recent_reports()
+{
+    camera_list::CameraList list;
+    list.add(onRpa(), 1000);
+    list.add(onRpa(), 1500);
+    list.add(onRpa(), 5200);
+    list.add(onRpa(), 10900);
+    const camera_list::Entry &entry = *list.at(0);
+    TEST_ASSERT_EQUAL_UINT32(4, camera_list::recentReports(entry, 10900)); // seconds 1..10
+    TEST_ASSERT_EQUAL_UINT32(2, camera_list::recentReports(entry, 11000)); // second 1 is out
+    TEST_ASSERT_EQUAL_UINT32(1, camera_list::recentReports(entry, 15000)); // second 5 is out
+    TEST_ASSERT_EQUAL_UINT32(0, camera_list::recentReports(entry, 21000));
+    list.add(onRpa(), 21000); // a slot used 10 s before starts again from 0
+    TEST_ASSERT_EQUAL_UINT32(1, camera_list::recentReports(*list.at(0), 21000));
+}
+
+// The kinds of advertisement and their names in the logs.
+void test_advert_kinds()
+{
+    using advert_kind::Kind;
+    TEST_ASSERT_EQUAL(Kind::Connectable, advert_kind::fromReport(true, true, false));   // ADV_IND
+    TEST_ASSERT_EQUAL(Kind::Connectable, advert_kind::fromReport(true, false, false));  // ADV_DIRECT_IND
+    TEST_ASSERT_EQUAL(Kind::ScanOnly, advert_kind::fromReport(false, true, false));     // ADV_SCAN_IND
+    TEST_ASSERT_EQUAL(Kind::NonConnectable, advert_kind::fromReport(false, false, false)); // ADV_NONCONN_IND
+    TEST_ASSERT_EQUAL(Kind::ScanResponse, advert_kind::fromReport(false, false, true));
+    TEST_ASSERT_EQUAL_STRING("connectable", advert_kind::name(Kind::Connectable));
+    TEST_ASSERT_EQUAL_STRING("scan-only", advert_kind::name(Kind::ScanOnly));
+    TEST_ASSERT_EQUAL_STRING("non-connectable", advert_kind::name(Kind::NonConnectable));
+    TEST_ASSERT_EQUAL_STRING("scan response", advert_kind::name(Kind::ScanResponse));
 }
 
 void test_state_and_address_changes()
@@ -151,6 +189,8 @@ int main(int, char **)
     UNITY_BEGIN();
     RUN_TEST(test_new_then_same);
     RUN_TEST(test_counts_adverts_and_scan_responses);
+    RUN_TEST(test_recent_reports);
+    RUN_TEST(test_advert_kinds);
     RUN_TEST(test_state_and_address_changes);
     RUN_TEST(test_table_full);
     RUN_TEST(test_lost_after_30_s);

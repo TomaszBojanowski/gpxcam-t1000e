@@ -21,8 +21,7 @@ namespace {
 
 using camera_link::Characteristic;
 
-// Time limits (M4 decisions).
-constexpr uint32_t CONNECT_MS = 10000;
+// Time limits (M4 decisions; connecting: camera_link::CONNECT_TIMEOUT_MS).
 constexpr uint32_t MTU_MS = 3000;
 constexpr uint32_t STEP_MS = 5000; // service, characteristics, key and every write
 constexpr uint32_t DISCONNECT_MS = 5000;
@@ -47,6 +46,7 @@ bool timeWritten = true; // set at the start: false only with the clock off in a
 bool accepted = false;
 bool rejected = false; // a refusal that means the camera does not know the card (link_policy)
 bool establishFailed = false; // HCI 0x3e: the connection was not established
+bool connectTimedOut = false; // no connection within camera_link::CONNECT_TIMEOUT_MS
 bool endedEarly = false;      // the connection ended after it was made, during the introduction
 bool newerServiceAbsent = false; // the newer-dialect service (1FE71B85) was not on the camera
 char failureText[80] = "";
@@ -489,6 +489,7 @@ void handleTimeout()
         break;
     case Step::Connecting:
         camera_link::cancelConnect();
+        connectTimedOut = true;
         setFailure("connect: no answer in %lu s", (unsigned long)(stepLimit / 1000));
         fail(); // in case the connection came up just now
         break;
@@ -531,6 +532,7 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     accepted = false;
     rejected = false;
     establishFailed = false;
+    connectTimedOut = false;
     endedEarly = false;
     newerServiceAbsent = false;
     failureText[0] = '\0';
@@ -538,7 +540,7 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
         setFailure("connect: refused by the SoftDevice");
         return false;
     }
-    enter(Step::Connecting, CONNECT_MS);
+    enter(Step::Connecting, camera_link::CONNECT_TIMEOUT_MS);
     return true;
 }
 
@@ -572,6 +574,13 @@ bool notEstablished()
 bool endedAfterConnecting()
 {
     return endedEarly;
+}
+
+camera_link::LinkFailure linkFailure()
+{
+    if (establishFailed)
+        return camera_link::LinkFailure::NotEstablished;
+    return connectTimedOut ? camera_link::LinkFailure::NoAnswer : camera_link::LinkFailure::None;
 }
 
 bool lacksNewerService()

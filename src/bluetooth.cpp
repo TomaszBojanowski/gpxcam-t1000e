@@ -4,6 +4,7 @@
 #include <bluefruit.h>
 #include <string.h>
 
+#include "advert_kind.h"
 #include "camera_link.h"
 #include "camera_list.h"
 #include "log.h"
@@ -140,6 +141,8 @@ void onBleEvent(ble_evt_t *event)
     const ble_gap_evt_adv_report_t &advert = event->evt.gap_evt.params.adv_report;
     reportsTotal++;
     lastReportMs = millis();
+    const advert_kind::Kind kind =
+        advert_kind::fromReport(advert.type.connectable, advert.type.scannable, advert.type.scan_response);
 
     camera_list::Report report;
     switch (lumix::parseAdvert(advert.data.p_data, advert.data.len, &report.camera)) {
@@ -147,7 +150,7 @@ void onBleEvent(ble_evt_t *event)
         memcpy(report.address, advert.peer_addr.addr, camera_list::ADDRESS_LENGTH);
         report.addressType = advert.peer_addr.addr_type;
         report.rssi = advert.rssi;
-        report.scanResponse = advert.type.scan_response;
+        report.kind = kind;
         if (xQueueSend(reportQueue, &report, 0) != pdTRUE)
             droppedTotal++;
         break;
@@ -167,7 +170,7 @@ void onBleEvent(ble_evt_t *event)
             memcpy(raw.address, advert.peer_addr.addr, scan_dump::ADDRESS_LENGTH);
             raw.addressType = advert.peer_addr.addr_type;
             raw.rssi = advert.rssi;
-            raw.scanResponse = advert.type.scan_response;
+            raw.kind = kind;
             raw.length = advert.data.len <= scan_dump::MAX_ADVERT_BYTES ? (uint8_t)advert.data.len
                                                                         : (uint8_t)scan_dump::MAX_ADVERT_BYTES;
             memcpy(raw.data, advert.data.p_data, raw.length);
@@ -191,10 +194,11 @@ void logCamera(const char *what, const camera_list::Report &report)
     char address[3 * camera_list::ADDRESS_LENGTH];
     lumix::formatSerial(report.camera.serial, serial, sizeof(serial));
     camera_list::formatAddress(report.address, address, sizeof(address));
-    logger::line("scan: camera %s %s: %s (%02x), %s %s, %d dBm, %s", serial, what,
+    const bool response = report.kind == advert_kind::Kind::ScanResponse;
+    logger::line("scan: camera %s %s: %s (%02x), %s %s, %d dBm, %s%s", serial, what,
                  lumix::stateName(report.camera.state), report.camera.state, address,
-                 camera_list::addressTypeName(report.addressType), report.rssi,
-                 report.scanResponse ? "scan response" : "advert");
+                 camera_list::addressTypeName(report.addressType), report.rssi, advert_kind::name(report.kind),
+                 response ? "" : " advert");
 }
 
 void logLost(const camera_list::Entry &entry)
@@ -220,9 +224,10 @@ void logStatus(uint32_t nowMs)
         char serial[2 * lumix::SERIAL_LENGTH + 1];
         lumix::formatSerial(entry->last.camera.serial, serial, sizeof(serial));
         const uint32_t agoDs = (nowMs - entry->lastSeenMs) / MS_PER_DECISECOND;
-        logger::transient("scan: camera %s %s (%02x), %d dBm, %lu advert + %lu scan response, last %lu.%lu s ago",
+        logger::transient("scan: camera %s %s (%02x), %d dBm, %lu advert (%lu connectable) + %lu scan response, "
+                          "last %lu.%lu s ago",
                           serial, lumix::stateName(entry->last.camera.state), entry->last.camera.state,
-                          entry->last.rssi, (unsigned long)entry->advertCount,
+                          entry->last.rssi, (unsigned long)entry->advertCount, (unsigned long)entry->connectableCount,
                           (unsigned long)entry->scanResponseCount, (unsigned long)(agoDs / 10),
                           (unsigned long)(agoDs % 10));
     }
@@ -371,7 +376,7 @@ bool seenBefore(const scan_dump::Advert &raw)
 {
     uint8_t key[scan_dump::ADDRESS_LENGTH + 1];
     memcpy(key, raw.address, scan_dump::ADDRESS_LENGTH);
-    key[scan_dump::ADDRESS_LENGTH] = raw.scanResponse ? 1 : 0;
+    key[scan_dump::ADDRESS_LENGTH] = raw.kind == advert_kind::Kind::ScanResponse ? 1 : 0;
     for (size_t i = 0; i < dumpSeenCount; i++)
         if (memcmp(dumpSeen[i], key, sizeof(key)) == 0)
             return true;

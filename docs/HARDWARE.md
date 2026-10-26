@@ -429,6 +429,14 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   prepare` (sent by the card page on connecting to an unpaired card) switches it on for 10 min; a session started
   meanwhile skips the wait for GPS time. When the hold runs out the GPS goes back to Backup mode, unless the link
   uses it; `status` shows the seconds left as `gps_hold`.
+- **Connecting (1.5.0-beta.4):** a tester's S5 in pairing mode was heard only 3 times in a search; two attempts got
+  no answer in 10 s and the third ended with HCI 0x3e (the camera sent nothing in the first connection events). The
+  card now listens all the time while it connects (window = interval, 50 ms) instead of the scanner's 50 of 100 ms,
+  for at most 5 s. In pairing, a connection that never came up (no answer, or 0x3e) is tried again at once at the
+  camera's next fresh pairing advertisement, up to 5 times (`pair: quick retry N/5`), without the 10 s and 30 s
+  pauses, which are kept for what fails after the link was made (at most 3 attempts). The logs give the kind of
+  each camera advertisement (connectable, scan-only, non-connectable) and, at each connect, the camera's reports in
+  the last 10 s.
 
 ## Normal work (M5)
 

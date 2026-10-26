@@ -9,6 +9,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "advert_kind.h"
+
 namespace scan_dump {
 
 constexpr int8_t RSSI_THRESHOLD_DBM = -65; // only devices this close or closer are shown
@@ -20,15 +22,16 @@ constexpr size_t ADDRESS_LENGTH = 6;
 struct Advert {
     uint8_t address[ADDRESS_LENGTH]; // as the SoftDevice gives it: least significant byte first
     uint8_t addressType;
-    int8_t rssi;       // dBm
-    bool scanResponse; // false: an advertisement
-    uint8_t length;    // bytes of data in use, at most MAX_ADVERT_BYTES
+    int8_t rssi; // dBm
+    advert_kind::Kind kind;
+    uint8_t length; // bytes of data in use, at most MAX_ADVERT_BYTES
     uint8_t data[MAX_ADVERT_BYTES];
 };
 
 // The body of one "diag scan:" log line for the advert: the address with all but its last byte
-// hidden (**:**:**:**:**:xx, as the logs are masked), the address type, RSSI, whether it is an
-// advertisement or a scan response, and the length. Panasonic manufacturer data ("camera" for a
+// hidden (**:**:**:**:**:xx, as the logs are masked), the address type, RSSI, "rsp" for a scan
+// response or "adv" and the advertisement's kind (connectable, scan-only, non-connectable), and the
+// length. Panasonic manufacturer data ("camera" for a
 // LUMIX camera, "Panasonic" otherwise) is then printed in full; anything else has no bytes.
 // Returns the length written (< size), or 0 if it does not fit.
 size_t formatAdvert(const Advert &advert, char *out, size_t size);
