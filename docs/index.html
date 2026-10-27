@@ -3026,6 +3026,22 @@ function startPage() {
     return core.invoke("register_older", { identity, name, onEvent: channel });
   };
 
+  // The one-time Wi-Fi step of an older camera (app only): the card has introduced itself and waits for
+  // it; the app registers the same identity and name over the camera's own Wi-Fi. show(text, kind) puts
+  // the progress where the step was started from. The outcome of register_older (olderOutcomeText()),
+  // or null when the card went away meanwhile.
+  const runWifiStep = async (asked, info, show) => {
+    show("Join the camera's Wi-Fi network shown on its screen and keep this window open. On the S5 and similar " +
+      "it has no password by default - just pick it from the list; if the camera asks for one, it is on the " +
+      "camera's screen or in its Wi-Fi setup (Setup → Wi-Fi → Wi-Fi Setup → Wi-Fi Password).", "busy");
+    const outcome = await registerOlder(info.identity, info.name, (stage) => {
+      if (card !== asked || olderCancelled) return;
+      if (stage === "on-network") show("On the camera's network - registering the card...", "busy");
+      else if (stage === "registering") show("Registering - allow the connection on the camera if it asks...", "busy");
+    });
+    return card === asked ? outcome : null;
+  };
+
   // Cancel is a direct command (not queued behind the card's console), so it stops the Wi-Fi wait at
   // once; register_older returns "cancelled". A cancel during the first step (before the Wi-Fi wait)
   // takes effect when that step ends.
@@ -3081,18 +3097,8 @@ function startPage() {
       if (olderCancelled) {
         setStatus(ui.olderProgress, "Cancelled.", "");
       } else if (info) {
-        setStatus(ui.olderProgress, "Join the camera's Wi-Fi network shown on its screen and keep this window " +
-          "open. On the S5 and similar it has no password by default - just pick it from the list; if the camera " +
-          "asks for one, it is on the camera's screen or in its Wi-Fi setup (Setup → Wi-Fi → Wi-Fi Setup → " +
-          "Wi-Fi Password).", "busy");
-        const outcome = await registerOlder(info.identity, info.name, (stage) => {
-          if (card !== asked || olderCancelled) return;
-          if (stage === "on-network")
-            setStatus(ui.olderProgress, "On the camera's network - registering the card...", "busy");
-          else if (stage === "registering")
-            setStatus(ui.olderProgress, "Registering - allow the connection on the camera if it asks...", "busy");
-        });
-        if (card !== asked) return;
+        const outcome = await runWifiStep(asked, info, (text, kind) => setStatus(ui.olderProgress, text, kind));
+        if (outcome === null) return;
         accepted = outcome === "accepted";
         const [text, kind] = olderOutcomeText(outcome);
         setStatus(ui.olderProgress, text, kind);

@@ -169,9 +169,10 @@ function openPage(port, { serial = true, serialEvents = {}, app = null, clipboar
 
 // The desktop app's Rust side as app/src-tauri gives it to the page: list_cards, open_card with a
 // channel for the card's lines, send (the answers come back over the channel, line by line) and
-// close_card. openError: the word open_card fails with.
+// close_card; register_older (its stages over a channel, then app.registerOutcome) and cancel_older
+// for older-camera pairing. openError: the word open_card fails with.
 function simulatedApp(paths, answers, { openError = null } = {}) {
-  const app = { calls: [], channel: null };
+  const app = { calls: [], channel: null, registerOutcome: "accepted", registered: [] };
   const core = {
     Channel: class {
       constructor() { this.onmessage = null; }
@@ -189,6 +190,12 @@ function simulatedApp(paths, answers, { openError = null } = {}) {
         for (const text of lines.filter(Boolean)) setTimeout(() => app.channel.onmessage({ kind: "line", text }), 5);
         return null;
       }
+      if (command === "register_older") {
+        app.registered.push(`${args.identity} ${args.name}`);
+        for (const kind of ["on-network", "registering"]) setTimeout(() => args.onEvent.onmessage({ kind }), 5);
+        return new Promise((resolve) => setTimeout(() => resolve(app.registerOutcome), 20));
+      }
+      if (command === "cancel_older") return null;
       if (command === "close_card") {
         setTimeout(() => app.channel.onmessage({ kind: "closed", error: null }), 1);
         return null;
@@ -1521,4 +1528,45 @@ test("commands sent at once are written one after the other, not refused", async
   await assert.rejects(card.send("dfu"), /not sent: dfu/); // refused before it waits
   await card.send("v"); // a refused command does not stop the writes after it
   assert.equal(written.at(-1), "v\n");
+});
+
+// ---- Older-camera pairing in the app (the wizard) ----
+
+// The card's answer to 'pair older' up to the Wi-Fi step (src/older_session.cpp), made-up identity.
+const OLDER_STARTED = [
+  "link: off\r\npair: older started - waiting for GPS time (up to 120 s)\r\n",
+  "older: introduced - waiting up to 300 s for the camera's 01 (the camera now waits for the Wi-Fi step)\r\n",
+  "older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E\r\n",
+];
+const OLDER_IDENTITY = "4D454930-0100-1000-8001-A1B2C3D4E5F6 T1000-E";
+
+async function olderWizard(registerOutcome) {
+  const answers = { v: VERSION_1_4, status: statusWith(NOT_PAIRED, STATUS_GPS_HOLD), "pair older": OLDER_STARTED,
+    "pair off": ["pair: cancelled\r\n"], "pair prepare": ["pair: GPS on for 600 s, ready for pairing\r\n"] };
+  const app = simulatedApp(["/dev/ttyACM0"], answers);
+  app.registerOutcome = registerOutcome;
+  const ui = openPage(null, { app });
+  await ui.connect.fire("click");
+  assert.equal(ui.older.hidden, false); // the wizard is the app's
+  await ui["older-start"].fire("click");
+  return { app, ui };
+}
+
+test("in the app: the older-camera wizard registers the identity the card prints, over Wi-Fi", async () => {
+  const { app, ui } = await olderWizard("accepted");
+  assert.deepEqual(app.registered, [OLDER_IDENTITY]);
+  assert.equal(ui["older-progress"].textContent, "The camera accepted the card. Older pairing done.");
+  assert.equal(ui["older-progress"].className, "good");
+  assert.equal(app.calls.includes("send pair off"), false); // a paired card is left as it is
+  assert.equal(ui["older-start"].hidden, false);
+  assert.equal(ui["older-cancel"].hidden, true);
+  await ui.disconnect.fire("click"); // stops the status refresh
+});
+
+test("in the app: a Wi-Fi step that fails says why and stops the card's pairing", async () => {
+  const { app, ui } = await olderWizard("not-on-network");
+  assert.match(ui["older-progress"].textContent, /^Could not reach the camera\. Join the camera's Wi-Fi network/);
+  assert.equal(ui["older-progress"].className, "bad");
+  assert.equal(app.calls.includes("send pair off"), true);
+  await ui.disconnect.fire("click");
 });
