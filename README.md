@@ -403,6 +403,7 @@ Measuring the current with the battery log: `docs/HARDWARE.md`, section "Measuri
 
 ```
 pio test -e native
+pio test -e native_sessions
 node --test test/web/card_page.test.mjs
 ```
 
@@ -411,8 +412,10 @@ formats, location), camera list, UTC calendar, time zone table, POSIX time zone 
 full tz database at every change of 2026–2031), time zone file, pairing record and its copy,
 settings file, the camera handles kept between connections, link, battery and sound rules, the
 battery log's batches and the stable-USB rule, the lines of `status` – are
-tested with made-up data and the vectors from `docs/PROTOCOL.md`. The second command (Node.js,
-tested with version 22) tests the card page with a simulated card.
+tested with made-up data and the vectors from `docs/PROTOCOL.md`. The second command runs the
+state machines – the introduction in both dialects, pairing and the link – against fakes of the
+hardware and a test camera that can disconnect, stay silent or refuse at any step. The third
+(Node.js, tested with version 22) tests the card page with a simulated card.
 
 ## Documentation
 

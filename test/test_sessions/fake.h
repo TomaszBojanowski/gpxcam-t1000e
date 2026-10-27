@@ -99,7 +99,9 @@ struct Camera {
     uint8_t disconnectReason = 0x13;
     Trigger refuse; // a refused Write, Read or Service search, with refuseStatus
     uint16_t refuseStatus = BLE_GATT_STATUS_ATTERR_WRITE_NOT_PERMITTED;
-    bool knowsCard = true; // older dialect: 01 on the location notify after the device name
+    bool knowsCard = true; // older dialect: 01 once the card wrote knownAfter, on knownOn
+    uint16_t knownAfter = 0x0046;  // OLDER_DEVICE_NAME (fake.h's value handles, below)
+    uint16_t knownOn = 0x0052;     // OLDER_LOCATION_NOTIFY
     Descriptors descriptors = Descriptors::NoCccd;
 };
 extern Camera camera;
@@ -129,6 +131,7 @@ constexpr uint16_t OLDER_TIME = 0x004C;
 constexpr uint16_t OLDER_TIME_NOTIFY = 0x004E;
 constexpr uint16_t OLDER_LOCATION = 0x0050;
 constexpr uint16_t OLDER_LOCATION_NOTIFY = 0x0052;
+static_assert(Camera().knownAfter == OLDER_DEVICE_NAME && Camera().knownOn == OLDER_LOCATION_NOTIFY, "the default 01");
 
 // What the card asked camera_link, in order: "connect", "cancel connect", "disconnect", "mtu",
 // "service", "characteristics", "older characteristics", "descriptors 001f", "read 0012", "write 001a".

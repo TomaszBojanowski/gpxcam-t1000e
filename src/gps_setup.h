@@ -1,5 +1,5 @@
 // GPS configuration after every power-on, in the GPS RAM only: check first, change
-// only what differs. $PAIR513 (save to the GPS flash) is never sent (M2 decision).
+// only what differs. $PAIR513 (save to the GPS flash) is never sent.
 #pragma once
 
 namespace gps_setup {

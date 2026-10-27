@@ -289,13 +289,14 @@ about 1 s – released after 836 ms, the card starts.
 | 5 | 1 = camera paired, 0 = none |
 | 6–21 | card UUID (16 B, in the order of the text form), version 4 (random) |
 | 22–26 | camera serial number (zeros when byte 5 = 0) |
-| 27 | 0 (reserved) |
+| 27 | the camera's dialect: 0 = newer, 1 = older (1.5.0; up to 1.4.0 always 0, read as newer) |
 | 28–31 | CRC-32 (IEEE 802.3, as zlib) of bytes 0–27, little-endian |
 
 - The UUID is created once, at the first start without the file, from the hardware generator through the SoftDevice
   (`sd_rand_application_vector_get`). A damaged file means a new UUID and a log entry – the camera has to be paired again.
-- Writing: a temporary file `/gpxcam/pairing.tmp`, then `rename` (atomic in littlefs 1.7, also on power loss)
-  and a check read, because `File::close()` does not report errors. Opening a file allocates memory on the heap (library) –
+- Writing: a temporary file `/gpxcam/pairing.tmp`, read back (`File::close()` does not report errors), then `rename`
+  (atomic in littlefs 1.7 for the record's own blocks, not for the loss of the 4 KB page around them: "A file system
+  that mounts but is damaged" below) and a check read. Opening a file allocates memory on the heap (library) –
   only at start-up and when the pairing changes.
 - Tested on the card: the first start creates the file (about 0.9 s), the UUID has the version 4 markers; the same UUID after
   flashing again through `dfu` and after switching off and on with the button.
@@ -637,6 +638,31 @@ The idle current (System OFF, in the µA range) cannot be measured this way: the
   empty area formatted, `pairing.bin` restored from the copy, connected again. The copies alternated: 1 and 3 on
   0xEC000, 2 on 0xEB000. Erasing only the first page of the file system had not been enough: a young file system fits in
   it, and the area was then empty.
+
+## Robustness (1.5.0-beta.6)
+
+From a review of the code before 1.5.0; besides the older dialect, the scan watchdog and the file system (above).
+Host tests: `pio test -e native_sessions` (the state machines against fakes and a test camera).
+
+- **A connection nobody wants:** one that came up just as the card gave it up (the connect time limit, `link off`,
+  `pair off`) stayed open without an owner, the camera showing a connection without locations. `camera_link` marks a
+  connection as wanted; a Connected event while none is is closed at once in the BLE task (`camera: a connection that
+  came up after it was given up was closed`).
+- **A lost Disconnected event** (`camera_link`'s queue full, counted in `p`): the link and the older dialect's
+  lasting connection waited for it, and without a GPS fix nothing ended them. They now also read
+  `camera_link::connected()`.
+- **The CCCD search** timed its step from a time read before the events, so a second descriptor search could end at
+  once with "no answer in time" (not on the S5II, which has no CCCD).
+- **Pairing and the link:** a scan that only a `diag scan` run kept on, and the link's GPS, are no longer put back
+  after a pairing; `link off` and `unpair` during a pairing keep the link off after it; the GPS and the scan go back
+  when the link cannot start then. Only "attribute not found", or an answer without it, means a camera without the
+  newer dialect. `link on` starts the rate guard of the frequent timing afresh.
+- **Camera reports** keep the time the BLE task got them, not the time the loop read them.
+- **The log:** after one 50 ms wait for a host that does not read, the next lines do not wait until there is room
+  (`bat log` could hold the loop past the watchdog); no line is longer than 125 characters (long ones are split); a
+  scan that cannot start is logged once; the link's scan lines between connection attempts are only sent.
+- **Records:** the temporary file is read back before it replaces a record (`File::close()` reports no errors); the
+  battery log checks the file's size after a batch; the pairing copy's page is erased once per write, not twice.
 
 ## Transmit power (1.4.0)
 

@@ -107,7 +107,7 @@ int64_t transitionMoment(const Transition &transition, int year, int32_t offsetB
     const int64_t firstDay = utc::daysFromCivil(year, transition.month, 1);
     const int64_t lastDay = firstDay + utc::daysInMonth(year, transition.month) - 1;
     int64_t day = firstDay + (transition.weekday - utc::weekday(firstDay) + DAYS_PER_WEEK) % DAYS_PER_WEEK +
-                  (transition.week - 1) * DAYS_PER_WEEK;
+                  (int64_t)(transition.week - 1) * DAYS_PER_WEEK;
     if (day > lastDay) // week 5 in a month with only four such weekdays
         day -= DAYS_PER_WEEK;
     return day * SECONDS_PER_DAY + transition.timeSeconds - offsetBefore;

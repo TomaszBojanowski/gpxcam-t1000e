@@ -1,7 +1,8 @@
 //! gpxcam card: the card page (docs/index.html) in its own window, for computers without Chrome
 //! or Edge. The page reaches the card through four commands (its transport "app"): list_cards,
-//! open_card, send and close_card. Nothing else is open to the page: no plugins, and in
-//! capabilities/default.json only these.
+//! open_card, send and close_card; two more do an older camera's Wi-Fi step: register_older and
+//! cancel_older. Nothing else is open to the page: no plugins, and in capabilities/default.json
+//! only these six.
 
 mod card;
 mod commands;

@@ -123,7 +123,7 @@ void rememberTime(const nmea::Rmc &rmc, bool fix)
     timeValid = true;
 }
 
-// GGA comes just before RMC of the same second on this module (M2 step 1 log).
+// GGA comes just before RMC of the same second on this module.
 void handleNavigation()
 {
     nmea::Gga gga;

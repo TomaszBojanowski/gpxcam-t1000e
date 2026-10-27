@@ -21,7 +21,7 @@ namespace {
 
 using camera_link::Characteristic;
 
-// Time limits (M4 decisions; connecting: camera_link::CONNECT_TIMEOUT_MS).
+// Time limits (connecting: camera_link::CONNECT_TIMEOUT_MS).
 constexpr uint32_t MTU_MS = 3000;
 constexpr uint32_t STEP_MS = 5000; // service, characteristics, key and every write
 constexpr uint32_t DISCONNECT_MS = 5000;
@@ -31,7 +31,7 @@ constexpr uint16_t MTU_REQUEST = camera_link::MAX_MTU;
 constexpr uint16_t ATT_WRITE_HEADER = 3;
 constexpr uint16_t MTU_NEEDED = lumix::APP_NAME_LENGTH + ATT_WRITE_HEADER;
 
-// M4 decisions: names shown by the camera.
+// Names shown by the camera.
 constexpr const char *DEVICE_NAME = "T1000-E";
 constexpr const char *APP_NAME = "gpxcam T1000-E " FW_VERSION;
 
@@ -318,8 +318,8 @@ void onWritten(const camera_link::Event &event, void (*next)())
 // The camera knows the card. A connection that stays open writes the time once more: the
 // camera takes the time zone offset from the time packet before the last one (only the
 // summer-time flag from the last), so the second packet makes the zone of the first count
-// (tested on the S5II, docs/PROTOCOL.md). Pairing writes it once, as up to 1.1; the
-// connection after it writes it twice.
+// (tested on the S5II, docs/PROTOCOL.md). Pairing writes it once; the connection after it
+// writes it twice.
 void onTimeAccepted()
 {
     accepted = true;

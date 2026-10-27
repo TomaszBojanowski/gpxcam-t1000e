@@ -29,7 +29,7 @@ template <size_t N> constexpr Melody melody(const Note (&notes)[N])
 constexpr uint16_t NOTE_FS3 = 185;
 constexpr uint16_t NOTE_AS3 = 233;
 constexpr uint16_t NOTE_CS4 = 277;
-constexpr uint16_t NOTE_FS4 = 370; // M4: one chord note above the start melody
+constexpr uint16_t NOTE_FS4 = 370; // one chord note above the start melody
 constexpr uint16_t PAUSE = 0;
 constexpr uint32_t GAP_PERCENT = 30;
 
@@ -39,8 +39,8 @@ constexpr Note CLICK_NOTES[] = {{NOTE_AS3, 20}}; // Meshtastic's key-press "chir
 constexpr Note REFUSE_NOTES[] = {{NOTE_AS3, 20}, {PAUSE, 100}, {NOTE_AS3, 20}};
 constexpr Note PAIRING_NOTES[] = {{NOTE_CS4, 60}, {PAUSE, 60}, {NOTE_CS4, 60}};
 constexpr Note PAIRED_NOTES[] = {{NOTE_AS3, 100}, {NOTE_CS4, 100}, {NOTE_FS4, 200}};
-constexpr Note CONNECTED_NOTES[] = {{NOTE_CS4, 60}, {NOTE_FS4, 60}};    // M5
-constexpr Note DISCONNECTED_NOTES[] = {{NOTE_FS4, 60}, {NOTE_CS4, 60}}; // M5
+constexpr Note CONNECTED_NOTES[] = {{NOTE_CS4, 60}, {NOTE_FS4, 60}};
+constexpr Note DISCONNECTED_NOTES[] = {{NOTE_FS4, 60}, {NOTE_CS4, 60}};
 constexpr Note TEST_PAUSE_NOTES[] = {{PAUSE, 700}};
 
 // Volume = PWM duty (sound_rules.h).
@@ -224,11 +224,6 @@ void poll()
         startNote(currentNote());
     else
         finish();
-}
-
-bool playing()
-{
-    return isPlaying;
 }
 
 void playToEnd()

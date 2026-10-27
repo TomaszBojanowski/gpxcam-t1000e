@@ -323,8 +323,8 @@ bool write(uint16_t handle, const uint8_t *, uint16_t)
     if (fake::answers(Request::Write, handle, &accepted)) {
         const uint16_t status = fake::status(Request::Write, handle);
         fake::queue(fake::made(EventType::WriteDone, status));
-        if (handle == fake::OLDER_DEVICE_NAME && status == BLE_GATT_STATUS_SUCCESS && fake::camera.knowsCard)
-            fake::notify(fake::OLDER_LOCATION_NOTIFY, lumix::OLDER_KNOWN);
+        if (handle == fake::camera.knownAfter && status == BLE_GATT_STATUS_SUCCESS && fake::camera.knowsCard)
+            fake::notify(fake::camera.knownOn, lumix::OLDER_KNOWN);
     }
     return accepted;
 }

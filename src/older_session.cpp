@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <ble_gatt.h>
+#include <ble_hci.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -678,11 +679,6 @@ void cancel()
     if (camera_link::connected())
         camera_link::disconnect();
     step = Step::Idle;
-}
-
-bool active()
-{
-    return step != Step::Idle;
 }
 
 void logState()

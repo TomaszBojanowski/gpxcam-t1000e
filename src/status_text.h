@@ -40,7 +40,7 @@ struct State {
     const char *version; // "1.3.0"
     const char *git;     // short commit hash
     bool watchdogRestart; // the last start was a watchdog reset: the card had hung
-    const char *storage;  // storage::stateName(): "ok", or "damaged" (defaults, no pairing)
+    const char *storage;  // storage::stateName(): "ok", or "damaged" (defaults, the pairing from its copy, if any)
     uint32_t batteryMillivolts;
     uint8_t batteryPercent; // battery_rules::percentFromMillivolts()
     battery::Charger charger;

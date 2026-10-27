@@ -4,9 +4,8 @@
 //! camera's local HTTP service. The app reaches only the camera's own address (192.168.54.1) and
 //! never the internet. Plain `TcpStream`, no HTTP library.
 //!
-//! The byte encoding and the request sequence come from local notes of the older protocol
-//! (local/plan-older-cameras.md); the User-Agent here is a neutral one, not the older app's name -
-//! whether the camera checks it is a test question.
+//! The byte encoding and the request sequence: docs/PROTOCOL.md ("Older dialect: the one-time Wi-Fi
+//! step"). The User-Agent here is a neutral one, not the older app's name; the S5II accepts it.
 
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, UdpSocket};

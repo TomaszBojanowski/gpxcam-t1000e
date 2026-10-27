@@ -1576,7 +1576,7 @@ const OLDER_START_TIMEOUT_MS = 270000;
 // Pairing as the card does it (src/pairing.cpp): the limits the page tells.
 const PAIR_ATTEMPTS = 3;
 const PAIR_FIX_WAIT_TEXT = "2 minutes";
-const PAIR_SEARCH_TEXT = "2 minutes"; // 1 minute up to gpxcam 1.5.0-beta.1
+const PAIR_SEARCH_TEXT = "2 minutes";
 const TZ_TIMEOUT_MS = 6000; // saving writes flash: about 1 s, more the first time
 const CLOCK_TIMEOUT_MS = 6000; // the clock setting is saved in the same file as the time zone
 const SOUND_TIMEOUT_MS = 6000; // saving writes flash, like the time zone
@@ -1584,7 +1584,7 @@ const SOUND_SETTINGS = ["loud", "quiet", "off"]; // src/sound_rules.cpp settingN
 const UPDATES_TIMEOUT_MS = 6000; // saved in the same file as the sound
 const UPDATES_SETTINGS = ["normal", "frequent"]; // src/link_policy.cpp updatesName()
 const ANSWER_QUIET_MS = 400; // an answer is complete after this long without another of its lines
-const LOG_TIMEOUT_MS = 3000; // 'log' shows the card's last 32 lines at once (src/log.cpp dumpHistory())
+const LOG_TIMEOUT_MS = 3000; // 'log' shows the card's last 64 lines at once (src/log.cpp dumpHistory())
 const CARD_ID_TIMEOUT_MS = 3000; // 'p' shows the card's state at once (src/main.cpp)
 const SCAN_RUN_MS = 30000; // one 'diag scan' run (src/scan_dump.h DURATION_MS)
 const SCAN_TIMEOUT_MS = SCAN_RUN_MS + 10000; // the run ends with "diag scan: done"; this much is waited at most
@@ -1718,10 +1718,8 @@ function computerZone() {
 
 // ---- The card's console (pure functions) ----
 
-// The only commands the page may send: v, status, pair, pair off, pair older, pair prepare, p (only
-// read: the card's id for resuming older pairing), unpair, clock on, clock off, updates normal,
-// updates frequent, sound loud, sound quiet, sound off, log, diag scan, tz, and tz with a name exactly
-// as the table spells it.
+// The only commands the page may send (test/commands.json): 'p' only to read the card's id for resuming
+// older pairing, 'tz NAME' only with a name exactly as the table spells it.
 const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "pair older", "pair prepare", "p", "unpair",
   "clock on", "clock off",
   ...UPDATES_SETTINGS.map((setting) => `updates ${setting}`), ...SOUND_SETTINGS.map((setting) => `sound ${setting}`),
@@ -1958,8 +1956,8 @@ function tzProblemText(version, answer) {
 
 // ---- The card's state (pure functions) ----
 
-// The keys of the answer to 'status' in format 1 (src/status_text.h). Not among them: updates and
-// updates_now, which came with gpxcam 1.4.0.
+// The keys of the answer to 'status' in format 1 (src/status_text.h). Not among them, as older gpxcam does
+// not send them: updates, updates_now, watchdog_restart and storage (gpxcam 1.4.0), gps_hold (1.5.0-beta.2).
 const STATUS_KEYS = ["format", "fw", "git", "battery_mv", "battery_pct", "charger", "gps", "gps_fix", "gps_sat",
   "paired", "link", "pair", "pair_attempt", "pair_result", "clock", "tz", "sound"];
 
@@ -2370,11 +2368,10 @@ class Card {
     return this.ask("pair prepare", isPairAnswer, PAIR_TIMEOUT_MS, () => true);
   }
 
-  // 'pair older' (app only): starts older-dialect pairing and waits for the card's one line with the
-  // identity and name to register over the camera's Wi-Fi. Null if the card did not start it in time.
   // Calls onLine for every line the card sends, until the returned stop() is called. Unlike ask(),
-  // it does not use the one-command queue, so status refresh keeps running under it: the older-
-  // pairing wizard watches the card's progress while it waits for the Wi-Fi step.
+  // it does not use the one-command queue, so the status refresh keeps running meanwhile: the
+  // older-pairing wizard watches the card's progress while it waits for the Wi-Fi step, and Scan for
+  // cameras collects a 'diag scan' run.
   watchLines(onLine) {
     this.waiters.add(onLine);
     return () => this.waiters.delete(onLine);
@@ -3115,8 +3112,8 @@ function startPage() {
     showPairing();
   };
 
-  // 'pair older' (app only): start older-dialect pairing, then register the same identity over the
-  // camera's Wi-Fi. window.__TAURI__ is the app; this runs only there (the section is app-only).
+  // Registers the identity and name over the camera's Wi-Fi (the app's register_older); onStage gets
+  // each stage. Only in the app: window.__TAURI__.
   const registerOlder = (identity, name, onStage) => {
     const core = window.__TAURI__.core;
     const channel = new core.Channel();
@@ -3141,8 +3138,8 @@ function startPage() {
   };
 
   // Cancel is a direct command (not queued behind the card's console), so it stops the Wi-Fi wait at
-  // once; register_older returns "cancelled". A cancel during the first step (before the Wi-Fi wait)
-  // takes effect when that step ends.
+  // once; register_older returns "cancelled". A cancel before the Wi-Fi wait is seen at the wizard's
+  // next check (Start: within 0.4 s; Resume: after the card's answer to 'p').
   const cancelOlder = () => {
     if (!busy) return;
     olderCancelled = true;

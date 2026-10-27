@@ -1,4 +1,4 @@
-// The card's pairing data (M4): its own identifier for the camera and the paired camera,
+// The card's pairing data: its own identifier for the camera and the paired camera,
 // kept as one 32-byte record in the file system. No hardware dependencies (tested on the PC).
 //
 // Record, multi-byte values little-endian:
@@ -34,7 +34,7 @@ struct Record {
     uint8_t dialect; // DIALECT_NEWER or DIALECT_OLDER; see isOlderDialect
 };
 
-enum class Status { Ok, WrongSize, WrongMagic, WrongVersion, BadChecksum, BadFlag };
+enum class Status : uint8_t { Ok, WrongSize, WrongMagic, WrongVersion, BadChecksum, BadFlag };
 
 void encode(const Record &record, uint8_t out[SIZE]);
 

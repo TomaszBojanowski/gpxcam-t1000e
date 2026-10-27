@@ -25,8 +25,8 @@ constexpr uint8_t CENTRAL_LINKS = 1;    // the camera
 // (BLE_UUID_VS_COUNT_DEFAULT); raising it uses a little more SoftDevice RAM (checked at start).
 constexpr uint8_t VENDOR_UUID_COUNT = 20;
 
-// Scanning (M3 decision): active scan, the radio listens 50 ms of every 100 ms, until
-// stopped; slower in the M6 search modes (setScanTiming()).
+// Scanning: active scan, the radio listens 50 ms of every 100 ms, until stopped; slower in the
+// link's search modes (setScanTiming()).
 constexpr uint16_t SCAN_INTERVAL_MS = 100;
 constexpr uint16_t SCAN_WINDOW_MS = 50;
 // The SoftDevice accepts a legacy scan interval up to 10.24 s (ble_gap.h, BLE_GAP_SCAN_INTERVAL_MAX).
@@ -41,13 +41,13 @@ constexpr uint32_t MS_PER_DECISECOND = 100;
 
 // Scan watchdog. After each report the SoftDevice pauses the scan until it is resumed (ble_gap.h,
 // sd_ble_gap_scan_start()); a tester's card got 1-3 reports in 30 s with a phone and a camera next
-// to it (1.5.0-beta.2).
+// to it.
 //  - At the normal timing (pairing, 'diag scan', the link's normal search) a scan that is on but has
 //    had no report for SCAN_SILENCE_MS is stopped and started again.
 //  - At the slower timings of the link's search modes (100 ms every 1, 2 or 10 s) a silence of 5 s
-//    is normal (with 10 s between windows the watchdog restarted the scan before each of them,
-//    1.5.0-beta.3 to beta.5), so only a failed resume restarts it: it leaves the scan paused, and
-//    the card would not see the camera again in that mode.
+//    is normal (with 10 s between windows a 5 s watchdog would restart the scan before each of
+//    them), so only a failed resume restarts it: it leaves the scan paused, and the card would not
+//    see the camera again in that mode.
 constexpr uint32_t SCAN_SILENCE_MS = 5000;
 
 // Transmit power +8 dBm, the most the nRF52840 has (ble_gap.h, sd_ble_gap_tx_power_set(): the
@@ -619,7 +619,7 @@ void poll()
     camera_list::Report report;
     while (xQueueReceive(reportQueue, &report, 0) == pdTRUE) {
         if (!scanActive)
-            continue; // left over from before 'scan off'
+            continue; // left over from before scanOff()
         cameraReports++;
         switch (cameras.add(report, report.receivedMs)) {
         case camera_list::Change::New:

@@ -1,4 +1,4 @@
-// Battery log for measuring the current without a meter (M6): while switched on with
+// Battery log for measuring the current without a meter: while switched on with
 // 'bat log on' and running on the battery, an entry every 10 minutes (uptime, voltage, what
 // the link was doing) goes to /log/battery.bin in the file system, so it survives a
 // power-off. Its own directory: its writes do not rewrite /gpxcam, which holds the pairing,

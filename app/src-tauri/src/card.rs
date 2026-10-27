@@ -68,14 +68,14 @@ impl SendError {
     }
 }
 
-/// A port as the app uses it: the card's (SystemPorts) or a stand-in in the tests.
+/// A port as the app uses it: the card's (SystemPort, opened by SystemPorts) or a stand-in in the tests.
 pub trait CardPort: Read + Write + Send {
     fn set_dtr(&mut self, on: bool) -> io::Result<()>;
     /// Another handle to the same port, for the reading thread.
     fn try_clone_port(&self) -> io::Result<Box<dyn CardPort>>;
 }
 
-/// Opens ports.
+/// Opens a port: SystemPorts for the card, a stand-in in the tests.
 pub trait Opener {
     fn open(&self, path: &str, baud_rate: u32) -> Result<Box<dyn CardPort>, OpenError>;
 }

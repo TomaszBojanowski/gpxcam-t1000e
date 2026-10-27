@@ -1,4 +1,4 @@
-// Pairing with a LUMIX camera (M4), started only on request ('pair' or click + hold).
+// Pairing with a LUMIX camera, started only on request ('pair' or click + hold).
 // Needs UTC time from the GPS (switched on for the session if it was off) and connects
 // only to a camera in pairing state 03 - never in standby 06. A failed attempt is
 // followed by a pause; after 3 attempts pairing gives up. A session that ends without

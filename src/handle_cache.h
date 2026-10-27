@@ -12,7 +12,7 @@
 
 namespace handle_cache {
 
-// The characteristics the card uses (camera_link::CHARACTERISTIC_COUNT, checked there).
+// The characteristics the card uses (camera_link::CHARACTERISTIC_COUNT, checked in camera_session.cpp).
 constexpr size_t CHARACTERISTIC_COUNT = 8;
 
 struct Handles {
@@ -24,7 +24,7 @@ struct Handles {
 // Keeps the handles of the camera with this serial number, replacing any kept before.
 void keep(const uint8_t serial[lumix::SERIAL_LENGTH], const Handles &handles);
 
-enum class Lookup {
+enum class Lookup : uint8_t {
     Found,                // *handles are the camera's
     Empty,                // nothing kept
     OtherCameraForgotten, // the kept handles were another camera's; now forgotten

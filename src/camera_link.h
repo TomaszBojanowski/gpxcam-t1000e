@@ -1,4 +1,4 @@
-// The BLE connection to the camera (M4): GATT client requests made directly with the
+// The BLE connection to the camera: GATT client requests made directly with the
 // SoftDevice API. Bluefruit's blocking helpers are not used: they wait only 100 ms
 // (BLE_GENERIC_TIMEOUT) and create a semaphore on the heap for every call.
 // Requests return at once; their results come back as events through a static queue.
@@ -15,7 +15,7 @@
 namespace camera_link {
 
 // The characteristics the card uses (lumix.h, docs/PROTOCOL.md). The first five are needed
-// to introduce the card (pairing), the others for the normal work (M5).
+// to introduce the card (pairing), the others for the normal work.
 enum Characteristic : uint8_t {
     KEY,
     DEVICE_ID,
@@ -30,8 +30,8 @@ enum Characteristic : uint8_t {
 constexpr uint8_t INTRODUCTION_CHARACTERISTICS = TIME + 1;
 
 // The older dialect's characteristics, in the order camera_link registers them (lumix.h). Found
-// only on demand (findOlderCharacteristics), so a newer-dialect connection discovers exactly as
-// before. The older dialect has no service UUID: these are found across the whole handle range.
+// only on demand (findOlderCharacteristics), so a newer-dialect connection never looks for them.
+// The older dialect has no service UUID: these are found across the whole handle range.
 enum OlderCharacteristic : uint8_t {
     OLDER_KEY,
     OLDER_DEVICE_ID,
@@ -61,7 +61,7 @@ enum class EventType : uint8_t {
 
 constexpr size_t MAX_READ_LENGTH = 8;
 
-// ATT MTU of the camera link (M4 decision, as the gpxcam app asks for): the SoftDevice is
+// ATT MTU of the camera link (as the gpxcam app asks for): the SoftDevice is
 // configured for it in bluetooth::begin(), the session asks the camera for it.
 constexpr uint16_t MAX_MTU = 185;
 
@@ -126,7 +126,7 @@ void onBleEvent(const ble_evt_t *event);
 // by connect().
 bool nextEvent(Event *event);
 
-// How long the sessions wait for a connection to come up (10 s up to 1.5.0-beta.3): with the
+// How long the sessions wait for a connection to come up: with the
 // radio listening all the time (connect()) a camera that advertises is reached well within it,
 // and pairing tries again at once on the camera's next advertisement.
 constexpr uint32_t CONNECT_TIMEOUT_MS = 5000;

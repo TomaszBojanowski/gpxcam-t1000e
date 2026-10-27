@@ -7,6 +7,8 @@
 void runCameraSessionTests();
 void runLinkTests();
 void runPairingTests();
+void runOlderSessionTests();
+void runInvariantTests();
 
 void setUp()
 {
@@ -26,5 +28,7 @@ int main(int, char **)
     runCameraSessionTests();
     runLinkTests();
     runPairingTests();
+    runOlderSessionTests();
+    runInvariantTests();
     return UNITY_END();
 }

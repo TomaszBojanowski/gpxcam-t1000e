@@ -1,5 +1,5 @@
 // Keeps the pairing record (pairing_record.h) in the internal file system as
-// /gpxcam/pairing.bin (M4). Loop task only.
+// /gpxcam/pairing.bin. Loop task only.
 #pragma once
 
 #include "pairing_record.h"

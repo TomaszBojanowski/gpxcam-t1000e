@@ -6,6 +6,7 @@ namespace {
 
 constexpr int64_t SECONDS_PER_DAY = 86400;
 constexpr int64_t SECONDS_PER_HOUR = 3600;
+constexpr int64_t SECONDS_PER_MINUTE = 60;
 constexpr int THURSDAY = 4; // 1970-01-01
 constexpr int DAYS_PER_WEEK = 7;
 
@@ -67,8 +68,8 @@ int64_t secondsAfter(int64_t unixMs, uint32_t msLater)
 
 int64_t toUnixSeconds(const DateTime &t)
 {
-    return daysFromCivil(t.year, t.month, t.day) * SECONDS_PER_DAY + t.hour * SECONDS_PER_HOUR + t.minute * 60 +
-           t.second;
+    return daysFromCivil(t.year, t.month, t.day) * SECONDS_PER_DAY + t.hour * SECONDS_PER_HOUR +
+           t.minute * SECONDS_PER_MINUTE + t.second;
 }
 
 DateTime fromUnixSeconds(int64_t seconds)

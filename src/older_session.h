@@ -47,8 +47,6 @@ uint32_t locationsWritten();
 // Disconnects and stops; does nothing when idle.
 void cancel();
 
-bool active();
-
 // 'p': the step and the locations written.
 void logState();
 

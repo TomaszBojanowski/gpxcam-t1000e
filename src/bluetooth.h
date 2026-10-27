@@ -1,4 +1,4 @@
-// BLE through the SoftDevice S140 7.3.0, started by the Bluefruit library (M3).
+// BLE through the SoftDevice S140 7.3.0, started by the Bluefruit library.
 // (Not named ble.h: that name belongs to the SoftDevice header the library includes.)
 // Central role only: the card looks for the camera and connects to it (camera_link.h); it
 // never advertises and never accepts connections.
@@ -33,13 +33,13 @@ void scanOn(Lines lines = Lines::Kept);
 // Stops scanning and logs a summary. Does nothing if not scanning (also before begin()).
 void scanOff(Lines lines = Lines::Kept);
 
-// Radio on windowMs of every intervalMs (M6: slower when the camera is away or in
+// Radio on windowMs of every intervalMs (slower when the camera is away or in
 // standby); applied at once if scanning, kept for the next scanOn(). During a 'diag scan'
 // run it is kept for when the run ends. False if out of the SoftDevice's range (interval up
 // to 10.24 s, window up to the interval).
 bool setScanTiming(uint16_t intervalMs, uint16_t windowMs);
 
-// Back to the M3 timing: 50 ms of every 100 ms.
+// Back to the normal timing: 50 ms of every 100 ms.
 void setNormalScanTiming();
 
 bool scanning();

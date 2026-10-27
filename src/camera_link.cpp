@@ -69,7 +69,7 @@ QueueHandle_t paramsQueue = nullptr;
 // Units of ble_gap_conn_params_t (ble_gap.h): the interval in 1.25 ms, the timeout in 10 ms.
 constexpr uint32_t INTERVAL_UNIT_US = 1250;
 constexpr uint32_t TIMEOUT_UNIT_MS = 10;
-constexpr size_t PARAMS_TEXT_MAX = 80;
+constexpr size_t PARAMS_TEXT_MAX = 100;
 
 constexpr uint16_t FIRST_HANDLE = 0x0001;
 
@@ -83,7 +83,7 @@ const uint8_t *const CHARACTERISTIC_UUIDS[camera_link::CHARACTERISTIC_COUNT] = {
     lumix::TIME_UUID, lumix::GPS_MODE_UUID, lumix::GPS_NOTIFY_UUID, lumix::LOCATION_UUID};
 
 // The older dialect's characteristics, registered so the card can speak it too (no service UUID:
-// found by reading across the handle range). Not used until the older-dialect session is wired in.
+// found by reading across the handle range, older_session.cpp).
 ble_uuid_t olderCharacteristicUuids[lumix::OLDER_CHARACTERISTIC_COUNT] = {};
 const uint8_t *const OLDER_CHARACTERISTIC_UUIDS[lumix::OLDER_CHARACTERISTIC_COUNT] = {
     lumix::OLDER_KEY_UUID,         lumix::OLDER_DEVICE_ID_UUID,   lumix::OLDER_DEVICE_NAME_UUID,
@@ -94,9 +94,10 @@ uint8_t registeredCount = 0; // vendor UUIDs begin() registered
 static_assert(camera_link::OLDER_CHARACTERISTIC_COUNT == lumix::OLDER_CHARACTERISTIC_COUNT,
               "the older-characteristic enum and UUID list agree");
 
-// Set by findOlderCharacteristics, cleared by connect(): the next discovery matches the older
-// dialect. The newer dialect never sets it, so its discovery is exactly as before.
-bool discoverOlder = false;
+// Set by findOlderCharacteristics, cleared by connect() (loop task); read by the BLE task when the
+// discovery answers come: the next discovery matches the older dialect. The newer dialect never sets
+// it, so its discovery matches only the newer list.
+volatile bool discoverOlder = false;
 
 bool registerUuid(const uint8_t bigEndian[lumix::UUID_LENGTH], ble_uuid_t *out)
 {
@@ -181,19 +182,19 @@ void queueParams(ParamsEvent type, const ble_gap_conn_params_t &params)
 }
 
 // "interval 48.75 ms, latency 0, supervision timeout 5000 ms"; an interval range when the
-// minimum and maximum differ (a camera request).
-void formatParams(const ble_gap_conn_params_t &params, char *out, size_t size)
+// minimum and maximum differ (a camera request). The longest, with every field at its largest
+// (uint16_t), is about 90 characters.
+void formatParams(const ble_gap_conn_params_t &params, char (&out)[PARAMS_TEXT_MAX])
 {
     const uint32_t minUs = params.min_conn_interval * INTERVAL_UNIT_US;
     const uint32_t maxUs = params.max_conn_interval * INTERVAL_UNIT_US;
-    int length = snprintf(out, size, "interval %lu.%02lu", (unsigned long)(minUs / 1000),
-                          (unsigned long)(minUs % 1000 / 10));
-    if (maxUs != minUs && length > 0 && (size_t)length < size)
-        length += snprintf(out + length, size - length, "-%lu.%02lu", (unsigned long)(maxUs / 1000),
-                           (unsigned long)(maxUs % 1000 / 10));
-    if (length > 0 && (size_t)length < size)
-        snprintf(out + length, size - length, " ms, latency %u, supervision timeout %lu ms", params.slave_latency,
-                 (unsigned long)(params.conn_sup_timeout * TIMEOUT_UNIT_MS));
+    char range[16] = ""; // "-81918.75"
+    if (maxUs != minUs)
+        snprintf(range, sizeof(range), "-%lu.%02lu", (unsigned long)(maxUs / 1000) % 100000,
+                 (unsigned long)(maxUs % 1000 / 10));
+    snprintf(out, sizeof(out), "interval %lu.%02lu%s ms, latency %u, supervision timeout %lu ms",
+             (unsigned long)(minUs / 1000) % 100000, (unsigned long)(minUs % 1000 / 10), range,
+             params.slave_latency, (unsigned long)(params.conn_sup_timeout * TIMEOUT_UNIT_MS));
 }
 
 } // namespace
@@ -433,7 +434,7 @@ void poll()
     ParamsInfo info;
     char text[PARAMS_TEXT_MAX];
     while (xQueueReceive(paramsQueue, &info, 0) == pdTRUE) {
-        formatParams(info.params, text, sizeof(text));
+        formatParams(info.params, text);
         switch (info.type) {
         case ParamsEvent::Connected:
             logger::line("camera: connection %s", text);

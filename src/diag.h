@@ -1,7 +1,7 @@
 // Read-only hardware diagnostics (reset reason, battery divider settling, the 64 MHz crystal)
 // and the watchdog test.
-// Nothing here changes flash or enters a sleep mode. The one-off checks of M1
-// step 1 (button, P0.04, P0.05, VDDH) are documented in docs/HARDWARE.md.
+// Nothing here changes flash or enters a sleep mode, except the test build's commands at the end.
+// The one-off checks (button, P0.04, P0.05, VDDH) are documented in docs/HARDWARE.md.
 #pragma once
 
 #include <stdint.h>

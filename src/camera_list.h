@@ -1,4 +1,4 @@
-// LUMIX cameras seen while scanning (M3): which reports are worth a log line, which
+// LUMIX cameras seen while scanning: which reports are worth a log line, which
 // cameras have gone. No hardware dependencies (tested on the PC).
 #pragma once
 
@@ -10,8 +10,8 @@
 
 namespace camera_list {
 
-constexpr size_t MAX_CAMERAS = 4;      // M3 decision
-constexpr uint32_t LOST_AFTER_MS = 30000; // M3 decision: "not seen" after 30 s
+constexpr size_t MAX_CAMERAS = 4;
+constexpr uint32_t LOST_AFTER_MS = 30000; // "not seen" after 30 s
 
 constexpr size_t ADDRESS_LENGTH = 6;
 
@@ -41,7 +41,7 @@ struct Entry {
     uint32_t scanResponseCount;
 };
 
-enum class Change {
+enum class Change : uint8_t {
     None,      // a known camera with the same state and address
     New,       // first report of this serial number
     Changed,   // state, address or address type differ from the last report

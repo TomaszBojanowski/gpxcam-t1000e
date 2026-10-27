@@ -3,7 +3,7 @@
 // characteristics, key, identifier, app name, device name, time. Every step has a time
 // limit and starts only after the previous one succeeded; a refused time means the camera
 // does not know the card. For pairing the connection is closed at the end; for the normal
-// work (M5) the time goes once more (the camera takes the time zone from the packet before
+// work the time goes once more (the camera takes the time zone from the packet before
 // the last one) and the connection stays open. Loop task only.
 #pragma once
 

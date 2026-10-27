@@ -34,7 +34,7 @@ struct Record {
     bool clockOff; // the card does not set the camera's clock; false in a record made by {}
 };
 
-enum class Status { Ok, WrongSize, WrongMagic, WrongVersion, BadChecksum, BadText, BadClockFlag };
+enum class Status : uint8_t { Ok, WrongSize, WrongMagic, WrongVersion, BadChecksum, BadText, BadClockFlag };
 
 // What the user typed: a name from the tz table (any case; kept as the table spells it) or a
 // POSIX TZ rule, with the clock on. False, with *record unchanged, if it is neither or too long.

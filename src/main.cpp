@@ -38,7 +38,7 @@ namespace {
 constexpr uint32_t LED_PERIOD_MS = 1000;      // heartbeat: one short flash per second
 constexpr uint32_t LED_ON_MS = 100;
 constexpr uint32_t COUNTDOWN_LED_PERIOD_MS = 200; // fast blinking while 'off' counts down
-// Link (M5 decision): looking for the camera - two short flashes every 2 s; connected -
+// Link: looking for the camera - two short flashes every 2 s; connected -
 // one short flash every 4 s.
 constexpr uint32_t LINK_FLASH_MS = 50;
 constexpr uint32_t SEARCH_LED_PERIOD_MS = 2000;
@@ -108,7 +108,7 @@ bool ledLit(uint32_t now) // not ledOn(): the core has one
     return now % LED_PERIOD_MS < LED_ON_MS;
 }
 
-// At start and every 60 s the reading also goes to the low-battery check (M6); the one of
+// At start and every 60 s the reading also goes to the low-battery check; the one of
 // 'p' does not, so it cannot add to the count of low readings.
 enum class BatteryCheck { None, AtStart, Periodic };
 
@@ -183,7 +183,7 @@ void logHelp()
     logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera),");
     logger::transient("          tz = time zone of the camera's clock: tz NAME (e.g. tz America/New_York),");
     logger::transient("          tz POSIX-RULE (e.g. tz <+0545>-5:45), tz alone shows it");
-    logger::transient("          clock on / clock off = the card sets the camera's clock or not (on: as up to 1.2),");
+    logger::transient("          clock on / clock off = the card sets the camera's clock or not,");
     logger::transient("          clock alone shows it");
     logger::transient("          sound loud / sound quiet / sound off = how loud the card is (off: it only answers");
     logger::transient("          a held button, quietly), sound alone shows it");
@@ -275,7 +275,7 @@ bool isTimeZoneCommand(const char *cmd, const char **argument)
     return true;
 }
 
-// The camera gets the time zone with the time when the card connects to it (camera_session).
+// The camera gets the time zone with the time when the card connects to it (camera_session, older_session).
 void setTimeZone(const char *argument)
 {
     if (argument[0] != '\0') {

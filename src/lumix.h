@@ -26,7 +26,7 @@ struct Camera {
     uint8_t serial[SERIAL_LENGTH];
 };
 
-enum class Advert {
+enum class Advert : uint8_t {
     None,           // no Panasonic manufacturer data, or malformed advertising data
     Camera,         // a LUMIX camera: state and serial number read
     OtherPanasonic, // Panasonic manufacturer data in another layout

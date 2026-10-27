@@ -20,8 +20,8 @@
 
 namespace {
 
-// M4 decisions; the search was 60 s up to 1.5.0-beta.1. An older camera (S5) stays in pairing mode only
-// about 30 s, so its user starts it once the card is looking, and needs the time to do so.
+// An older camera (S5) stays in pairing mode only about 30 s, so its user starts it once the card is
+// looking, and needs the time to do so.
 constexpr uint32_t FIX_WAIT_MS = 120000;
 constexpr uint32_t SEARCH_MS = 120000;
 // The GPS stays on for a pairing to come, so that it skips the wait for GPS time: after a session that

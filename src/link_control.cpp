@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <ble_gatt.h>
 #include <ble_hci.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "bluetooth.h"
@@ -21,17 +22,17 @@
 
 namespace {
 
-constexpr uint32_t STEP_MS = 5000; // GPS mode, descriptors, notifications, every location (M4/M5)
+constexpr uint32_t STEP_MS = 5000; // GPS mode, descriptors, notifications, every location
 
 // A connection that was not established (HCI 0x3e) is tried again after this pause, once,
 // without counting as a failure; the next one is allowed after a successful connection
-// (v1.0.1: the S5II often refuses the very first connection after it is switched on).
+// (the S5II often refuses the very first connection after it is switched on).
 constexpr uint32_t QUICK_RETRY_MS = 1000;
 
-// Scan timing of the search modes (M6 decisions; link_policy::SearchMode).
+// Scan timing of the search modes (link_policy::SearchMode).
 constexpr uint16_t RARE_SCAN_INTERVAL_MS = 2000;
 constexpr uint16_t RARE_SCAN_WINDOW_MS = 100;
-// Standby: every 1 s (was 5 s), so the camera is found sooner after a break between
+// Standby: every 1 s, so the camera is found soon after a break between
 // photos; the GPS is on in this mode anyway, the scan adds little to the current.
 constexpr uint16_t STANDBY_SCAN_INTERVAL_MS = 1000;
 constexpr uint16_t STANDBY_SCAN_WINDOW_MS = 100;
@@ -79,7 +80,7 @@ uint32_t lastScanStartMs = 0;      // retries of a scan that failed to (re)start
 constexpr uint32_t SCAN_RETRY_MS = 10000;
 
 // The paired camera as the scan last saw it (kept when the camera list forgets it) and the
-// search mode that follows from it (M6).
+// search mode that follows from it.
 bool cameraSeen = false;
 uint32_t cameraSeenMs = 0;
 uint8_t cameraState = 0;
@@ -186,7 +187,7 @@ void setScanFor(link_policy::SearchMode searchMode)
     }
 }
 
-// Picks the search mode and sets the scan and the GPS for it (M6).
+// Picks the search mode and sets the scan and the GPS for it.
 void applyMode(uint32_t now)
 {
     const link_policy::SearchMode next = link_policy::searchMode(cameraSeen, now - cameraSeenMs, cameraState,
@@ -396,8 +397,8 @@ void onDisconnected(uint16_t reason)
 {
     const uint32_t lasted = millis() - connectedAt;
     // The camera closed the connection itself (HCI 0x13): that is how a switch-off ends it,
-    // also seconds after connecting, so it is a normal end, not a failure: the pause is 5 s
-    // (v1.0.1). Other ends (out of range, errors) keep making the pauses longer.
+    // also seconds after connecting, so it is a normal end, not a failure: the pause is 5 s.
+    // Other ends (out of range, errors) keep making the pauses longer.
     if (reason == BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION)
         failuresInARow = 0;
     if (phase != Phase::Connected) // ended while the link was being set up
@@ -572,7 +573,7 @@ void settingUp()
                        last != 0 && last < serviceEnd) {
                 findCccd(last + 1);
             } else {
-                // The S5II: the next characteristic follows the value at once (M5 step 2), and
+                // The S5II: the next characteristic follows the value at once, and
                 // the gpxcam app does not write a CCCD then either. Notifications still count.
                 logger::line("link: no CCCD on the notification characteristic (as on the S5II) - listening without it");
                 enterConnected();
@@ -640,7 +641,7 @@ void search(uint32_t now)
     if (mode != link_policy::SearchMode::Normal)
         return; // rare or standby: only watch; never connect in standby
     // The introduction ends with the time, so connecting before the GPS has it would only
-    // be a connection the card has to drop (M5 step 2 test).
+    // be a connection the card has to drop (tested on the S5II).
     int64_t utcNow = 0;
     if (!gps::utcNow(&utcNow)) {
         if (!waitingForTimeLogged)
@@ -662,7 +663,7 @@ void search(uint32_t now)
             continue;
         bluetooth::scanOff(bluetooth::Lines::Sent); // connecting needs the radio; one per attempt
         logger::transient("link: camera %s is on, %d dBm - connecting", serialText, camera->last.rssi);
-        if (record.dialect == pairing_record::DIALECT_OLDER) {
+        if (pairing_record::isOlderDialect(record)) {
             olderAccepted = false;
             if (older_session::start(camera->last, record.uuid, true))
                 enter(Phase::Older);
@@ -756,7 +757,7 @@ void stop(bool keepGps)
         camera_link::disconnect();
     if (bluetooth::scanning())
         bluetooth::scanOff();
-    bluetooth::setNormalScanTiming(); // for 'scan on' and pairing
+    bluetooth::setNormalScanTiming(); // for pairing's next scanOn()
     if (!keepGps)
         gps::off();
     logger::line("link: off");
