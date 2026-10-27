@@ -2219,6 +2219,7 @@ class Card {
     this.readError = null; // why reading ended, if it failed
     this.onClosed = null; // called once when reading ends (unplugged, closed)
     this.queue = Promise.resolve(); // one command at a time: answers are told apart only by their lines
+    this.writing = Promise.resolve(); // one write at a time: a second writer on the port would throw
   }
 
   async open() {
@@ -2249,14 +2250,21 @@ class Card {
     for (const waiter of this.waiters) waiter(line);
   }
 
-  async send(command) {
-    if (!allowedCommand(command)) throw new Error(`not sent: ${command}`);
-    const writer = this.port.writable.getWriter();
-    try {
-      await writer.write(new TextEncoder().encode(command + "\n"));
-    } finally {
-      writer.releaseLock();
-    }
+  // Writes one command after any write still under way. Commands sent outside the one-command queue
+  // ('pair older', 'diag scan') would otherwise meet a status request being written, and taking a
+  // second writer of the port's stream throws while the first one holds it.
+  send(command) {
+    if (!allowedCommand(command)) return Promise.reject(new Error(`not sent: ${command}`));
+    const written = this.writing.then(async () => {
+      const writer = this.port.writable.getWriter();
+      try {
+        await writer.write(new TextEncoder().encode(command + "\n"));
+      } finally {
+        writer.releaseLock();
+      }
+    });
+    this.writing = written.catch(() => {});
+    return written;
   }
 
   // Sends a command, after the answers to the commands before it, and collects the lines that

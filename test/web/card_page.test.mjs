@@ -1503,3 +1503,22 @@ test("before Start, older pairing asks to free the camera from the phone", () =>
     "grab the camera the moment it starts advertising, and the card will not get in.";
   assert.ok(older.replace(/\s+/g, " ").includes(sentence));
 });
+
+test("commands sent at once are written one after the other, not refused", async () => {
+  // A port whose writes take a while, as over USB: a second writer while one writes would throw.
+  const written = [];
+  const port = simulatedCard({});
+  port.writable = new WritableStream({
+    write: (chunk) => new Promise((resolve) => setTimeout(() => {
+      written.push(new TextDecoder().decode(chunk));
+      resolve();
+    }, 10)),
+  });
+  const card = new page.Card(port);
+  await card.open();
+  await Promise.all([card.send("status"), card.send("pair older"), card.send("diag scan")]);
+  assert.deepEqual(written, ["status\n", "pair older\n", "diag scan\n"]);
+  await assert.rejects(card.send("dfu"), /not sent: dfu/); // refused before it waits
+  await card.send("v"); // a refused command does not stop the writes after it
+  assert.equal(written.at(-1), "v\n");
+});
