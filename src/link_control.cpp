@@ -902,6 +902,7 @@ void olderPhase(uint32_t now)
         quickRetryUsed = false; // the next connection not established may get its quick retry again
         connectedAt = now;
         logger::line("link: connected to camera %s (older dialect)", serialText);
+        sound::playConnected(); // as the newer dialect (onAccepted()); pause() plays the end
         break;
     case older_session::Result::Rejected:
     case older_session::Result::Failed:

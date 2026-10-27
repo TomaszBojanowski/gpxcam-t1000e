@@ -55,6 +55,8 @@ extern int gpsOffCount;
 
 extern int pairedSounds;
 extern int refuseSounds;
+extern int connectedSounds;
+extern int disconnectedSounds;
 
 // ---- Scanner (bluetooth.h)
 

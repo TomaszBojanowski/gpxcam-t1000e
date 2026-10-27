@@ -206,6 +206,21 @@ void test_older_link_sends_locations()
     TEST_ASSERT_EQUAL(2, fake::askedCount("write 004c")); // the time twice, as in the newer dialect
 }
 
+// The link sounds every connection and its end, in both dialects.
+void test_link_sounds_each_connection_and_its_end_in_both_dialects()
+{
+    connectLink();
+    endAndReconnect(BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+    TEST_ASSERT_EQUAL(2, fake::connectedSounds);
+    TEST_ASSERT_EQUAL(1, fake::disconnectedSounds);
+
+    fake::reset();
+    connectOlderLink();
+    endAndReconnectOlder(BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+    TEST_ASSERT_EQUAL(2, fake::connectedSounds);
+    TEST_ASSERT_EQUAL(1, fake::disconnectedSounds);
+}
+
 void test_older_link_pauses_5_s_after_every_switch_off()
 {
     connectOlderLink();
@@ -330,6 +345,7 @@ void runLinkTests()
     RUN_TEST(test_link_scans_rarely_when_the_camera_is_away);
     RUN_TEST(test_link_stop_closes_the_connection);
     RUN_TEST(test_older_link_sends_locations);
+    RUN_TEST(test_link_sounds_each_connection_and_its_end_in_both_dialects);
     RUN_TEST(test_older_link_pauses_5_s_after_every_switch_off);
     RUN_TEST(test_older_link_pauses_longer_after_each_lost_connection);
     RUN_TEST(test_older_link_tries_a_link_not_established_again_after_1_s_once);

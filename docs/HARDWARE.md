@@ -492,7 +492,8 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   1.5.0-beta.5 every end of an older-dialect connection made them longer. A connection in which the camera did not
   take the card (a refused write of the introduction or the time, or no `01` within 15 s) counts, and the third in a
   row stops the link as a refusal does (`link: 3 connections in a row ended without camera … taking the card`); a
-  location the camera takes starts the count again. Up to 1.5.0-beta.5 the first one stopped it. Host tests:
+  location the camera takes starts the count again. Up to 1.5.0-beta.5 the first one stopped it. The link also plays
+  the connected sound when an older camera takes the card (up to 1.5.0-beta.5 only the sound of the end). Host tests:
   `pio test -e native_sessions`.
 
 ## Energy (M6)

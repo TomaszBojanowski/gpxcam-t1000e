@@ -74,6 +74,8 @@ bool gpsFix = false;
 int gpsOffCount = 0;
 int pairedSounds = 0;
 int refuseSounds = 0;
+int connectedSounds = 0;
+int disconnectedSounds = 0;
 bool scanning = false;
 bool scanForDump = false;
 int keptScanLines = 0;
@@ -139,6 +141,8 @@ void reset()
     gpsOffCount = 0;
     pairedSounds = 0;
     refuseSounds = 0;
+    connectedSounds = 0;
+    disconnectedSounds = 0;
     scanning = false;
     scanForDump = false;
     keptScanLines = 0;
@@ -298,9 +302,15 @@ void playPaired()
     fake::pairedSounds++;
 }
 
-void playConnected() {}
+void playConnected()
+{
+    fake::connectedSounds++;
+}
 
-void playDisconnected() {}
+void playDisconnected()
+{
+    fake::disconnectedSounds++;
+}
 
 } // namespace sound
 
