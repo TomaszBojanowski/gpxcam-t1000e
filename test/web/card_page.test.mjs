@@ -20,7 +20,8 @@ const page = vm.runInContext(
     " classifySoundAnswer, soundAnswerText, soundNoteText, soundText, UPDATES_SETTINGS, classifyUpdatesAnswer," +
     " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText, chooseTransport," +
     " openProblemText, parseOlderRegister, olderOutcomeText, olderStartProgress, FIXED_COMMANDS, isLogLine," +
-    " belongsToScan, scanEnded, scanResultText, diagnosticsText, SCAN_RUN_MS, shouldPrepareGps, pairingKind })",
+    " belongsToScan, scanEnded, scanResultText, diagnosticsText, SCAN_RUN_MS, shouldPrepareGps, pairingKind," +
+    " maskIdentifiers })",
   vm.createContext({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console }),
 );
 
@@ -1362,13 +1363,23 @@ test("Copy log reads the card's log, shows it and copies it", async () => {
   const text = ui["diag-text"].value;
   assert.match(text, /^Card log - gpxcam 1\.3\.0 \(git 1234567\) - \d{4}-\d\d-\d\dT/);
   assert.match(text, /\n\[     12\.3 s\] gps: on\n.*\n\[  12345\.6 s\] link: position sent\n$/);
+  assert.match(text, /link: looking for camera \*{8}9a\n/); // the serial number is hidden
+  assert.doesNotMatch(text, /123456789a/);
   assert.deepEqual(clipboard.written, [text]);
-  assert.equal(ui["diag-status"].textContent, "The card's last 3 events. Copied: paste it into a private message.");
+  assert.equal(ui["diag-status"].textContent, "The card's last 3 events. Copied: paste it into a message.");
   assert.equal(ui["diag-status"].className, "good");
   assert.equal(ui["diag-answer"].hidden, false);
   assert.equal(ui["diag-copy"].disabled, false);
+  ui["diag-unmasked"].checked = true; // for the author: the text as the card sent it
+  await ui["diag-unmasked"].fire("change");
+  assert.match(ui["diag-text"].value, /link: looking for camera 123456789a\n/);
+  await ui["diag-copy"].fire("click");
+  assert.equal(clipboard.written.at(-1), ui["diag-text"].value);
+  assert.equal(ui["diag-status"].textContent, "Copied unmasked: send it only privately.");
+  ui["diag-unmasked"].checked = false;
+  await ui["diag-unmasked"].fire("change");
   await ui.disconnect.fire("click");
-  assert.equal(ui["diag-text"].value, text); // kept for copying after unplugging
+  assert.equal(ui["diag-text"].value, text); // kept for copying after unplugging, masked again
   assert.equal(ui["copy-log"].disabled, true);
 });
 
@@ -1382,7 +1393,7 @@ test("Scan for cameras collects the run without the page's status answers; copy 
   const lines = ui["diag-text"].value.trim().split("\n");
   assert.match(lines[0], /^Scan for cameras - gpxcam 1\.3\.0 \(git 1234567\) - /);
   assert.deepEqual(lines.slice(1), SCAN_ANSWER.filter((line) => !line.startsWith("status: "))
-    .map((line) => line.trim()));
+    .map((line) => line.trim().replace("ff 3a 00 00 12 34 56 78 9a", "ff 3a 00 00 ** ** ** ** 9a")));
   assert.equal(ui["diag-status"].textContent, "Scan done. Click Copy, or select the text below and copy it.");
   assert.equal(ui["diag-progress"].hidden, true);
   assert.equal(ui.scan.disabled, false);
@@ -1452,5 +1463,33 @@ test("a pairing that found no camera asks for the order that works, with the but
   assert.equal(page.pairingKind({ ...STATE, pair: "searching", pairAttempt: 0 }), "busy act");
   for (const [pair, pairAttempt] of [["searching", 1], ["waiting_gps", 0], ["connecting", 1]]) {
     assert.equal(page.pairingKind({ ...STATE, pair, pairAttempt }), "busy", `${pair} ${pairAttempt}`);
+  }
+});
+
+// ---- Masking what Diagnostics copies ----
+
+test("Copy log and Scan hide serial numbers, addresses and the card's identity, and nothing else", () => {
+  const mask = page.maskIdentifiers;
+  // Made-up values: the serial 12 34 56 78 9a, addresses of the documentation range (RFC 7042).
+  assert.equal(mask("link: looking for camera 123456789a"), "link: looking for camera ********9a");
+  assert.equal(mask("scan: camera 123456789A seen: on (00), 00:00:5e:00:53:01 RPA, -64 dBm, ch 39, connectable"),
+    "scan: camera ********9A seen: on (00), **:**:**:**:**:01 RPA, -64 dBm, ch 39, connectable");
+  assert.equal(mask("older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E"),
+    "older: app register identity 4D454930-0100-1000-8001-********E5F6 name T1000-E");
+  assert.equal(mask("pair: card id 00112233-4455-4677-8899-a1b2c3d4e5f6, no camera paired"),
+    "pair: card id ********-****-****-****-********e5f6, no camera paired");
+  assert.equal(mask("diag scan: **:**:**:**:**:e2 RPA -48 dBm ch 38 adv connectable 13 B, camera, bytes: " +
+    "02 01 06 09 ff 3a 00 03 12 34 56 78 9a"),
+  "diag scan: **:**:**:**:**:e2 RPA -48 dBm ch 38 adv connectable 13 B, camera, bytes: " +
+    "02 01 06 09 ff 3a 00 03 ** ** ** ** 9a");
+  assert.equal(mask("wifi: joined S5M2-0A1B2C"), "wifi: joined S5M2-******");
+  for (const line of [ // left as they are
+    "Card log - gpxcam 1.5.0-beta.5 (git 9804afb) - 2026-10-26T15:32:55.533Z",
+    "[  12345.6 s] gpxcam-t1000e 1.5.0-beta.5 (git 9804afb), uptime 345 s, log dropped 126",
+    "[      0.7 s] reset: 0x00010000 (OFF-GPIO)",
+    "scan: by channel 37/38/39: 1266/1190/1183 reports, 316/310/316 from LUMIX cameras",
+    "memory: heap 185796 B free of 201976 B, loop stack 2416 B never used, main stack 688 B used of 2048 B",
+  ]) {
+    assert.equal(mask(line), line, line);
   }
 });

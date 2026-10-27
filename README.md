@@ -107,8 +107,8 @@ computer without Chrome or Edge use [the desktop app](#the-desktop-app)):
 - it sets how loud the card is (see [Sounds and LED](#sounds-and-led));
 - it sets how often the card sends the position, Normal or Frequent (see [Normal use](#normal-use));
 - when something does not work, it copies the card's log, or a 30-second scan of the Bluetooth
-  devices next to the card, ready to paste into a message (both contain the camera's serial number:
-  send them privately, not in a public thread).
+  devices next to the card, ready to paste into a message (with the camera's serial number, the
+  Bluetooth addresses and the card's identity hidden).
 
 1. Plug the card into the computer with a USB cable. Close serial monitors that use it.
 2. Open [the card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/).

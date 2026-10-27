@@ -296,6 +296,13 @@ ol.steps li { margin: var(--s1) 0; }
   font: var(--fs-small)/1.45 ui-monospace, Menlo, Consolas, monospace;
   resize: vertical;
 }
+.unmasked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
 progress { display: block; width: 100%; height: 8px; margin: var(--s2) 0 0; accent-color: var(--accent); }
 .good { color: var(--good); font-weight: 600; }
 /* The user's turn while the card waits: what to do now, on the camera */
@@ -651,8 +658,8 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
         <button id="copy-log" type="button" class="secondary" disabled>Copy log</button>
         <button id="scan" type="button" class="secondary" disabled>Scan for cameras</button>
       </div>
-      <p class="note">The log and the scan contain your camera's serial number. Send them privately, not in a
-         public thread.</p>
+      <p class="note">What is copied hides your camera's serial number, the Bluetooth addresses and the card's
+         identity.</p>
       <div id="diag-answer" class="gap-top hidden">
         <p id="diag-status" role="status"></p>
         <progress id="diag-progress" class="hidden" max="30000" value="0"></progress>
@@ -660,6 +667,7 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
                   aria-label="What the card sent"></textarea>
         <div class="row gap-top">
           <button id="diag-copy" type="button" class="secondary small">Copy</button>
+          <label class="unmasked"><input id="diag-unmasked" type="checkbox"> Copy unmasked</label>
         </div>
       </div>
     </section>
@@ -2175,6 +2183,23 @@ function scanResultText(lines, version) {
   return ["Scan done.", "good"];
 }
 
+// The identifiers in what Diagnostics shows and copies, hidden: Bluetooth addresses keep their last
+// byte, UUIDs their last 4 hex digits (the card's older-dialect identity also its known prefix,
+// docs/PROTOCOL.md), camera serial numbers (10 hex digits, and the bytes after "ff 3a 00 <state>" in
+// a 'diag scan' line) their last 2, the camera's Wi-Fi name nothing. The card logs no position.
+const MASK_RULES = [
+  [/(register identity 4D454930-0100-1000-8001-)[0-9A-Fa-f]{8}([0-9A-Fa-f]{4})/g, "$1********$2"],
+  [/\b(?:[0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})\b/g, "**:**:**:**:**:$1"],
+  [/\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{8}([0-9A-Fa-f]{4})\b/g,
+    "********-****-****-****-********$1"],
+  [/\b[0-9A-Fa-f]{8}([0-9A-Fa-f]{2})\b/g, "********$1"],
+  [/S5M2-[0-9A-Fa-f]{6}/g, "S5M2-******"],
+  [/(ff 3a 00 [0-9a-f]{2})(?: [0-9a-f]{2}){4} ([0-9a-f]{2})/g, "$1 ** ** ** ** $2"],
+];
+function maskIdentifiers(text) {
+  return MASK_RULES.reduce((masked, [rule, replacement]) => masked.replace(rule, replacement), text);
+}
+
 // What the user sends: a heading with what it is, the firmware and the time, then the card's lines.
 function diagnosticsText(title, firmware, lines, date = new Date()) {
   return [`${title} - ${firmware} - ${date.toISOString()}`, ...lines].join("\n") + "\n";
@@ -2497,6 +2522,7 @@ function startPage() {
     diagProgress: element("diag-progress"),
     diagText: element("diag-text"),
     diagCopy: element("diag-copy"),
+    diagUnmasked: element("diag-unmasked"),
   };
   const soundChoices = new Map(SOUND_SETTINGS.map((setting) => [setting, element(`sound-${setting}`)]));
   const updatesChoices = new Map(UPDATES_SETTINGS.map((setting) => [setting, element(`updates-${setting}`)]));
@@ -3098,8 +3124,15 @@ function startPage() {
     }
   };
 
+  // What the card sent, as it sent it; the text field shows it masked unless Copy unmasked is on.
+  let diagRaw = "";
+  const diagShown = () => (ui.diagUnmasked.checked ? diagRaw : maskIdentifiers(diagRaw));
+  const copiedText = () => (ui.diagUnmasked.checked ? "Copied unmasked: send it only privately." :
+    "Copied: paste it into a message.");
+
   const startDiagnostics = (text) => {
     busy = true;
+    diagRaw = "";
     ui.diagText.value = "";
     refreshButtons();
     ui.diagAnswer.classList.remove("hidden");
@@ -3110,10 +3143,11 @@ function startPage() {
   const showDiagnostics = async (text, [resultText, kind]) => {
     busy = false;
     ui.diagProgress.classList.add("hidden");
-    ui.diagText.value = text;
+    diagRaw = text;
+    ui.diagText.value = diagShown();
     refreshButtons();
-    const copied = await copyToClipboard(text);
-    setStatus(ui.diagStatus, `${resultText} ${copied ? "Copied: paste it into a private message." :
+    const copied = await copyToClipboard(ui.diagText.value);
+    setStatus(ui.diagStatus, `${resultText} ${copied ? copiedText() :
       "Click Copy, or select the text below and copy it."}`, kind);
   };
 
@@ -3168,13 +3202,17 @@ function startPage() {
 
   const copyAgain = async () => {
     const copied = await copyToClipboard(ui.diagText.value);
-    setStatus(ui.diagStatus, copied ? "Copied: paste it into a private message." :
+    setStatus(ui.diagStatus, copied ? copiedText() :
       "Copying did not work here: select the text below and copy it (Ctrl+C, on a Mac Cmd+C).", copied ? "good" : "");
   };
 
   ui.copyLog.addEventListener("click", copyLog);
   ui.scan.addEventListener("click", scanForCameras);
   ui.diagCopy.addEventListener("click", copyAgain);
+  ui.diagUnmasked.addEventListener("change", () => {
+    ui.diagText.value = diagShown();
+    refreshButtons();
+  });
   ui.pair.addEventListener("click", () => pairCommand((asked) => asked.pair()));
   ui.pairCancel.addEventListener("click", () => pairCommand((asked) => asked.cancelPairing()));
   ui.unpair.addEventListener("click", () => ui.unpairConfirm.classList.remove("hidden"));
