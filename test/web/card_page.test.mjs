@@ -1493,3 +1493,13 @@ test("Copy log and Scan hide serial numbers, addresses and the card's identity, 
     assert.equal(mask(line), line, line);
   }
 });
+
+test("before Start, older pairing asks to free the camera from the phone", () => {
+  const older = /<section id="older"[\s\S]*?<\/section>/.exec(html)[0];
+  const phone = older.indexOf('id="older-phone"');
+  assert.ok(phone > 0 && phone < older.indexOf('id="older-start"'), "the note comes before Start");
+  const sentence = "Before pairing, remove the phone from the camera's Bluetooth device list (Setup &rarr; " +
+    "Bluetooth &rarr; Delete), or at least turn the phone's Bluetooth off. A phone that is still registered may " +
+    "grab the camera the moment it starts advertising, and the card will not get in.";
+  assert.ok(older.replace(/\s+/g, " ").includes(sentence));
+});

@@ -58,6 +58,10 @@ https://github.com/user-attachments/assets/6de0f7d9-dfe0-4dd2-bccc-11901fb6f236
 
 The video is a schematic run-through; the on-screen steps may differ a little from your camera.
 
+Before pairing, remove the phone from the camera's Bluetooth device list (Setup → Bluetooth →
+Delete), or at least turn the phone's Bluetooth off. A phone that is still registered may grab the
+camera the moment it starts advertising, and the card will not get in.
+
 1. Put the card where its GPS gets a fix, outdoors or by a window. The app switches the card's GPS
    on as soon as it connects (gpxcam 1.5.0-beta.2 or newer); the GPS tile shows *Fix* when it is
    ready, which can take a few minutes after a fresh start.
