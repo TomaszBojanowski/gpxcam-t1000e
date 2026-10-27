@@ -502,6 +502,8 @@ void runCommand(char *cmd)
 #ifdef GPXCAM_TEST_COMMANDS
     } else if (strcmp(cmd, "diag storage break yes") == 0) {
         diag::breakFileSystem();
+    } else if (strcmp(cmd, "diag scan stall") == 0) {
+        bluetooth::stallScan();
 #endif
     } else if (strcmp(cmd, "storage format yes") == 0) {
         storage::formatDamaged();

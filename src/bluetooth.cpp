@@ -39,13 +39,15 @@ constexpr uint16_t SCAN_UNTIL_STOPPED = 0; // BLEScanner::start() timeout: 0 = n
 constexpr uint32_t STATUS_PERIOD_MS = 10000;
 constexpr uint32_t MS_PER_DECISECOND = 100;
 
-// Scan watchdog: a scan that is on but has had no report for this long is stopped and started
-// again. After each report the SoftDevice pauses the scan until it is resumed (ble_gap.h,
+// Scan watchdog. After each report the SoftDevice pauses the scan until it is resumed (ble_gap.h,
 // sd_ble_gap_scan_start()); a tester's card got 1-3 reports in 30 s with a phone and a camera next
-// to it (1.5.0-beta.2). Only at the normal timing (pairing, 'diag scan', the link's normal search):
-// at the slower timings of the link's search modes (100 ms every 1, 2 or 10 s) a silence of 5 s is
-// normal, and with 10 s between windows the watchdog restarted the scan before each of them
-// (1.5.0-beta.3 to beta.5).
+// to it (1.5.0-beta.2).
+//  - At the normal timing (pairing, 'diag scan', the link's normal search) a scan that is on but has
+//    had no report for SCAN_SILENCE_MS is stopped and started again.
+//  - At the slower timings of the link's search modes (100 ms every 1, 2 or 10 s) a silence of 5 s
+//    is normal (with 10 s between windows the watchdog restarted the scan before each of them,
+//    1.5.0-beta.3 to beta.5), so only a failed resume restarts it: it leaves the scan paused, and
+//    the card would not see the camera again in that mode.
 constexpr uint32_t SCAN_SILENCE_MS = 5000;
 
 // Transmit power +8 dBm, the most the nRF52840 has (ble_gap.h, sd_ble_gap_tx_power_set(): the
@@ -108,12 +110,18 @@ bool started = false;
 
 // Set by the loop task; the BLE task resumes scanning after a report only while it is set.
 volatile bool scanActive = false;
+// Set by the loop task while it stops and starts the scan again (restartScan()): a resume() of the BLE
+// task that meets the scan stopped then is not a failed resume.
+volatile bool scanRestarting = false;
 
 // Written only by the BLE task (aligned 32-bit accesses are atomic on the Cortex-M4).
 // The loop task keeps the values from the start of a scan and reports the difference.
 volatile uint32_t reportsTotal = 0;
 volatile uint32_t otherPanasonicTotal = 0;
 volatile uint32_t resumeFailuresTotal = 0; // Scanner.resume() failed while the scan was on
+#ifdef GPXCAM_TEST_COMMANDS
+volatile bool stallNextResume = false; // 'diag scan stall': the next resume is left out, as if it failed
+#endif
 volatile uint32_t lastReportMs = 0;
 volatile uint32_t droppedTotal = 0;
 
@@ -135,6 +143,8 @@ uint32_t scanWatchStartMs = 0; // the scan watchdog: when the scan was last (re)
 uint32_t restarts = 0;         // by the watchdog, in the current scan
 uint32_t restartsTotal = 0;
 bool restartLogged = false; // one line per silence: where no device advertises at all, it restarts every 5 s
+uint32_t resumeFailuresSeen = 0; // the watchdog's last look at resumeFailuresTotal
+bool resumeRestartLogged = false; // a restart after a failed resume: one line per scan, then counted only
 
 Counts countsNow()
 {
@@ -145,6 +155,26 @@ Counts sinceScanStart()
 {
     return Counts{reportsTotal - atScanStart.reports, otherPanasonicTotal - atScanStart.otherPanasonic,
                   droppedTotal - atScanStart.dropped, resumeFailuresTotal - atScanStart.resumeFailures};
+}
+
+// Loop task: stops the running scan and starts it again with the current timing; the camera list and
+// the counters stay. False if it did not start again (the scan is then off).
+// A report that came before the stop is handled while scanActive is false: BLEScanner::stop() ends
+// with xTimerStop() (Bluefruit's _stopConnLed()), which lets the higher-priority BLE task run first
+// (BLEScanner.cpp, bluefruit.cpp). Should a resume() still meet the stopped scan, scanRestarting keeps
+// it from counting as a failed resume.
+bool restartScan()
+{
+    scanRestarting = true;
+    scanActive = false; // the BLE task stops resuming
+    Bluefruit.Scanner.stop();
+    scanActive = true; // before starting: the first report must already resume the scan
+    const bool restarted = Bluefruit.Scanner.start(SCAN_UNTIL_STOPPED);
+    if (!restarted)
+        scanActive = false;
+    scanRestarting = false;
+    scanWatchStartMs = millis();
+    return restarted;
 }
 
 // Runs in Bluefruit's BLE task for every SoftDevice event, after the library's own
@@ -206,11 +236,19 @@ void onBleEvent(ble_evt_t *event)
     // The SoftDevice pauses scanning after each complete report until it is told to go on
     // (ble_gap.h, sd_ble_gap_scan_start()). BLEScanner only does that itself for reports
     // its filters reject or when a report callback is set (BLEScanner.cpp,
-    // _eventHandler()); we use neither, so we resume here. A failure while the scan is still on
-    // (not stopped meanwhile by the loop task) leaves it paused: counted, and at the normal timing the
+    // _eventHandler()); we use neither, so we resume here. A failure while the scan should run (not
+    // stopped or being restarted meanwhile by the loop task) leaves it paused: counted, and the
     // watchdog restarts it.
-    if (scanActive && advert.type.status != BLE_GAP_ADV_DATA_STATUS_INCOMPLETE_MORE_DATA &&
-        !Bluefruit.Scanner.resume() && scanActive)
+    if (!scanActive || advert.type.status == BLE_GAP_ADV_DATA_STATUS_INCOMPLETE_MORE_DATA)
+        return;
+#ifdef GPXCAM_TEST_COMMANDS
+    if (stallNextResume) {
+        stallNextResume = false;
+        resumeFailuresTotal++;
+        return; // the scan stays paused, as after a failed resume
+    }
+#endif
+    if (!Bluefruit.Scanner.resume() && scanActive && !scanRestarting)
         resumeFailuresTotal++;
 }
 
@@ -304,6 +342,8 @@ void scanOn()
     atScanStart = countsNow();
     restarts = 0;
     restartLogged = false;
+    resumeFailuresSeen = resumeFailuresTotal;
+    resumeRestartLogged = false;
     scanActive = true; // before starting: the first report must already resume the scan
     if (!Bluefruit.Scanner.start(SCAN_UNTIL_STOPPED)) {
         scanActive = false;
@@ -333,16 +373,10 @@ bool setScanTiming(uint16_t intervalMs, uint16_t windowMs)
     Bluefruit.Scanner.setIntervalMS(scanIntervalMs, scanWindowMs);
     if (!scanActive)
         return true;
-    // Restart with the new timing; the camera list and the counters stay.
-    scanActive = false; // the BLE task stops resuming
-    Bluefruit.Scanner.stop();
-    scanActive = true;
-    if (!Bluefruit.Scanner.start(SCAN_UNTIL_STOPPED)) {
-        scanActive = false;
+    if (!restartScan()) {
         logger::line("scan: could not restart with the new timing");
         return false;
     }
-    scanWatchStartMs = millis();
     return true;
 }
 
@@ -410,28 +444,40 @@ bool seenBefore(const scan_dump::Advert &raw)
     return false;
 }
 
-// Loop task: the scan watchdog. A scan with no report for SCAN_SILENCE_MS since it was last (re)started
-// is stopped and started again with the same timing; the camera list and the counters stay. Normal
-// timing only; setScanTiming() and scanOn() set scanWatchStartMs, so a silence counts from the switch.
+// Loop task: the scan watchdog (SCAN_SILENCE_MS). At the normal timing a scan with no report for
+// SCAN_SILENCE_MS since it was last (re)started is stopped and started again; at a slower timing only one
+// that has had a failed resume. The timing and the camera list stay. restartScan(), setScanTiming() and
+// scanOn() set scanWatchStartMs, so a silence counts from the switch.
 void watchScan()
 {
-    if (scanIntervalMs != SCAN_INTERVAL_MS || scanWindowMs != SCAN_WINDOW_MS)
-        return; // a search mode's slower timing: silences are normal there
     const uint32_t lastReport = lastReportMs; // first: a report after this read is not older than now
     const uint32_t now = millis();
+    const uint32_t failures = resumeFailuresTotal;
+    const bool resumeFailed = failures != resumeFailuresSeen;
+    resumeFailuresSeen = failures;
+    if (scanIntervalMs != SCAN_INTERVAL_MS || scanWindowMs != SCAN_WINDOW_MS) {
+        if (!resumeFailed)
+            return; // a search mode's slower timing: silences are normal there
+        restarts++;
+        restartsTotal++;
+        if (!restartScan()) { // the link switches it on again
+            logger::line("scan: could not restart after a failed resume");
+            return;
+        }
+        if (!resumeRestartLogged) {
+            resumeRestartLogged = true;
+            logger::line("scan: restarted after a failed resume (more only counted)");
+        }
+        return;
+    }
     const bool reportSinceStart = (int32_t)(lastReport - scanWatchStartMs) >= 0;
     if (reportSinceStart)
         restartLogged = false; // the next silence gets its line again
     if ((int32_t)(now - (reportSinceStart ? lastReport : scanWatchStartMs)) < (int32_t)SCAN_SILENCE_MS)
         return;
-    scanActive = false; // the BLE task stops resuming
-    Bluefruit.Scanner.stop();
-    scanActive = true;
-    scanWatchStartMs = now;
     restarts++;
     restartsTotal++;
-    if (!Bluefruit.Scanner.start(SCAN_UNTIL_STOPPED)) {
-        scanActive = false; // the link and pairing switch it on again
+    if (!restartScan()) { // the link and pairing switch it on again
         logger::line("scan: could not restart after %lu s without reports", (unsigned long)(SCAN_SILENCE_MS / 1000));
         return;
     }
@@ -472,6 +518,18 @@ void drainScanDump(uint32_t now)
 }
 
 } // namespace
+
+#ifdef GPXCAM_TEST_COMMANDS
+void stallScan()
+{
+    if (!scanActive) {
+        logger::line("diag scan stall: the scan is off");
+        return;
+    }
+    stallNextResume = true;
+    logger::line("diag scan stall: the next report is not resumed, as after a failed resume");
+}
+#endif
 
 void startScanDump()
 {

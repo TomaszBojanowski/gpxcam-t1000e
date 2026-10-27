@@ -272,8 +272,11 @@ about 1 s – released after 836 ms, the card starts.
   while the scan is on is counted (`resume failed` in the 10 s scan line and in the summary of `diag scan`). At the
   normal timing (50 ms of every 100 ms: pairing, `diag scan`, the link's normal search) a scan with no report for 5 s
   is stopped and started again (`restarts`, one log line per silence). At the slower timings of the search modes
-  (100 ms every 1, 2 or 10 s) it is off since 1.5.0-beta.6: a silence of 5 s is normal there, and with 10 s between
-  windows it restarted the scan before each of them.
+  (100 ms every 1, 2 or 10 s) a silence of 5 s is normal, and with 10 s between windows the watchdog restarted the
+  scan before each of them (1.5.0-beta.3 to beta.5); since 1.5.0-beta.6 only a failed resume restarts it there (one
+  log line per scan, then counted), as it would leave the scan paused and the card blind until the camera is seen.
+  A failed resume while the loop restarts the scan (new timing, watchdog) is not counted. The test build's `diag scan
+  stall` leaves out the next resume, as if it had failed.
 
 ## Pairing file (M4)
 

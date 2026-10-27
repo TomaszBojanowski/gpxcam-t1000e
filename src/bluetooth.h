@@ -58,4 +58,10 @@ void poll();
 // unknown camera's dialect from its advertisement.
 void startScanDump();
 
+#ifdef GPXCAM_TEST_COMMANDS
+// Test builds only (platformio.ini, env t1000e_test): 'diag scan stall' leaves out the resume after the
+// next report and counts it as failed, so the scan stays paused - for testing the scan watchdog.
+void stallScan();
+#endif
+
 } // namespace bluetooth
