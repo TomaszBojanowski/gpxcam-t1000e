@@ -84,8 +84,8 @@ pages 424–426).
 If the card does not find the camera, click *Pair* (or *Start*) again: the card keeps its GPS on for
 10 minutes after a pairing that did not succeed, so it starts looking for the camera at once.
 
-If the Wi-Fi step fails (for example the computer was not on the camera's network yet), the card
-keeps waiting for it for up to 5 minutes: join the network and click *Try the Wi-Fi step again*.
+If the Wi-Fi step fails on the camera's network (for example the camera did not confirm), the card
+keeps waiting for it, up to 5 minutes from its introduction: click *Try the Wi-Fi step again*.
 If the app was closed or the cable came off in the middle, connect again: the app shows how far the
 card got and offers *Resume* (at the Wi-Fi step) or *Cancel*.
 
