@@ -122,7 +122,9 @@ says which gpxcam it was tested with. It works with older gpxcam as far as the f
 
 | gpxcam on the card | What the app can do |
 |---|---|
-| 1.4.0 | everything |
-| 1.3.x | everything but choosing how often the position is sent |
+| 1.5.0-beta.2 or newer | everything |
+| 1.5.0-beta.1 | everything but *Pair* recognising an older camera, and the GPS switched on when the app connects |
+| 1.4.0 | everything but older cameras and *Scan for cameras* |
+| 1.3.x | as 1.4.0, and not choosing how often the position is sent |
 | 1.2.x | only the time zone |
 | before 1.2.0 | nothing: install the newest gpxcam first |
