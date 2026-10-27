@@ -39,10 +39,6 @@ void setNormalScanTiming();
 
 bool scanning();
 
-// For a scan that is no longer needed (the startup scan): off now, or, while a 'diag scan' run
-// goes on, when the run ends.
-void releaseScan();
-
 // True after begin() succeeded.
 bool ready();
 

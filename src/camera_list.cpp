@@ -17,20 +17,6 @@ bool sameStateAndAddress(const Report &a, const Report &b)
            memcmp(a.address, b.address, ADDRESS_LENGTH) == 0;
 }
 
-constexpr uint32_t MS_PER_SECOND = 1000;
-
-void countRecent(Entry &entry, uint32_t nowMs)
-{
-    const uint32_t second = nowMs / MS_PER_SECOND;
-    const size_t slot = second % RECENT_SECONDS;
-    if (entry.recentSecond[slot] != second) {
-        entry.recentSecond[slot] = second;
-        entry.recentCount[slot] = 0;
-    }
-    if (entry.recentCount[slot] < UINT16_MAX)
-        entry.recentCount[slot]++;
-}
-
 void store(Entry &entry, const Report &report, uint32_t nowMs)
 {
     entry.last = report;
@@ -42,10 +28,6 @@ void store(Entry &entry, const Report &report, uint32_t nowMs)
         if (report.kind == advert_kind::Kind::Connectable)
             entry.connectableCount++;
     }
-    const size_t slot = channelSlot(report.channel);
-    if (slot < ADV_CHANNELS)
-        entry.channelCount[slot]++;
-    countRecent(entry, nowMs);
 }
 
 } // namespace
@@ -94,17 +76,6 @@ void CameraList::clear()
 {
     for (Entry &entry : entries_)
         entry.used = false;
-}
-
-uint32_t recentReports(const Entry &entry, uint32_t nowMs)
-{
-    const uint32_t second = nowMs / MS_PER_SECOND;
-    uint32_t count = 0;
-    for (size_t i = 0; i < RECENT_SECONDS; i++) {
-        if (second - entry.recentSecond[i] < RECENT_SECONDS)
-            count += entry.recentCount[i];
-    }
-    return count;
 }
 
 const char *addressTypeName(uint8_t type)

@@ -25,7 +25,6 @@
 #include "power.h"
 #include "settings_store.h"
 #include "sound.h"
-#include "startup_scan.h"
 #include "status_text.h"
 #include "storage.h"
 #include "tz_record.h"
@@ -669,7 +668,6 @@ void loop()
     readSerial();
     gps::poll();
     bluetooth::poll();
-    startup_scan::poll(millis());
     camera_link::poll();
     pairing::poll();
     link_control::poll();

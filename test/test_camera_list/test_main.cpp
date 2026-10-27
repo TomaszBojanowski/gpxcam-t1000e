@@ -29,7 +29,6 @@ camera_list::Report report(uint8_t lastSerialByte, uint8_t state, const uint8_t 
     r.addressType = addressType;
     r.rssi = -60;
     r.kind = kind;
-    r.channel = 39;
     return r;
 }
 
@@ -68,44 +67,6 @@ void test_counts_adverts_and_scan_responses()
     TEST_ASSERT_EQUAL_UINT32(3, list.at(0)->advertCount);
     TEST_ASSERT_EQUAL_UINT32(2, list.at(0)->connectableCount); // the scan-only one is not
     TEST_ASSERT_EQUAL_UINT32(1, list.at(0)->scanResponseCount);
-}
-
-// The reports of the last 10 s, as logged when the card connects: older seconds drop out.
-void test_recent_reports()
-{
-    camera_list::CameraList list;
-    list.add(onRpa(), 1000);
-    list.add(onRpa(), 1500);
-    list.add(onRpa(), 5200);
-    list.add(onRpa(), 10900);
-    const camera_list::Entry &entry = *list.at(0);
-    TEST_ASSERT_EQUAL_UINT32(4, camera_list::recentReports(entry, 10900)); // seconds 1..10
-    TEST_ASSERT_EQUAL_UINT32(2, camera_list::recentReports(entry, 11000)); // second 1 is out
-    TEST_ASSERT_EQUAL_UINT32(1, camera_list::recentReports(entry, 15000)); // second 5 is out
-    TEST_ASSERT_EQUAL_UINT32(0, camera_list::recentReports(entry, 21000));
-    list.add(onRpa(), 21000); // a slot used 10 s before starts again from 0
-    TEST_ASSERT_EQUAL_UINT32(1, camera_list::recentReports(*list.at(0), 21000));
-}
-
-// Reports per advertising channel, 37..39; another index is not counted.
-void test_channel_counts()
-{
-    TEST_ASSERT_EQUAL_size_t(0, camera_list::channelSlot(37));
-    TEST_ASSERT_EQUAL_size_t(2, camera_list::channelSlot(39));
-    TEST_ASSERT_EQUAL_size_t(camera_list::ADV_CHANNELS, camera_list::channelSlot(36));
-    TEST_ASSERT_EQUAL_size_t(camera_list::ADV_CHANNELS, camera_list::channelSlot(40));
-    camera_list::CameraList list;
-    camera_list::Report r = onRpa();
-    const uint8_t channels[] = {37, 38, 38, 39, 39, 39, 12};
-    for (uint8_t channel : channels) {
-        r.channel = channel;
-        list.add(r, 1000);
-    }
-    const camera_list::Entry &entry = *list.at(0);
-    TEST_ASSERT_EQUAL_UINT32(1, entry.channelCount[0]);
-    TEST_ASSERT_EQUAL_UINT32(2, entry.channelCount[1]);
-    TEST_ASSERT_EQUAL_UINT32(3, entry.channelCount[2]);
-    TEST_ASSERT_EQUAL_UINT32(7, entry.advertCount); // the odd index still counts as a report
 }
 
 // The kinds of advertisement and their names in the logs.
@@ -211,9 +172,7 @@ int main(int, char **)
     UNITY_BEGIN();
     RUN_TEST(test_new_then_same);
     RUN_TEST(test_counts_adverts_and_scan_responses);
-    RUN_TEST(test_recent_reports);
     RUN_TEST(test_advert_kinds);
-    RUN_TEST(test_channel_counts);
     RUN_TEST(test_state_and_address_changes);
     RUN_TEST(test_table_full);
     RUN_TEST(test_lost_after_30_s);

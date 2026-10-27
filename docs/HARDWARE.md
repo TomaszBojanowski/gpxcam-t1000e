@@ -268,6 +268,12 @@ about 1 s – released after 836 ms, the card starts.
 - **Tested on the card (step 3):** at the desk about 37 reports/s from all devices, only the camera in the log;
   the queue lost nothing (0 of about 15,600 reports); sounds during the scan; switching off with the button during the scan →
   System OFF and start with `OFF-GPIO`.
+- **Scan watchdog (1.5.0-beta.3):** the result of `Scanner.resume()` after each report is checked, and a failure
+  while the scan is on is counted (`resume failed` in the 10 s scan line and in the summary of `diag scan`). At the
+  normal timing (50 ms of every 100 ms: pairing, `diag scan`, the link's normal search) a scan with no report for 5 s
+  is stopped and started again (`restarts`, one log line per silence). At the slower timings of the search modes
+  (100 ms every 1, 2 or 10 s) it is off since 1.5.0-beta.6: a silence of 5 s is normal there, and with 10 s between
+  windows it restarted the scan before each of them.
 
 ## Pairing file (M4)
 
@@ -435,15 +441,18 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   for at most 5 s. In pairing, a connection that never came up (no answer, or 0x3e) is tried again at once at the
   camera's next fresh pairing advertisement, up to 5 times (`pair: quick retry N/5`), without the 10 s and 30 s
   pauses, which are kept for what fails after the link was made (at most 3 attempts). The logs give the kind of
-  each camera advertisement (connectable, scan-only, non-connectable) and, at each connect, the camera's reports in
-  the last 10 s.
+  each camera advertisement (connectable, scan-only, non-connectable). Up to 1.5.0-beta.5 they also gave the
+  camera's reports in the last 10 s at each connect; in pairing that was almost always 1 (the card connects at the
+  first fresh pairing advertisement), so the summary of the scan before the attempt is the measure instead.
 - **Channels and a startup scan (1.5.0-beta.5, diagnostics only):** the same tester's S5, with the phone's and the
-  computer's Bluetooth off, was still heard once in 10-30 s at -32 to -39 dBm. Each report now carries its advertising
-  channel (37, 38, 39 - `ch_index` of the report): it is in the camera lines and the `diag scan` lines, and the
-  reports per channel, of all devices and of LUMIX cameras, are counted in the 10 s scan line, in the summary of every
-  scan (so in Copy log) and in the summary of `diag scan`. A card that is not paired scans for 30 s, 10 s after it
-  starts, and keeps what it heard in the log, for a test in a wall charger away from a computer. The SoftDevice does
-  not report CRC errors while scanning; its channel survey (`sd_ble_gap_qos_channel_survey_start`, energy per channel)
+  computer's Bluetooth off, was still heard once in 10-30 s at -32 to -39 dBm. Each report carries its advertising
+  channel (37, 38, 39 - `ch_index` of the report). Since 1.5.0-beta.6 it is only in `diag scan`: in its device lines,
+  and the reports per channel, of all devices and of LUMIX cameras, in the line before its summary (1.5.0-beta.5 also
+  had it in the camera lines, the 10 s scan line and a second summary line of every scan). In 1.5.0-beta.5 only, a
+  card that was not paired scanned for 30 s, 10 s after it started, and kept what it heard in the log, for a test in a
+  wall charger away from a computer; 1.5.0-beta.6 leaves it out (it took the radio and the log of every new card at
+  start), and *Scan for cameras* in the app or on the card page does the same with a computer. The SoftDevice does not
+  report CRC errors while scanning; its channel survey (`sd_ble_gap_qos_channel_survey_start`, energy per channel)
   needs a role flag that Bluefruit's `begin()` does not set.
 
 ## Normal work (M5)

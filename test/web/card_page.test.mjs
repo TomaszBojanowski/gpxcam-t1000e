@@ -1341,12 +1341,16 @@ const LOG_ANSWER = [
   "[     12.3 s] gps: on\r\n[    15.0 s] link: looking for camera 123456789a\r\n",
   "[  12345.6 s] link: position sent\r\n",
 ];
+// The run as 1.5.0-beta.6 gives it: a Panasonic advert's bytes in a line of their own under its header,
+// the reports per channel before "done".
 const SCAN_ANSWER = [
   "diag scan: on 30 s, radio 50 ms of every 100 ms, reports stronger than -65 dBm; full bytes for Panasonic\r\n",
-  "diag scan: **:**:**:**:**:e2 RPA -48 dBm adv 13 B, camera, bytes: 02 01 06 09 ff 3a 00 00 12 34 56 78 9a\r\n",
+  "diag scan: **:**:**:**:**:e2 RPA -48 dBm ch 38 adv connectable 13 B, camera\r\n",
+  "diag scan:   bytes: 02 01 06 09 ff 3a 00 00 12 34 56 78 9a\r\n",
   "status: format=1 fw=1.3.0 git=1234567\r\n",
-  "diag scan: **:**:**:**:**:33 RPA -40 dBm rsp 7 B\r\n",
-  "diag scan: done, 2 device(s) shown, 812 reports received\r\n",
+  "diag scan: **:**:**:**:**:33 RPA -40 dBm ch 37 rsp 7 B\r\n",
+  "diag scan: by channel 37/38/39: 270/268/274 reports, 110/114/120 from LUMIX cameras\r\n",
+  "diag scan: done, 2 device(s) shown, 812 reports received, 0 resume failed, 0 restarts\r\n",
 ];
 
 // A clipboard that keeps what is written, or one that refuses (focus lost, not allowed).
@@ -1512,12 +1516,24 @@ test("Copy log and Scan hide serial numbers, addresses and the card's identity, 
   const mask = page.maskIdentifiers;
   // Made-up values: the serial 12 34 56 78 9a, addresses of the documentation range (RFC 7042).
   assert.equal(mask("link: looking for camera 123456789a"), "link: looking for camera ********9a");
+  assert.equal(mask("scan: camera 123456789A seen: on (00), 00:00:5e:00:53:01 RPA, -64 dBm, connectable"),
+    "scan: camera ********9A seen: on (00), **:**:**:**:**:01 RPA, -64 dBm, connectable");
   assert.equal(mask("scan: camera 123456789A seen: on (00), 00:00:5e:00:53:01 RPA, -64 dBm, ch 39, connectable"),
-    "scan: camera ********9A seen: on (00), **:**:**:**:**:01 RPA, -64 dBm, ch 39, connectable");
+    "scan: camera ********9A seen: on (00), **:**:**:**:**:01 RPA, -64 dBm, ch 39, connectable"); // 1.5.0-beta.5
   assert.equal(mask("older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E"),
     "older: app register identity 4D454930-0100-1000-8001-********E5F6 name T1000-E");
   assert.equal(mask("pair: card id 00112233-4455-4677-8899-a1b2c3d4e5f6, no camera paired"),
     "pair: card id ********-****-****-****-********e5f6, no camera paired");
+  // 'diag scan' from 1.5.0-beta.6: the bytes in their own line under the header, all of them in that line.
+  const header = "diag scan: **:**:**:**:**:e2 RPA -48 dBm ch 38 adv connectable 13 B, camera";
+  assert.equal(mask(header), header);
+  assert.equal(mask("diag scan:   bytes: 02 01 06 09 ff 3a 00 03 12 34 56 78 9a"),
+    "diag scan:   bytes: 02 01 06 09 ff 3a 00 03 ** ** ** ** 9a");
+  const longest = "diag scan:   bytes: 1e ff 3a 00 06 12 34 56 78 9a" + " ab".repeat(21);
+  assert.equal(mask(longest), longest.replace("06 12 34 56 78 9a", "06 ** ** ** ** 9a"));
+  assert.equal(mask(header + "\n" + "diag scan:   bytes: 02 01 06 09 ff 3a 00 03 12 34 56 78 9a\n"),
+    header + "\n" + "diag scan:   bytes: 02 01 06 09 ff 3a 00 03 ** ** ** ** 9a\n"); // as Copy shows the run
+  // up to 1.5.0-beta.5: the bytes at the end of the header line
   assert.equal(mask("diag scan: **:**:**:**:**:e2 RPA -48 dBm ch 38 adv connectable 13 B, camera, bytes: " +
     "02 01 06 09 ff 3a 00 03 12 34 56 78 9a"),
   "diag scan: **:**:**:**:**:e2 RPA -48 dBm ch 38 adv connectable 13 B, camera, bytes: " +
@@ -1528,6 +1544,8 @@ test("Copy log and Scan hide serial numbers, addresses and the card's identity, 
     "[  12345.6 s] gpxcam-t1000e 1.5.0-beta.5 (git 9804afb), uptime 345 s, log dropped 126",
     "[      0.7 s] reset: 0x00010000 (OFF-GPIO)",
     "scan: by channel 37/38/39: 1266/1190/1183 reports, 316/310/316 from LUMIX cameras",
+    "diag scan: by channel 37/38/39: 270/268/274 reports, 110/114/120 from LUMIX cameras",
+    "diag scan: done, 2 device(s) shown, 812 reports received, 0 resume failed, 0 restarts",
     "memory: heap 185796 B free of 201976 B, loop stack 2416 B never used, main stack 688 B used of 2048 B",
   ]) {
     assert.equal(mask(line), line, line);

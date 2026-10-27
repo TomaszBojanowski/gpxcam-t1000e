@@ -624,9 +624,7 @@ void search(uint32_t now)
         if (camera == nullptr || !link_policy::shouldConnect(record, *camera, now))
             continue;
         bluetooth::scanOff(); // connecting needs the radio
-        logger::transient("link: camera %s is on, %d dBm, %lu reports in %lu s - connecting", serialText,
-                          camera->last.rssi, (unsigned long)camera_list::recentReports(*camera, now),
-                          (unsigned long)camera_list::RECENT_SECONDS);
+        logger::transient("link: camera %s is on, %d dBm - connecting", serialText, camera->last.rssi);
         if (record.dialect == pairing_record::DIALECT_OLDER) {
             olderAccepted = false;
             if (older_session::start(camera->last, record.uuid, true))

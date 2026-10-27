@@ -17,7 +17,6 @@
 #include "pairing_record.h"
 #include "pairing_store.h"
 #include "sound.h"
-#include "startup_scan.h"
 
 namespace {
 
@@ -191,9 +190,8 @@ void introduce(const camera_list::Entry &camera)
     lastCamera = camera.last; // kept in case 'pair' must switch to the older dialect
     char serial[2 * lumix::SERIAL_LENGTH + 1];
     formatSerial(cameraSerial, serial);
-    logger::line("pair: attempt %d/%d - camera %s in pairing mode, %d dBm, %lu reports in %lu s, connecting", attempt,
-                 MAX_ATTEMPTS, serial, camera.last.rssi, (unsigned long)camera_list::recentReports(camera, millis()),
-                 (unsigned long)camera_list::RECENT_SECONDS);
+    logger::line("pair: attempt %d/%d - camera %s in pairing mode, %d dBm, connecting", attempt, MAX_ATTEMPTS, serial,
+                 camera.last.rssi);
     const bool ok = olderMode ? older_session::start(camera.last, pairing_store::record().uuid, false)
                               : camera_session::start(camera.last, pairing_store::record().uuid, false);
     if (!ok) {
@@ -357,7 +355,6 @@ static void startSession(bool older)
         link_control::stop(true); // keeps the GPS on
     gpsWasOn = gps::isOn() && !gpsHeld; // a GPS on only for this pairing goes off after it
     gpsHeld = false;
-    startup_scan::stop(); // pairing takes the radio; the startup scan's scan is not one to put back after it
     scanWasOn = bluetooth::scanning();
     attempt = 0;
     quickRetries = 0;
