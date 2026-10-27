@@ -52,7 +52,9 @@ If something does not work there, please open an issue on GitHub.
 Most newer LUMIX cameras (S5II and the like) pair straight from the card page or this app with
 *Pair*. **Older** cameras — the ones that pair with the older Panasonic phone app, not LUMIX Lab —
 need one extra step over the camera's own Wi-Fi, which only the app can do (a web page cannot reach
-the camera that way). In the app, use *Pair an older camera*:
+the camera that way). In the app, *Pair* recognises such a camera and goes on with that step by
+itself. *Pair an older camera*, lower in the window, does the same from the start, for an older
+camera that *Pair* does not recognise:
 
 https://github.com/user-attachments/assets/6de0f7d9-dfe0-4dd2-bccc-11901fb6f236
 
@@ -65,7 +67,7 @@ camera the moment it starts advertising, and the card will not get in.
 1. Put the card where its GPS gets a fix, outdoors or by a window. The app switches the card's GPS
    on as soon as it connects (gpxcam 1.5.0-beta.2 or newer); the GPS tile shows *Fix* when it is
    ready, which can take a few minutes after a fresh start.
-2. Click *Start*. Do not start pairing on the camera yet.
+2. Click *Pair* (or *Start* under *Pair an older camera*). Do not start pairing on the camera yet.
 3. **Only when the app says *Now start Bluetooth pairing on the camera*** do it (the camera's
    Bluetooth menu → Pairing). The order matters: the camera stays in pairing mode only about 30
    seconds, so the card must already be looking for it (for up to 2 minutes). The card introduces
@@ -79,8 +81,8 @@ screen or in its Wi-Fi setup: **[Setup] → [Wi-Fi] → [Wi-Fi Setup] → [Wi-Fi
 [S5 manual](https://eww.pavc.panasonic.co.jp/dscoi/DC-S5/GA_GW_GC_GH_GN_GT_GD/DC-S5_DVQP2213ZD_full_eng.pdf),
 pages 424–426).
 
-If the card does not find the camera, click *Start* again: the card keeps its GPS on for 10 minutes
-after a pairing that did not succeed, so it starts looking for the camera at once.
+If the card does not find the camera, click *Pair* (or *Start*) again: the card keeps its GPS on for
+10 minutes after a pairing that did not succeed, so it starts looking for the camera at once.
 
 If the Wi-Fi step fails (for example the computer was not on the camera's network yet), the card
 keeps waiting for it for up to 5 minutes: join the network and click *Try the Wi-Fi step again*.

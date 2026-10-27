@@ -533,10 +533,14 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
               about 30 seconds, so the card must already be looking for them.</li>
           <li>When the page says <em>Now start Bluetooth pairing on the camera</em>, start pairing in the
               camera's Bluetooth menu. The card looks for it for up to 2 minutes and tries up to 3 times.</li>
+          <li>Older cameras (the ones that pair with the older Panasonic phone app, not LUMIX Lab) then need
+              one more step, over the camera's own Wi-Fi network, which only the gpxcam card app can do: the app
+              starts it by itself and says what to do.</li>
         </ol>
       </details>
       <div id="pair-row" class="row">
         <button id="pair" type="button" disabled>Pair</button>
+        <button id="pair-resume" type="button" class="hidden">Resume</button>
         <button id="pair-cancel" type="button" class="secondary hidden">Cancel</button>
         <button id="unpair" type="button" class="danger hidden">Forget the camera</button>
       </div>
@@ -549,39 +553,6 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
           <button id="unpair-no" type="button" class="secondary">Keep</button>
         </div>
       </div>
-    </section>
-
-    <section id="older" class="panel section hidden">
-      <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M5 12.5a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/>
-          <circle cx="12" cy="19" r="1"/>
-        </svg>Pair an older camera</h2>
-      <p>Older LUMIX cameras (the ones that pair with the older Panasonic phone app, not LUMIX Lab) need one
-         extra step, over the camera's own Wi-Fi network, which the app does for you. Use this only for such a
-         camera &ndash; for an S5II and the like, use <em>Pair</em> above.</p>
-      <details class="help">
-        <summary>How it works</summary>
-        <ol class="steps">
-          <li>Put the card where its GPS gets a fix, outdoors or by a window. The app switches the GPS on
-              when it connects; the GPS tile above shows <em>Fix</em> when it is ready.</li>
-          <li>Click <em>Start</em>. Do not start pairing on the camera yet: it stays in pairing mode only about
-              30 seconds, so the card must already be looking for it.</li>
-          <li>When the app says <em>Now start Bluetooth pairing on the camera</em>, do it (the camera's
-              Bluetooth menu &rarr; Pairing). The card introduces itself; the camera then shows a Wi-Fi network
-              and a password.</li>
-          <li>On this computer, join that Wi-Fi network by hand. The app finishes the pairing and tells you how
-              it went.</li>
-        </ol>
-      </details>
-      <p id="older-phone" class="note">Before pairing, remove the phone from the camera's Bluetooth device list
-         (Setup &rarr; Bluetooth &rarr; Delete), or at least turn the phone's Bluetooth off. A phone that is still
-         registered may grab the camera the moment it starts advertising, and the card will not get in.</p>
-      <div class="row">
-        <button id="older-start" type="button" disabled>Start</button>
-        <button id="older-resume" type="button" class="hidden">Resume</button>
-        <button id="older-cancel" type="button" class="secondary hidden">Cancel</button>
-      </div>
-      <p id="older-progress" role="status"></p>
     </section>
 
     <section class="panel section">
@@ -648,6 +619,40 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
       <p id="sound-says" class="says">How loud the card is.</p>
       <p id="sound-note" class="note">Connect the card to change this setting.</p>
       <p id="sound-answer" role="status"></p>
+    </section>
+
+    <section id="older" class="panel section hidden">
+      <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 12.5a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/>
+          <circle cx="12" cy="19" r="1"/>
+        </svg>Pair an older camera</h2>
+      <p><em>Pair</em> above recognises an older LUMIX camera (one that pairs with the older Panasonic phone app,
+         not LUMIX Lab) by itself and does its extra step over the camera's own Wi-Fi network. Use this only when
+         <em>Pair</em> does not recognise such a camera: it pairs the card as with an older camera from the
+         start.</p>
+      <details class="help">
+        <summary>How it works</summary>
+        <ol class="steps">
+          <li>Put the card where its GPS gets a fix, outdoors or by a window. The app switches the GPS on
+              when it connects; the GPS tile above shows <em>Fix</em> when it is ready.</li>
+          <li>Click <em>Start</em>. Do not start pairing on the camera yet: it stays in pairing mode only about
+              30 seconds, so the card must already be looking for it.</li>
+          <li>When the app says <em>Now start Bluetooth pairing on the camera</em>, do it (the camera's
+              Bluetooth menu &rarr; Pairing). The card introduces itself; the camera then shows a Wi-Fi network
+              and a password.</li>
+          <li>On this computer, join that Wi-Fi network by hand. The app finishes the pairing and tells you how
+              it went.</li>
+        </ol>
+      </details>
+      <p id="older-phone" class="note">Before pairing, remove the phone from the camera's Bluetooth device list
+         (Setup &rarr; Bluetooth &rarr; Delete), or at least turn the phone's Bluetooth off. A phone that is still
+         registered may grab the camera the moment it starts advertising, and the card will not get in.</p>
+      <div class="row">
+        <button id="older-start" type="button" disabled>Start</button>
+        <button id="older-resume" type="button" class="hidden">Resume</button>
+        <button id="older-cancel" type="button" class="secondary hidden">Cancel</button>
+      </div>
+      <p id="older-progress" role="status"></p>
     </section>
 
     <section class="panel section">
@@ -2067,8 +2072,9 @@ function zoneTile(state) {
   return ["good", name, offset ? `Clock on \u00b7 now ${offset}` : "Clock on \u00b7 a rule given directly"];
 }
 
-// What the card does while it pairs ('status': pair, pair_attempt).
-function pairingText(state) {
+// What the card does while it pairs ('status': pair, pair_attempt); inApp: the page runs in the
+// desktop app, which can do the Wi-Fi step of an older camera.
+function pairingText(state, inApp = false) {
   const satellites = state.gpsSatellites === 1 ? "1 satellite" : `${state.gpsSatellites} satellites`;
   switch (state.pair) {
     case "waiting_gps": return `Waiting for GPS time, up to ${PAIR_FIX_WAIT_TEXT} (${satellites} so far). Do not ` +
@@ -2076,11 +2082,15 @@ function pairingText(state) {
     case "searching": return state.pairAttempt === 0 ? NOW_START_TEXT :
       `Looking for the camera again (attempt ${state.pairAttempt + 1} of ${PAIR_ATTEMPTS})...`;
     case "connecting": return `Talking to the camera (attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS})...`;
-    case "waiting_wifi": return "This is an older camera - use \"Pair an older camera\" in the gpxcam card app for the one-time Wi-Fi step.";
+    case "waiting_wifi": return inApp ? WAITING_WIFI_TEXT : "This is an older camera: it needs a one-time step " +
+      "over the camera's Wi-Fi network, which only the gpxcam card app can do. Cancel, then pair it in the app.";
     case "pausing": return `Attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS} did not work; trying again in a moment...`;
     default: return "Pairing...";
   }
 }
+
+// A pairing left waiting at the Wi-Fi step (the app was closed, the cable came off): the app can go on.
+const WAITING_WIFI_TEXT = "The card is waiting for the Wi-Fi step of an earlier start: Resume it, or Cancel.";
 
 // The user's turn: the card is looking, so the camera's short pairing mode (an S5: about 30 s) is not
 // lost while the card waits for GPS time. Shown as 'act' (pairingKind()).
@@ -2535,6 +2545,7 @@ function startPage() {
     olderStart: element("older-start"),
     olderCancel: element("older-cancel"),
     olderResume: element("older-resume"),
+    pairResume: element("pair-resume"),
     olderProgress: element("older-progress"),
     clock: element("clock"),
     clockNote: element("clock-note"),
@@ -2583,9 +2594,12 @@ function startPage() {
   let olderCancelled = false; // the user pressed Cancel during older-camera pairing
   let olderRunning = false; // the wizard or a resumed Wi-Fi step is under way
   let olderRetry = false; // the last Wi-Fi step failed: Resume reads "Try the Wi-Fi step again"
+  let wifiText = null; // [text, kind] of the Wi-Fi step, shown in both pairing sections until the pairing ends
+  let wifiAccepted = false; // the camera accepted the card; the card finishes the pairing by itself
   const transport = chooseTransport(navigator, window);
+  const inApp = transport !== null && transport.name === "app"; // only the app can do the Wi-Fi step
 
-  if (transport !== null && transport.name === "app") {
+  if (inApp) {
     element("intro-choose").classList.add("hidden"); // no chooser: the app takes the card by itself
     element("about-title").textContent = "About this app";
     element("about-runs").textContent = "The app sends";
@@ -2621,7 +2635,8 @@ function startPage() {
     ui.olderStart.disabled = card === null || busy || lastState === null || pairing || storageDamaged;
     ui.olderCancel.disabled = card === null;
     ui.olderResume.disabled = card === null || busy;
-    ui.pairCancel.disabled = card === null || busy;
+    ui.pairResume.disabled = card === null || busy;
+    ui.pairCancel.disabled = card === null || (busy && !olderRunning); // it also stops a Wi-Fi step
     for (const button of [ui.unpair, ui.unpairYes]) button.disabled = card === null || busy || storageDamaged;
     ui.copyLog.disabled = card === null || busy;
     ui.scan.disabled = card === null || busy;
@@ -2647,11 +2662,24 @@ function startPage() {
     ui.pairCancel.classList.toggle("hidden", !pairing);
     ui.unpair.classList.toggle("hidden", !paired || pairing);
     if (!paired || pairing) ui.unpairConfirm.classList.add("hidden");
-    const [text, kind] = pairing ? [pairingText(lastState), pairingKind(lastState)] : pairMessage || ["", ""];
+    const atWifiStep = pairing && lastState.pair === "waiting_wifi";
+    ui.pairResume.classList.toggle("hidden", !inApp || !atWifiStep || olderRunning || wifiAccepted);
+    ui.pairResume.textContent = olderRetry ? RETRY_WIFI_TEXT : "Resume";
+    const [text, kind] = pairing && wifiText ? wifiText :
+      pairing ? [pairingText(lastState, inApp), pairingKind(lastState)] : pairMessage || ["", ""];
     setStatus(ui.pairProgress, text, kind);
     refreshButtons();
     showOlder();
   };
+
+  // The Wi-Fi step's progress goes to both sections: it may have started from either.
+  const showWifi = (text, kind) => {
+    wifiText = [text, kind];
+    setStatus(ui.pairProgress, text, kind);
+    setStatus(ui.olderProgress, text, kind);
+  };
+
+  const RETRY_WIFI_TEXT = "Try the Wi-Fi step again";
 
   // The older-camera wizard's buttons from the card's state while no run of it is under way: a pairing
   // left from before (the USB cable came off, the app was closed) can be cancelled, and at the Wi-Fi
@@ -2665,12 +2693,13 @@ function startPage() {
       setStatus(ui.olderProgress, "The card no longer waits for the Wi-Fi step. Start again.", "bad");
     }
     ui.olderStart.classList.toggle("hidden", pairing);
-    ui.olderResume.classList.toggle("hidden", phase !== "waiting_wifi");
-    ui.olderResume.textContent = olderRetry ? "Try the Wi-Fi step again" : "Resume";
+    ui.olderResume.classList.toggle("hidden", phase !== "waiting_wifi" || wifiAccepted);
+    ui.olderResume.textContent = olderRetry ? RETRY_WIFI_TEXT : "Resume";
     ui.olderCancel.classList.toggle("hidden", !pairing);
-    if (phase === "waiting_wifi" && !olderRetry) {
-      setStatus(ui.olderProgress, "The card is waiting for the Wi-Fi step of an earlier start: Resume it, or " +
-        "Cancel.", "");
+    if (phase === "waiting_wifi" && wifiText) {
+      setStatus(ui.olderProgress, ...wifiText);
+    } else if (phase === "waiting_wifi") {
+      setStatus(ui.olderProgress, WAITING_WIFI_TEXT, "");
     } else if (pairing && phase !== "waiting_wifi") {
       setStatus(ui.olderProgress, olderStartProgress(phase) || "A pairing is under way.",
         phase === "searching" ? "busy act" : "busy");
@@ -2745,6 +2774,14 @@ function startPage() {
     ui.stateTime.textContent = `Updated ${new Date().toLocaleTimeString()}.`;
     ui.state.classList.remove("hidden");
     ui.refreshRow.classList.remove("hidden");
+    // In the app, a pairing seen reaching the Wi-Fi step (Pair found an older camera) goes on by itself;
+    // one found already waiting there, after a reconnect, waits for Resume.
+    const reachedWifiStep = inApp && lastState !== null && lastState.pair !== "waiting_wifi" &&
+      state.pair === "waiting_wifi";
+    if (state.pair === "idle") {
+      wifiText = null;
+      wifiAccepted = false;
+    }
     lastState = state;
     if (!busy) { // a change being saved is shown when it is done
       clockOn = state.clockOn;
@@ -2756,6 +2793,7 @@ function startPage() {
     }
     showSelected();
     followPairing(state);
+    if (reachedWifiStep && !olderRunning) resumeOlder(); // shows its first step at once
     showPairing();
   };
 
@@ -2792,6 +2830,8 @@ function startPage() {
     watchingPairing = false;
     pairMessage = null;
     olderRetry = false;
+    wifiText = null;
+    wifiAccepted = false;
     if (ui.diagStatus.className === "busy") { // a log or a scan cut short
       ui.diagProgress.classList.add("hidden");
       setStatus(ui.diagStatus, "Stopped: the connection to the card ended.", "bad");
@@ -3119,8 +3159,11 @@ function startPage() {
     busy = true;
     olderRunning = true;
     olderCancelled = false;
+    wifiText = null;
+    wifiAccepted = false;
     ui.olderStart.classList.add("hidden");
     ui.olderResume.classList.add("hidden");
+    ui.pairResume.classList.add("hidden");
     ui.olderCancel.classList.remove("hidden");
     refreshButtons();
   };
@@ -3128,18 +3171,17 @@ function startPage() {
   const olderEnded = () => {
     busy = false;
     olderRunning = false;
-    refreshButtons();
-    showOlder();
+    showPairing();
   };
 
   // The Wi-Fi step and what follows it. When it fails the card keeps waiting (up to 300 s from its
   // introduction, src/older_session.cpp), so it can be tried again; a cancel stops the card's pairing.
   const finishWifiStep = async (asked, info) => {
-    const outcome = await runWifiStep(asked, info, (text, kind) => setStatus(ui.olderProgress, text, kind));
+    const outcome = await runWifiStep(asked, info, showWifi);
     if (outcome === null) return;
-    olderRetry = outcome !== "accepted" && outcome !== "cancelled";
-    const [text, kind] = olderOutcomeText(outcome);
-    setStatus(ui.olderProgress, text, kind);
+    wifiAccepted = outcome === "accepted";
+    olderRetry = !wifiAccepted && outcome !== "cancelled";
+    showWifi(...olderOutcomeText(outcome));
     if (outcome === "cancelled") await asked.cancelPairing().catch(() => {});
     await refresh();
   };
@@ -3208,21 +3250,21 @@ function startPage() {
     const asked = card;
     if (!asked || busy) return;
     olderStarted();
-    setStatus(ui.olderProgress, "Reading the card's identity...", "busy");
+    showWifi("Reading the card's identity...", "busy");
     try {
       const cardId = await asked.cardId();
       if (card !== asked) return;
       if (olderCancelled) {
-        setStatus(ui.olderProgress, "Cancelled.", "");
+        showWifi("Cancelled.", "");
         await asked.cancelPairing().catch(() => {});
         await refresh();
       } else if (cardId === null) {
-        setStatus(ui.olderProgress, "The card did not give its identity. Cancel, then start again.", "bad");
+        showWifi("The card did not give its identity. Cancel, then start again.", "bad");
       } else {
         await finishWifiStep(asked, olderIdentity(cardId));
       }
     } catch (error) {
-      if (card === asked) setStatus(ui.olderProgress, "Older pairing failed. Try again.", "bad");
+      if (card === asked) showWifi("Older pairing failed. Try again.", "bad");
     } finally {
       olderEnded();
     }
@@ -3352,7 +3394,9 @@ function startPage() {
     refreshButtons();
   });
   ui.pair.addEventListener("click", () => pairCommand((asked) => asked.pair()));
-  ui.pairCancel.addEventListener("click", () => pairCommand((asked) => asked.cancelPairing()));
+  ui.pairCancel.addEventListener("click", () => (olderRunning ? cancelOlder()
+    : pairCommand((asked) => asked.cancelPairing())));
+  ui.pairResume.addEventListener("click", resumeOlder);
   ui.unpair.addEventListener("click", () => ui.unpairConfirm.classList.remove("hidden"));
   ui.unpairNo.addEventListener("click", () => ui.unpairConfirm.classList.add("hidden"));
   ui.unpairYes.addEventListener("click", forgetCamera);
