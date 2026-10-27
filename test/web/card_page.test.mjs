@@ -1341,7 +1341,7 @@ const LOG_ANSWER = [
   "[     12.3 s] gps: on\r\n[    15.0 s] link: looking for camera 123456789a\r\n",
   "[  12345.6 s] link: position sent\r\n",
 ];
-// The run as 1.5.0-beta.6 gives it: a Panasonic advert's bytes in a line of their own under its header,
+// The run as 1.5.0 gives it: a Panasonic advert's bytes in a line of their own under its header,
 // the reports per channel before "done".
 const SCAN_ANSWER = [
   "diag scan: on 30 s, radio 50 ms of every 100 ms, reports stronger than -65 dBm; full bytes for Panasonic\r\n",
@@ -1524,7 +1524,7 @@ test("Copy log and Scan hide serial numbers, addresses and the card's identity, 
     "older: app register identity 4D454930-0100-1000-8001-********E5F6 name T1000-E");
   assert.equal(mask("pair: card id 00112233-4455-4677-8899-a1b2c3d4e5f6, no camera paired"),
     "pair: card id ********-****-****-****-********e5f6, no camera paired");
-  // 'diag scan' from 1.5.0-beta.6: the bytes in their own line under the header, all of them in that line.
+  // 'diag scan' from 1.5.0: the bytes in their own line under the header, all of them in that line.
   const header = "diag scan: **:**:**:**:**:e2 RPA -48 dBm ch 38 adv connectable 13 B, camera";
   assert.equal(mask(header), header);
   assert.equal(mask("diag scan:   bytes: 02 01 06 09 ff 3a 00 03 12 34 56 78 9a"),

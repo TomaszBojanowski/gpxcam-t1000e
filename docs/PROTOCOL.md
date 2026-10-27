@@ -232,6 +232,27 @@ acceptance (up to 300 s).
 Made-up example (token `1a2b3c4d`, the seed and name above): `value2` for `T1000-E` is `7d0c1a4eb279062a`; the app's
 test (`app/src-tauri/src/older_wifi.rs`) checks the full encoding against `test/device_identity_vectors.txt`.
 
+## Older dialect: the connection
+
+The card's order (`src/older_session.cpp`), each step after the answer to the previous one, at most 5 s each:
+1. read the key, write the identity, write the device name (both above), read the camera's name and text;
+2. wait for the camera's `01` (it knows the card) on one of the two notification characteristics, next to the
+   location or next to the time: up to 300 s when pairing, while a computer does the Wi-Fi step; 15 s in a lasting
+   connection, where a camera that knows the card sends it right after the device name;
+3. write the time, in the newer dialect's format; in a lasting connection twice, as in the newer dialect (the
+   camera takes the zone from the packet before), and not at all with the clock setting off;
+4. pairing ends here; a lasting connection sends a location every 5 s.
+
+- **The time when pairing:** the camera sends its `01`, and the card writes the time, up to 300 s after the card
+  introduced itself, while the user joins the camera's Wi-Fi network on a computer, often indoors, where the GPS
+  loses its fix. Without a fresh GPS time the
+  card then uses the time of the last fix plus the time since it came, for up to 10 min.
+- **After the connection ends** the card waits as in the newer dialect: 5 s when the camera closed a connection in
+  which it had taken the card (`HCI 0x13`, switched off); one more try after 1 s when the connection was not
+  established (`HCI 0x3e`); otherwise 5 s, 15 s, then 60 s. A connection in which the camera did not take the card
+  (it refused a write, or sent no `01` in time) counts, and the third in a row stops the card as a refusal does; a
+  location the camera takes starts the count again.
+
 ## Camera behaviour worth knowing
 
 - After a few refused connections the camera stops advertising – switching it off and on helps.

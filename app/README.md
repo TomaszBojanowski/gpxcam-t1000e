@@ -8,8 +8,8 @@ pairing, the camera's clock and time zone, location updates and sound.
   (USB 2886:8057).
 - It sends the card only the commands of [test/commands.json](../test/commands.json). The page
   checks them, and the app's Rust side checks them again.
-- It sends nothing over the internet and has no Tauri plugins. Pairing an *older* camera is the one
-  time it uses the network at all, and only to the camera's own Wi-Fi (see below).
+- It sends nothing over the internet, and it has no Tauri plugins. Pairing an *older* camera is the
+  one time it uses a network at all: only the camera's own Wi-Fi (see below).
 
 ## Install
 
@@ -46,8 +46,7 @@ If something does not work there, please open an issue on GitHub.
 ## Pairing an older camera
 
 > [!WARNING]
-> **Older cameras (LUMIX Sync generation): experimental, and not working yet for everyone.**
-> Pairing an older camera is built and works on my bench, but the one field test so far, a LUMIX S5, has not managed to connect to the card at all, for reasons still under investigation. If you own an S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H or BGH1 and are willing to spend an hour testing with me, please say so in [issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2). The more cameras and setups we see, the faster this gets fixed.
+> **Older cameras (LUMIX Sync generation): experimental.** Pairing and everyday use with an older camera are tested by the author with an S5II, which speaks the older protocol too, but not yet confirmed on a camera of the S5 generation: the one field test so far, with a LUMIX S5, has not connected. If you own an S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H or BGH1 and are willing to spend an hour testing, please say so in [issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2).
 
 Most newer LUMIX cameras (S5II and the like) pair straight from the card page or this app with
 *Pair*. **Older** cameras — the ones that pair with the older Panasonic phone app, not LUMIX Lab —
@@ -65,7 +64,7 @@ Delete), or at least turn the phone's Bluetooth off. A phone that is still regis
 camera the moment it starts advertising, and the card will not get in.
 
 1. Put the card where its GPS gets a fix, outdoors or by a window. The app switches the card's GPS
-   on as soon as it connects (gpxcam 1.5.0-beta.2 or newer); the GPS tile shows *Fix* when it is
+   on as soon as it connects (gpxcam 1.5.0 or newer); the GPS tile shows *Fix* when it is
    ready, which can take a few minutes after a fresh start.
 2. Click *Pair* (or *Start* under *Pair an older camera*). Do not start pairing on the camera yet.
 3. **Only when the app says *Now start Bluetooth pairing on the camera*** do it (the camera's
@@ -122,7 +121,7 @@ says which gpxcam it was tested with. It works with older gpxcam as far as the f
 
 | gpxcam on the card | What the app can do |
 |---|---|
-| 1.5.0-beta.2 or newer | everything |
+| 1.5.0 or newer (and the betas from 1.5.0-beta.2) | everything |
 | 1.5.0-beta.1 | everything but *Pair* recognising an older camera, and the GPS switched on when the app connects |
 | 1.4.0 | everything but older cameras and *Scan for cameras* |
 | 1.3.x | as 1.4.0, and not choosing how often the position is sent |

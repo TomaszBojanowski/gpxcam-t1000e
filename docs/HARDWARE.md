@@ -273,12 +273,14 @@ about 1 s – released after 836 ms, the card starts.
   normal timing (50 ms of every 100 ms: pairing, `diag scan`, the link's normal search) a scan with no report for 5 s
   is stopped and started again (`restarts`, one log line per silence). At the slower timings of the search modes
   (100 ms every 1, 2 or 10 s) a silence of 5 s is normal, and with 10 s between windows the watchdog restarted the
-  scan before each of them (1.5.0-beta.3 to beta.5); since 1.5.0-beta.6 only a failed resume restarts it there (one
+  scan before each of them (1.5.0-beta.3 to beta.5); since 1.5.0 only a failed resume restarts it there (one
   log line per scan, then counted), as it would leave the scan paused and the card blind until the camera is seen.
   A failed resume while the loop restarts the scan (new timing, watchdog) is not counted. The test build's `diag scan
   stall` leaves out the next resume, as if it had failed.
 
-## Pairing file (M4)
+## Pairing (M4)
+
+### The pairing file
 
 `/gpxcam/pairing.bin` in the InternalFS file system (0xED000–0xF4000), 32 bytes (`src/pairing_record.h`):
 
@@ -293,13 +295,64 @@ about 1 s – released after 836 ms, the card starts.
 | 28–31 | CRC-32 (IEEE 802.3, as zlib) of bytes 0–27, little-endian |
 
 - The UUID is created once, at the first start without the file, from the hardware generator through the SoftDevice
-  (`sd_rand_application_vector_get`). A damaged file means a new UUID and a log entry – the camera has to be paired again.
-- Writing: a temporary file `/gpxcam/pairing.tmp`, read back (`File::close()` does not report errors), then `rename`
+  (`sd_rand_application_vector_get`). A damaged file is taken back from the pairing's copy (1.4.0, "What 1.4.0
+  changes" below); without the copy it means a new UUID and a log entry – the camera has to be paired again.
+- Writing (`src/record_file.cpp`, as the time zone and the settings, since 1.5.0): a temporary file
+  `/gpxcam/pairing.tmp`, read back (`File::close()` does not report errors), then `rename`
   (atomic in littlefs 1.7 for the record's own blocks, not for the loss of the 4 KB page around them: "A file system
   that mounts but is damaged" below) and a check read. Opening a file allocates memory on the heap (library) –
   only at start-up and when the pairing changes.
 - Tested on the card: the first start creates the file (about 0.9 s), the UUID has the version 4 markers; the same UUID after
   flashing again through `dfu` and after switching off and on with the button.
+
+### Pairing with the camera
+
+- **GATT without blocking Bluefruit functions:** `BLEClientCharacteristic::read()/write_resp()` wait only 100 ms
+  (`BLE_GENERIC_TIMEOUT`, cannot be changed), create a semaphore on the heap at every call, and a late response
+  would land in a stale buffer (`AdaMsg`). Connection, MTU, discovery of the service and characteristics, read and write
+  with response go directly through the SoftDevice API (`src/camera_link.cpp`), with our own timeouts
+  (`src/camera_session.cpp`). We do not register Bluefruit client objects, so its procedures ignore our responses.
+  Bluefruit answers the camera's requests for us: PHY, packet length, connection parameters, the MTU from the camera.
+- **MTU:** the SoftDevice is configured for 185 (`configCentralConn` before start; there is enough RAM). The S5II grants 57 –
+  writes of up to 54 bytes; 32 are needed.
+- **Gesture:** a click and, within 0.5 s, a 3 s hold (`CLICK_HOLD_GAP_MS`); a 3 s hold alone still switches the card off.
+- **Tested on the card (step 3):** no fix for 120 s – gives up with a clear message, GPS back in Backup
+  mode; camera in `00` and in `06` – message "not in pairing mode", no connecting, gives up after 60 s; camera in the pairing
+  menu – paired at the first attempt in about 1.8 s, the camera showed "Pairing completed", and "T1000-E" in its device
+  list; the gesture starts the session, a short press interrupts it; the camera's number is kept after switching off and on.
+- **Not tested on the card:** the failure path with 10 s and 30 s pauses – no attempt ended in failure.
+- **Timing (1.5.0-beta.2):** an S5 stays in pairing mode only about 30 s (a tester's nRF Connect: 29 advertisements,
+  then silence), so the card must already be looking when pairing starts on the camera. The search lasts 120 s
+  (60 s before). A session that ends without pairing keeps a GPS it switched on running for 10 min, and `pair
+  prepare` (sent by the card page on connecting to an unpaired card) switches it on for 10 min; a session started
+  meanwhile skips the wait for GPS time. When the hold runs out the GPS goes back to Backup mode, unless the link
+  uses it; `status` shows the seconds left as `gps_hold`.
+- **Connecting (1.5.0-beta.4):** a tester's S5 in pairing mode was heard only 3 times in a search; two attempts got
+  no answer in 10 s and the third ended with HCI 0x3e (the camera sent nothing in the first connection events). The
+  card now listens all the time while it connects (window = interval, 50 ms) instead of the scanner's 50 of 100 ms,
+  for at most 5 s. In pairing, a connection that never came up (no answer, or 0x3e) is tried again at once at the
+  camera's next fresh pairing advertisement, up to 5 times (`pair: quick retry N/5`), without the 10 s and 30 s
+  pauses, which are kept for what fails after the link was made (at most 3 attempts). The logs give the kind of
+  each camera advertisement (connectable, scan-only, non-connectable). Up to 1.5.0-beta.5 they also gave the
+  camera's reports in the last 10 s at each connect; in pairing that was almost always 1 (the card connects at the
+  first fresh pairing advertisement), so the summary of the scan before the attempt is the measure instead.
+- **The time for an older camera (1.5.0):** an older camera takes the time only after its `01`, up to 300 s
+  after the card introduced itself, while the user joins its Wi-Fi network on a computer, often indoors, where the GPS
+  loses its fix. Without a fresh GPS time the card then uses the time of the last fix plus the time since it came
+  (`gps::utcSinceFix()`, `millis()` on the 32 kHz crystal: a few ms in 10 min), for up to 10 min, with one line
+  (`older: no fresh GPS time - the time of the fix N s ago`). Up to 1.5.0-beta.5 the pairing failed at that last step
+  (`time: no GPS time any more`). The test build's `diag gps stale` / `diag gps fresh` make the time and position count
+  as not fresh while the last fix stays, to test this on the card.
+- **Channels and a startup scan (1.5.0-beta.5, diagnostics only):** the same tester's S5, with the phone's and the
+  computer's Bluetooth off, was still heard once in 10-30 s at -32 to -39 dBm. Each report carries its advertising
+  channel (37, 38, 39 - `ch_index` of the report). Since 1.5.0 it is only in `diag scan`: in its device lines,
+  and the reports per channel, of all devices and of LUMIX cameras, in the line before its summary (1.5.0-beta.5 also
+  had it in the camera lines, the 10 s scan line and a second summary line of every scan). In 1.5.0-beta.5 only, a
+  card that was not paired scanned for 30 s, 10 s after it started, and kept what it heard in the log, for a test in a
+  wall charger away from a computer; 1.5.0 leaves it out (it took the radio and the log of every new card at
+  start), and *Scan for cameras* in the app or on the card page does the same with a computer. The SoftDevice does not
+  report CRC errors while scanning; its channel survey (`sd_ble_gap_qos_channel_survey_start`, energy per channel)
+  needs a role flag that Bluefruit's `begin()` does not set.
 
 ## Time zone (1.2.0)
 
@@ -417,55 +470,6 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   sounded as one note of about 2 s (now `sound::playToEnd()` first); a camera that still lists the card does not
   pair it again (`docs/PROTOCOL.md`).
 
-## Pairing (M4)
-
-- **GATT without blocking Bluefruit functions:** `BLEClientCharacteristic::read()/write_resp()` wait only 100 ms
-  (`BLE_GENERIC_TIMEOUT`, cannot be changed), create a semaphore on the heap at every call, and a late response
-  would land in a stale buffer (`AdaMsg`). Connection, MTU, discovery of the service and characteristics, read and write
-  with response go directly through the SoftDevice API (`src/camera_link.cpp`), with our own timeouts
-  (`src/camera_session.cpp`). We do not register Bluefruit client objects, so its procedures ignore our responses.
-  Bluefruit answers the camera's requests for us: PHY, packet length, connection parameters, the MTU from the camera.
-- **MTU:** the SoftDevice is configured for 185 (`configCentralConn` before start; there is enough RAM). The S5II grants 57 –
-  writes of up to 54 bytes; 32 are needed.
-- **Gesture:** a click and, within 0.5 s, a 3 s hold (`CLICK_HOLD_GAP_MS`); a 3 s hold alone still switches the card off.
-- **Tested on the card (step 3):** no fix for 120 s – gives up with a clear message, GPS back in Backup
-  mode; camera in `00` and in `06` – message "not in pairing mode", no connecting, gives up after 60 s; camera in the pairing
-  menu – paired at the first attempt in about 1.8 s, the camera showed "Pairing completed", and "T1000-E" in its device
-  list; the gesture starts the session, a short press interrupts it; the camera's number is kept after switching off and on.
-- **Not tested on the card:** the failure path with 10 s and 30 s pauses – no attempt ended in failure.
-- **Timing (1.5.0-beta.2):** an S5 stays in pairing mode only about 30 s (a tester's nRF Connect: 29 advertisements,
-  then silence), so the card must already be looking when pairing starts on the camera. The search lasts 120 s
-  (60 s before). A session that ends without pairing keeps a GPS it switched on running for 10 min, and `pair
-  prepare` (sent by the card page on connecting to an unpaired card) switches it on for 10 min; a session started
-  meanwhile skips the wait for GPS time. When the hold runs out the GPS goes back to Backup mode, unless the link
-  uses it; `status` shows the seconds left as `gps_hold`.
-- **Connecting (1.5.0-beta.4):** a tester's S5 in pairing mode was heard only 3 times in a search; two attempts got
-  no answer in 10 s and the third ended with HCI 0x3e (the camera sent nothing in the first connection events). The
-  card now listens all the time while it connects (window = interval, 50 ms) instead of the scanner's 50 of 100 ms,
-  for at most 5 s. In pairing, a connection that never came up (no answer, or 0x3e) is tried again at once at the
-  camera's next fresh pairing advertisement, up to 5 times (`pair: quick retry N/5`), without the 10 s and 30 s
-  pauses, which are kept for what fails after the link was made (at most 3 attempts). The logs give the kind of
-  each camera advertisement (connectable, scan-only, non-connectable). Up to 1.5.0-beta.5 they also gave the
-  camera's reports in the last 10 s at each connect; in pairing that was almost always 1 (the card connects at the
-  first fresh pairing advertisement), so the summary of the scan before the attempt is the measure instead.
-- **The time for an older camera (1.5.0-beta.6):** an older camera takes the time only after its `01`, up to 300 s
-  after the card introduced itself, while the user joins its Wi-Fi network on a computer, often indoors, where the GPS
-  loses its fix. Without a fresh GPS time the card then uses the time of the last fix plus the time since it came
-  (`gps::utcSinceFix()`, `millis()` on the 32 kHz crystal: a few ms in 10 min), for up to 10 min, with one line
-  (`older: no fresh GPS time - the time of the fix N s ago`). Up to 1.5.0-beta.5 the pairing failed at that last step
-  (`time: no GPS time any more`). The test build's `diag gps stale` / `diag gps fresh` make the time and position count
-  as not fresh while the last fix stays, to test this on the card.
-- **Channels and a startup scan (1.5.0-beta.5, diagnostics only):** the same tester's S5, with the phone's and the
-  computer's Bluetooth off, was still heard once in 10-30 s at -32 to -39 dBm. Each report carries its advertising
-  channel (37, 38, 39 - `ch_index` of the report). Since 1.5.0-beta.6 it is only in `diag scan`: in its device lines,
-  and the reports per channel, of all devices and of LUMIX cameras, in the line before its summary (1.5.0-beta.5 also
-  had it in the camera lines, the 10 s scan line and a second summary line of every scan). In 1.5.0-beta.5 only, a
-  card that was not paired scanned for 30 s, 10 s after it started, and kept what it heard in the log, for a test in a
-  wall charger away from a computer; 1.5.0-beta.6 leaves it out (it took the radio and the log of every new card at
-  start), and *Scan for cameras* in the app or on the card page does the same with a computer. The SoftDevice does not
-  report CRC errors while scanning; its channel survey (`sd_ble_gap_qos_channel_survey_start`, energy per channel)
-  needs a role flag that Bluefruit's `begin()` does not set.
-
 ## Normal work (M5)
 
 - **Order:** scan → a report of the paired camera in state `00` (not older than 1 s) and UTC time from the GPS → connection
@@ -486,7 +490,7 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   sounds – connection: two rising tones (CS4, FS4), end of connection: two falling ones.
 - **Range (step 3):** out of range after 134 s – `HCI 0x08` (supervision timeout), pause 5 s; an attempt at
   −90 dBm failed (`HCI 0x3e`), pause 15 s; after coming back, connection in 1.5 s.
-- **Older dialect (1.5.0-beta.6):** the link's pauses follow the same rules as in the newer dialect: a camera that
+- **Older dialect (1.5.0):** the link's pauses follow the same rules as in the newer dialect: a camera that
   closes the connection after it took the card (`HCI 0x13`, switched off) gives the 5 s pause, a connection that was
   not established (`HCI 0x3e`) is tried again after 1 s once, other ends make the pauses longer (5, 15, 60 s). Up to
   1.5.0-beta.5 every end of an older-dialect connection made them longer. A connection in which the camera did not
@@ -615,7 +619,7 @@ The idle current (System OFF, in the µA range) cannot be measured this way: the
   never formats (`lfs_mount()` of littlefs 1.7 only reads). An area of all 0xFF (a new card) is formatted; anything else
   that does not mount is left as it is, Bluefruit gets a 2 KB littlefs in RAM for its bond directories, the card uses the
   default settings, and `storage format yes` erases the 7 pages and restarts. `status: storage=ok|damaged`.
-- **A file system that mounts but is damaged (1.5.0-beta.6):** littlefs writes 128-byte blocks, but the core's flash
+- **A file system that mounts but is damaged (1.5.0):** littlefs writes 128-byte blocks, but the core's flash
   cache erases and programs the whole 4 KB page (`flash_cache.c`, `flash_cache_flush()`), so a reset in that moment
   (power, watchdog) can erase both halves of a directory, or blocks a file points to. `lfs_mount()` reads only the
   superblock, so such a file system mounts, and littlefs then stops the card in an assert (`LFS_ASSERT(block <
@@ -640,7 +644,7 @@ The idle current (System OFF, in the µA range) cannot be measured this way: the
   0xEC000, 2 on 0xEB000. Erasing only the first page of the file system had not been enough: a young file system fits in
   it, and the area was then empty.
 
-## Robustness (1.5.0-beta.6)
+## Robustness (1.5.0)
 
 From a review of the code before 1.5.0; besides the older dialect, the scan watchdog and the file system (above).
 Host tests: `pio test -e native_sessions` (the state machines against fakes and a test camera).
@@ -724,9 +728,12 @@ Host tests: `pio test -e native_sessions` (the state machines against fakes and 
 - The range with +8 dBm against 0 dBm: another person carries the card away until the connection ends (1.3.0 and 1.4.0,
   same place, same pocket).
 - The current with +8 dBm (the battery log in the same scenario as 1.0.1).
-- Pairing: keep the GPS on until a fix (with a limit), and say on the card page when the GPS starts from nothing.
+- Pairing: say on the card page when the GPS starts from nothing (after flashing; since 1.5.0 the card keeps it on
+  for 10 minutes around a pairing).
 - A shorter pause before connecting again after a loss of range (`HCI 0x08`).
 - Whether Meshtastic leaves gpxcam's files in the file system after a trip there and back.
-
+- Older cameras: a test with a camera of the S5 generation (issue #2). The one so far, a tester's LUMIX S5, was heard
+  only a few times in a search and never connected.
+- A night with one connection on 1.5.0 (the newer and the older dialect).
 - Measure the current in standby and with 1.1.0 (the discharge test above; during work with 1.0.1 about 7–8 mA,
   rough), and at rest in System OFF (it needs a meter). The LR1110 in sleep should draw less than 1 µA.
