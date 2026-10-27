@@ -117,7 +117,8 @@ computer without Chrome or Edge use [the desktop app](#the-desktop-app)):
 The page runs only in the browser and sends nothing over the internet. It sends the card only `v`,
 `status`, `pair`, `pair off`, `pair prepare`, `unpair`, `clock on`, `clock off`, `sound loud`,
 `sound quiet`, `sound off`, `updates normal`, `updates frequent`, `log`, `diag scan`, `tz` and `tz`
-with a zone from its list. With gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or
+with a zone from its list; the app also `pair older` and `p` (which only reads the card's id) for
+older cameras. With gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or
 newer, the location updates 1.4.0 and the scan 1.5.0-beta.1. On connecting to a card that is not
 paired yet, the page sends `pair prepare` (gpxcam 1.5.0-beta.2): the card switches its GPS on for 10
 minutes, so that pairing finds the time ready.

@@ -21,7 +21,7 @@ const page = vm.runInContext(
     " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText, chooseTransport," +
     " openProblemText, parseOlderRegister, olderOutcomeText, olderStartProgress, FIXED_COMMANDS, isLogLine," +
     " belongsToScan, scanEnded, scanResultText, diagnosticsText, SCAN_RUN_MS, shouldPrepareGps, pairingKind," +
-    " maskIdentifiers })",
+    " maskIdentifiers, parseCardId, olderIdentity, PAIRING_STATUS_PERIOD_MS })",
   vm.createContext({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console }),
 );
 
@@ -170,7 +170,8 @@ function openPage(port, { serial = true, serialEvents = {}, app = null, clipboar
 // The desktop app's Rust side as app/src-tauri gives it to the page: list_cards, open_card with a
 // channel for the card's lines, send (the answers come back over the channel, line by line) and
 // close_card; register_older (its stages over a channel, then app.registerOutcome) and cancel_older
-// for older-camera pairing. openError: the word open_card fails with.
+// for older-camera pairing. An answer can be a function of app (for a state that follows the
+// commands sent). openError: the word open_card fails with.
 function simulatedApp(paths, answers, { openError = null } = {}) {
   const app = { calls: [], channel: null, registerOutcome: "accepted", registered: [] };
   const core = {
@@ -186,7 +187,8 @@ function simulatedApp(paths, answers, { openError = null } = {}) {
         return null;
       }
       if (command === "send") {
-        const lines = (answers[args.command] || []).join("").split("\n").map((line) => line.replace(/\r$/, ""));
+        const answer = typeof answers[args.command] === "function" ? answers[args.command](app) : answers[args.command];
+        const lines = (answer || []).join("").split("\n").map((line) => line.replace(/\r$/, ""));
         for (const text of lines.filter(Boolean)) setTimeout(() => app.channel.onmessage({ kind: "line", text }), 5);
         return null;
       }
@@ -343,6 +345,22 @@ test("parseOlderRegister reads the card's line, and olderOutcomeText maps the re
   assert.match(page.olderStartProgress("searching"), /^Now start Bluetooth pairing on the camera \(its Bluetooth menu/);
   const seen = page.olderStartProgress("searching", true); // the camera is there, but not in pairing mode
   assert.match(seen, /^Now start Bluetooth pairing on the camera - the card sees it/);
+});
+
+// The made-up card UUID and its identity in the older dialect (test/device_identity_vectors.txt).
+const VECTORS = Object.fromEntries(readFileSync(new URL("../device_identity_vectors.txt", import.meta.url), "utf8")
+  .split("\n").filter((line) => line && !line.startsWith("#")).map((line) => line.split(" = ")));
+const CARD_ID = VECTORS.card_uuid.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+const CARD_ID_ANSWER = [`pair: card id ${CARD_ID}, no camera paired\r\n`, "pair: copy - none\r\n"];
+
+test("parseCardId reads the card's id from 'p', and olderIdentity makes the identity the card registers", () => {
+  assert.equal(page.parseCardId(`pair: card id ${CARD_ID}, no camera paired`), CARD_ID);
+  assert.equal(page.parseCardId(`pair: card id ${CARD_ID}, camera 123456789a`), CARD_ID);
+  for (const other of ["pair: not available", `pair: new card id ${CARD_ID} saved in /gpxcam/pairing.bin`,
+    `pair: card id ${CARD_ID.toUpperCase()}, no camera paired`, "pair: card id 0011, no camera paired"]) {
+    assert.equal(page.parseCardId(other), null, other);
+  }
+  assert.deepEqual(json(page.olderIdentity(CARD_ID)), { identity: VECTORS.identity_text, name: VECTORS.name });
 });
 
 test("the port is opened only at 115200 baud, with DTR", async () => {
@@ -1539,8 +1557,11 @@ const OLDER_STARTED = [
   "older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E\r\n",
 ];
 const OLDER_IDENTITY = "4D454930-0100-1000-8001-A1B2C3D4E5F6 T1000-E";
+// The card's state while it waits for the Wi-Fi step.
+const WAITING_WIFI = statusWith({ ...NOT_PAIRED, pair: "waiting_wifi" }, STATUS_GPS_HOLD);
 
-async function olderWizard(registerOutcome) {
+// statusAfterStart: the card's state from 'pair older' on (by default it stays idle).
+async function olderWizard(registerOutcome, statusAfterStart = null) {
   const answers = { v: VERSION_1_4, status: statusWith(NOT_PAIRED, STATUS_GPS_HOLD), "pair older": OLDER_STARTED,
     "pair off": ["pair: cancelled\r\n"], "pair prepare": ["pair: GPS on for 600 s, ready for pairing\r\n"] };
   const app = simulatedApp(["/dev/ttyACM0"], answers);
@@ -1548,8 +1569,9 @@ async function olderWizard(registerOutcome) {
   const ui = openPage(null, { app });
   await ui.connect.fire("click");
   assert.equal(ui.older.hidden, false); // the wizard is the app's
+  if (statusAfterStart) answers.status = statusAfterStart;
   await ui["older-start"].fire("click");
-  return { app, ui };
+  return { app, ui, answers };
 }
 
 test("in the app: the older-camera wizard registers the identity the card prints, over Wi-Fi", async () => {
@@ -1563,10 +1585,97 @@ test("in the app: the older-camera wizard registers the identity the card prints
   await ui.disconnect.fire("click"); // stops the status refresh
 });
 
-test("in the app: a Wi-Fi step that fails says why and stops the card's pairing", async () => {
-  const { app, ui } = await olderWizard("not-on-network");
+test("in the app: a Wi-Fi step that fails says why, keeps the card waiting, and can be tried again", async () => {
+  const { app, ui, answers } = await olderWizard("not-on-network", WAITING_WIFI);
   assert.match(ui["older-progress"].textContent, /^Could not reach the camera\. Join the camera's Wi-Fi network/);
   assert.equal(ui["older-progress"].className, "bad");
+  assert.equal(app.calls.includes("send pair off"), false); // the card waits up to 300 s for the step
+  assert.equal(ui["older-resume"].hidden, false);
+  assert.equal(ui["older-resume"].textContent, "Try the Wi-Fi step again");
+  assert.equal(ui["older-cancel"].hidden, false);
+  assert.equal(ui["older-start"].hidden, true);
+  // Joined the network now: the second try registers the identity from the card's id.
+  app.registerOutcome = "accepted";
+  answers.p = CARD_ID_ANSWER;
+  answers.status = statusWith({ paired: 1, link: "off" }, STATUS_GPS_HOLD);
+  await ui["older-resume"].fire("click");
+  assert.deepEqual(app.registered, [OLDER_IDENTITY, OLDER_IDENTITY]);
+  assert.equal(ui["older-progress"].textContent, "The camera accepted the card. Older pairing done.");
+  assert.equal(ui["older-resume"].hidden, true);
+  assert.equal(ui["older-cancel"].hidden, true);
+  assert.equal(ui["older-start"].hidden, false);
+  assert.equal(app.calls.includes("send pair off"), false);
+  await ui.disconnect.fire("click");
+});
+
+test("in the app: after a failed Wi-Fi step, a card that stops waiting is shown so", async () => {
+  const { ui, answers } = await olderWizard("not-on-network", WAITING_WIFI);
+  answers.status = statusWith(NOT_PAIRED, STATUS_GPS_HOLD); // its 300 s ran out
+  await tick(page.PAIRING_STATUS_PERIOD_MS + 300); // the next refresh of the state
+  assert.equal(ui["older-progress"].textContent, "The card no longer waits for the Wi-Fi step. Start again.");
+  assert.equal(ui["older-resume"].hidden, true);
+  assert.equal(ui["older-start"].hidden, false);
+  await ui.disconnect.fire("click");
+});
+
+test("in the app: a cancelled Wi-Fi step stops the card's pairing", async () => {
+  const cancelledWhenAsked = (app) => (app.calls.includes("send pair off")
+    ? statusWith(NOT_PAIRED, STATUS_GPS_HOLD) : WAITING_WIFI);
+  const { app, ui } = await olderWizard("cancelled", cancelledWhenAsked);
+  assert.equal(ui["older-progress"].textContent, "Cancelled.");
   assert.equal(app.calls.includes("send pair off"), true);
+  assert.equal(ui["older-start"].hidden, false);
+  assert.equal(ui["older-resume"].hidden, true);
+  await ui.disconnect.fire("click");
+});
+
+// The app opened again (or the cable came back) while the card still pairs: the wizard follows it.
+async function olderReconnect(pairPhase) {
+  const answers = { v: VERSION_1_4, status: statusWith({ ...NOT_PAIRED, pair: pairPhase }, STATUS_GPS_HOLD),
+    p: CARD_ID_ANSWER, "pair off": ["pair: cancelled\r\n"] };
+  const app = simulatedApp(["/dev/ttyACM0"], answers);
+  const ui = openPage(null, { app });
+  await ui.connect.fire("click");
+  return { app, ui, answers };
+}
+
+test("in the app: a card left waiting at the Wi-Fi step can be resumed with the identity from its id", async () => {
+  const { app, ui, answers } = await olderReconnect("waiting_wifi");
+  assert.match(ui["older-progress"].textContent, /^The card is waiting for the Wi-Fi step of an earlier start/);
+  assert.equal(ui["older-resume"].hidden, false);
+  assert.equal(ui["older-resume"].textContent, "Resume");
+  assert.equal(ui["older-cancel"].hidden, false);
+  assert.equal(ui["older-start"].hidden, true);
+  assert.equal(app.calls.includes("send pair prepare"), false); // the card is pairing already
+  answers.status = statusWith({ paired: 1, link: "off" }, STATUS_GPS_HOLD);
+  await ui["older-resume"].fire("click");
+  assert.equal(app.calls.includes("send p"), true);
+  assert.deepEqual(app.registered, [OLDER_IDENTITY]);
+  assert.equal(ui["older-progress"].textContent, "The camera accepted the card. Older pairing done.");
+  assert.equal(ui["older-start"].hidden, false);
+  await ui.disconnect.fire("click");
+});
+
+test("in the app: a pairing left from before can be cancelled", async () => {
+  const { app, ui, answers } = await olderReconnect("waiting_wifi");
+  answers.status = statusWith(NOT_PAIRED, STATUS_GPS_HOLD);
+  await ui["older-cancel"].fire("click");
+  assert.equal(app.calls.includes("send pair off"), true);
+  assert.equal(app.calls.includes("cancel_older"), false); // no Wi-Fi step of this app was running
+  assert.equal(ui["older-progress"].textContent, "Cancelled.");
+  assert.equal(ui["older-cancel"].hidden, true);
+  assert.equal(ui["older-resume"].hidden, true);
+  assert.equal(ui["older-start"].hidden, false);
+  await ui.disconnect.fire("click");
+});
+
+test("in the app: a card still looking for the camera shows it in the wizard, with Cancel", async () => {
+  const { app, ui } = await olderReconnect("searching");
+  assert.equal(ui["older-progress"].textContent, page.olderStartProgress("searching"));
+  assert.equal(ui["older-progress"].className, "busy act");
+  assert.equal(ui["older-cancel"].hidden, false);
+  assert.equal(ui["older-resume"].hidden, true);
+  assert.equal(ui["older-start"].hidden, true);
+  assert.equal(app.registered.length, 0);
   await ui.disconnect.fire("click");
 });
