@@ -148,4 +148,11 @@ bool earlyEndMeansUnknownCard(bool timeWritten, uint8_t *earlyEndsInARow)
     return *earlyEndsInARow >= EARLY_ENDS_FOR_UNKNOWN_CARD;
 }
 
+bool olderRefusalMeansUnknownCard(uint8_t *refusalsInARow)
+{
+    if (*refusalsInARow < UINT8_MAX)
+        (*refusalsInARow)++;
+    return *refusalsInARow >= EARLY_ENDS_FOR_UNKNOWN_CARD;
+}
+
 } // namespace link_policy

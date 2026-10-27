@@ -30,6 +30,11 @@ constexpr uint32_t KNOWN_WAIT_CONNECT_MS = 15000;
 constexpr uint32_t LOCATION_PERIOD_MS = 5000;   // a location every 5 s (the lasting connection)
 constexpr uint32_t LOCATION_SUMMARY_EVERY = 12; // a log line about once a minute
 constexpr uint32_t NO_LIMIT = 0;
+// A camera that waits for the Wi-Fi step takes its time up to KNOWN_WAIT_PAIR_MS after the card introduced
+// itself, when the user may have carried the card indoors to the computer and the GPS lost its fix. The
+// time of the last fix then counts (gps::utcSinceFix(): millis() on the 32 kHz crystal, a few ms in 10 min)
+// for at most this long.
+constexpr uint32_t TIME_FROM_FIX_MAX_MS = 600000;
 
 constexpr uint16_t MTU_REQUEST = camera_link::MAX_MTU;
 constexpr uint16_t FIRST_HANDLE = 0x0001;
@@ -47,16 +52,19 @@ uint32_t stepLimit = NO_LIMIT;
 bool keepOpen = false; // true: send locations after the camera accepts; false: end at Accepted
 bool accepted = false;
 bool justAccepted = false; // Accepted returned once
-bool rejected = false;     // the camera did not take the card (vs a connection problem)
+bool rejected = false;     // the camera refused a write of the introduction or the time
+bool notKnown = false;     // the camera sent no 01 in time
 camera_link::LinkFailure linkFailed = camera_link::LinkFailure::None; // the session got no link at all
+uint16_t endReason = 0; // the HCI reason of the disconnect that ended the session, 0 otherwise
 uint8_t cardUuid[lumix::UUID_LENGTH];
 uint16_t handles[camera_link::OLDER_CHARACTERISTIC_COUNT];
 uint8_t key[lumix::KEY_LENGTH];
 bool knownByLocationNotify = false;
 bool knownByTimeNotify = false;
 bool writePending = false;
+bool timeFromFixLogged = false; // "the time of the fix ... ago" said once per session
 uint32_t lastLocationMs = 0;
-uint32_t locationsWritten = 0;
+uint32_t locationsWrittenCount = 0;
 uint32_t locationsRefused = 0;
 char failureText[80] = "";
 
@@ -168,12 +176,19 @@ void startRead(camera_link::OlderCharacteristic which, Step next)
     enter(next, STEP_MS);
 }
 
-// The time of this moment with the zone of 'tz', into txData (as camera_session.cpp).
+// The time of this moment with the zone of 'tz', into txData (as camera_session.cpp); without a fresh GPS
+// time the time of the last fix (TIME_FROM_FIX_MAX_MS). False without either.
 bool makeTimePacket()
 {
     int64_t now = 0;
-    if (!gps::utcNow(&now))
-        return false;
+    if (!gps::utcNow(&now)) {
+        uint32_t ageMs = 0;
+        if (!gps::utcSinceFix(TIME_FROM_FIX_MAX_MS, &now, &ageMs))
+            return false;
+        if (!timeFromFixLogged)
+            logger::line("older: no fresh GPS time - the time of the fix %lu s ago", (unsigned long)(ageMs / 1000));
+        timeFromFixLogged = true;
+    }
     const posix_tz::CameraZone zone = posix_tz::cameraZone(tz_store::rule(), now);
     lumix::timeData(utc::fromUnixSeconds(now), zone.standardOffsetMinutes, zone.summerTime, txData);
     return true;
@@ -224,9 +239,9 @@ void afterKnown()
 
 // At the first pairing a computer (the gpxcam card app) does the one-time Wi-Fi step: it registers
 // this same identity and device name over the camera's Wi-Fi network while the user joins that
-// network by hand from the camera's screen. Print them in a line the app reads; local/mask.sed
-// masks the identity (a UUID) when a log is shown. Only for pairing - a lasting connection needs
-// no Wi-Fi step.
+// network by hand from the camera's screen. Sent in a line the app reads as it comes, and not kept in
+// the history ('log', Copy log): the app that resumes a pairing builds the identity from the card's
+// UUID in 'p' (docs/index.html). Only for pairing - a lasting connection needs no Wi-Fi step.
 void logAppRegistration()
 {
     uint8_t seed[device_identity::SEED_LENGTH];
@@ -236,7 +251,7 @@ void logAppRegistration()
         logger::line("older: the identity text for the app could not be built");
         return;
     }
-    logger::line("older: app register identity %s name %s", identity, DEVICE_NAME);
+    logger::transient("older: app register identity %s name %s", identity, DEVICE_NAME);
 }
 
 void waitForKnown()
@@ -396,9 +411,9 @@ void onLocationWritten(const camera_link::Event &event)
         logger::line("older: location refused (GATT 0x%04x)", event.status);
         return;
     }
-    locationsWritten++;
-    if (locationsWritten == 1 || locationsWritten % LOCATION_SUMMARY_EVERY == 0)
-        logger::line("older: %lu locations written, %lu refused", (unsigned long)locationsWritten,
+    locationsWrittenCount++;
+    if (locationsWrittenCount == 1 || locationsWrittenCount % LOCATION_SUMMARY_EVERY == 0)
+        logger::line("older: %lu locations written, %lu refused", (unsigned long)locationsWrittenCount,
                      (unsigned long)locationsRefused);
 }
 
@@ -456,6 +471,7 @@ bool handleCommonEvent(const camera_link::Event &event)
     case EventType::Disconnected:
         if (step == Step::Done)
             return true; // already accepted; the caller cancels
+        endReason = event.status;
         if (event.status == BLE_HCI_CONN_FAILED_TO_BE_ESTABLISHED)
             linkFailed = camera_link::LinkFailure::NotEstablished;
         fail("the camera disconnected (HCI 0x%02x)", event.status);
@@ -543,7 +559,8 @@ void handleEvent(const camera_link::Event &event)
 void handleTimeout()
 {
     if (step == Step::WaitKnown) {
-        reject("no 01 from the camera in %lu s", (unsigned long)(stepLimit / 1000));
+        notKnown = true; // Failed: a camera may be slow; the link counts it (link_policy)
+        fail("no 01 from the camera in %lu s", (unsigned long)(stepLimit / 1000));
         return;
     }
     if (step == Step::Connecting)
@@ -575,9 +592,12 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     accepted = false;
     justAccepted = false;
     rejected = false;
+    notKnown = false;
     linkFailed = camera_link::LinkFailure::None;
+    endReason = 0;
     writePending = false;
-    locationsWritten = 0;
+    timeFromFixLogged = false;
+    locationsWrittenCount = 0;
     locationsRefused = 0;
     knownByLocationNotify = false;
     knownByTimeNotify = false;
@@ -626,6 +646,21 @@ camera_link::LinkFailure linkFailure()
     return linkFailed;
 }
 
+uint16_t disconnectReason()
+{
+    return endReason;
+}
+
+bool cardNotTaken()
+{
+    return rejected || notKnown;
+}
+
+uint32_t locationsWritten()
+{
+    return locationsWrittenCount;
+}
+
 void cancel()
 {
     if (step == Step::Idle)
@@ -646,10 +681,10 @@ void logState()
 {
     if (step == Step::Idle)
         logger::transient("older: idle (last session: %lu locations written, %lu refused)",
-                          (unsigned long)locationsWritten, (unsigned long)locationsRefused);
+                          (unsigned long)locationsWrittenCount, (unsigned long)locationsRefused);
     else
         logger::transient("older: %s, %lu locations written, %lu refused", stepName(step),
-                          (unsigned long)locationsWritten, (unsigned long)locationsRefused);
+                          (unsigned long)locationsWrittenCount, (unsigned long)locationsRefused);
 }
 
 } // namespace older_session

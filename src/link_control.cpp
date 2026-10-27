@@ -564,6 +564,17 @@ void settingUp(uint32_t now)
         connectionFailed(phase == Phase::GpsMode ? "GPS mode: no answer in time" : "notifications: no answer in time");
 }
 
+// A connection that was not established (HCI 0x3e): tried again after QUICK_RETRY_MS, once until a
+// connection works.
+void quickRetry()
+{
+    quickRetryUsed = true;
+    pauseLength = QUICK_RETRY_MS;
+    logger::line("link: connection to camera %s not established - trying again in %lu s", serialText,
+                 (unsigned long)(QUICK_RETRY_MS / 1000));
+    enter(Phase::Pausing);
+}
+
 void introducing()
 {
     switch (camera_session::poll()) {
@@ -579,11 +590,7 @@ void introducing()
         if (camera_session::endedAfterConnecting() && earlyEndStopped())
             break;
         if (camera_session::notEstablished() && !quickRetryUsed) {
-            quickRetryUsed = true;
-            pauseLength = QUICK_RETRY_MS;
-            logger::line("link: connection to camera %s not established - trying again in %lu s", serialText,
-                         (unsigned long)(QUICK_RETRY_MS / 1000));
-            enter(Phase::Pausing);
+            quickRetry();
         } else {
             connectionFailed(camera_session::failure());
         }
@@ -817,23 +824,56 @@ void logState()
         logger::transient("link: %s; last location %s, %lu sent", phaseText(), last, (unsigned long)sentCount);
 }
 
+// The older dialect's connection ended. A camera that did not take the card (a refused write, no 01 in
+// time) counts, and the third such connection in a row stops the link as a refusal does
+// (link_policy::olderRefusalMeansUnknownCard()). Otherwise as in the newer dialect: a camera that closed
+// the connection after it took the card (HCI 0x13, switched off) gives the 5 s pause, a connection that
+// was not established a quick retry, and anything else a longer pause each time.
+void olderEnded()
+{
+    if (older_session::cardNotTaken()) {
+        if (link_policy::olderRefusalMeansUnknownCard(&earlyEndsInARow)) {
+            logger::line("link: %u connections in a row ended without camera %s taking the card (last: %s)",
+                         (unsigned)earlyEndsInARow, serialText, older_session::failure());
+            rejectedByCamera();
+        } else {
+            connectionFailed(older_session::failure());
+        }
+        return;
+    }
+    if (older_session::linkFailure() == camera_link::LinkFailure::NotEstablished && !quickRetryUsed) {
+        quickRetry();
+        return;
+    }
+    if (olderAccepted && older_session::disconnectReason() == BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION) {
+        failuresInARow = 0; // a normal end, as onDisconnected()
+        char why[logger::LINE_MAX];
+        snprintf(why, sizeof(why), "disconnected from camera %s after %lu s (HCI 0x%02x)", serialText,
+                 (unsigned long)((millis() - connectedAt) / 1000), BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+        pause(why, true);
+        return;
+    }
+    connectionFailed(older_session::failure());
+}
+
 // The older dialect's whole connection is driven by older_session; this only pauses or stops the
 // link when it ends, like the newer-dialect phases.
 void olderPhase(uint32_t now)
 {
     switch (older_session::poll()) {
     case older_session::Result::Running:
+        if (older_session::locationsWritten() > 0)
+            earlyEndsInARow = 0; // the camera takes locations: it knows the card
         break;
     case older_session::Result::Accepted:
         olderAccepted = true;
+        quickRetryUsed = false; // the next connection not established may get its quick retry again
         connectedAt = now;
         logger::line("link: connected to camera %s (older dialect)", serialText);
         break;
     case older_session::Result::Rejected:
-        rejectedByCamera();
-        break;
     case older_session::Result::Failed:
-        connectionFailed(older_session::failure());
+        olderEnded();
         break;
     }
 }

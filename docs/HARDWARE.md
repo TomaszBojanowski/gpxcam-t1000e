@@ -447,6 +447,13 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   each camera advertisement (connectable, scan-only, non-connectable). Up to 1.5.0-beta.5 they also gave the
   camera's reports in the last 10 s at each connect; in pairing that was almost always 1 (the card connects at the
   first fresh pairing advertisement), so the summary of the scan before the attempt is the measure instead.
+- **The time for an older camera (1.5.0-beta.6):** an older camera takes the time only after its `01`, up to 300 s
+  after the card introduced itself, while the user joins its Wi-Fi network on a computer, often indoors, where the GPS
+  loses its fix. Without a fresh GPS time the card then uses the time of the last fix plus the time since it came
+  (`gps::utcSinceFix()`, `millis()` on the 32 kHz crystal: a few ms in 10 min), for up to 10 min, with one line
+  (`older: no fresh GPS time - the time of the fix N s ago`). Up to 1.5.0-beta.5 the pairing failed at that last step
+  (`time: no GPS time any more`). The test build's `diag gps stale` / `diag gps fresh` make the time and position count
+  as not fresh while the last fix stays, to test this on the card.
 - **Channels and a startup scan (1.5.0-beta.5, diagnostics only):** the same tester's S5, with the phone's and the
   computer's Bluetooth off, was still heard once in 10-30 s at -32 to -39 dBm. Each report carries its advertising
   channel (37, 38, 39 - `ch_index` of the report). Since 1.5.0-beta.6 it is only in `diag scan`: in its device lines,
@@ -478,6 +485,14 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   sounds – connection: two rising tones (CS4, FS4), end of connection: two falling ones.
 - **Range (step 3):** out of range after 134 s – `HCI 0x08` (supervision timeout), pause 5 s; an attempt at
   −90 dBm failed (`HCI 0x3e`), pause 15 s; after coming back, connection in 1.5 s.
+- **Older dialect (1.5.0-beta.6):** the link's pauses follow the same rules as in the newer dialect: a camera that
+  closes the connection after it took the card (`HCI 0x13`, switched off) gives the 5 s pause, a connection that was
+  not established (`HCI 0x3e`) is tried again after 1 s once, other ends make the pauses longer (5, 15, 60 s). Up to
+  1.5.0-beta.5 every end of an older-dialect connection made them longer. A connection in which the camera did not
+  take the card (a refused write of the introduction or the time, or no `01` within 15 s) counts, and the third in a
+  row stops the link as a refusal does (`link: 3 connections in a row ended without camera … taking the card`); a
+  location the camera takes starts the count again. Up to 1.5.0-beta.5 the first one stopped it. Host tests:
+  `pio test -e native_sessions`.
 
 ## Energy (M6)
 

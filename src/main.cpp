@@ -504,6 +504,10 @@ void runCommand(char *cmd)
         diag::breakFileSystem();
     } else if (strcmp(cmd, "diag scan stall") == 0) {
         bluetooth::stallScan();
+    } else if (strcmp(cmd, "diag gps stale") == 0) {
+        gps::setStaleForTest(true);
+    } else if (strcmp(cmd, "diag gps fresh") == 0) {
+        gps::setStaleForTest(false);
 #endif
     } else if (strcmp(cmd, "storage format yes") == 0) {
         storage::formatDamaged();

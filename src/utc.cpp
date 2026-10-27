@@ -59,6 +59,12 @@ bool isValid(const DateTime &t)
            t.minute < 60 && t.second < 60;
 }
 
+int64_t secondsAfter(int64_t unixMs, uint32_t msLater)
+{
+    constexpr int64_t MS_PER_SECOND = 1000;
+    return (unixMs + msLater) / MS_PER_SECOND;
+}
+
 int64_t toUnixSeconds(const DateTime &t)
 {
     return daysFromCivil(t.year, t.month, t.day) * SECONDS_PER_DAY + t.hour * SECONDS_PER_HOUR + t.minute * 60 +

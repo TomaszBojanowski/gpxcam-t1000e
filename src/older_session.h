@@ -23,7 +23,8 @@ enum class Result { Running, Accepted, Rejected, Failed };
 bool start(const camera_list::Report &camera, const uint8_t cardUuid[lumix::UUID_LENGTH], bool keepOpen);
 
 // Advances the session: Running while it introduces and then (keepOpen) sends; Accepted once when
-// the camera takes the card; Rejected when the camera does not; Failed on a connection problem.
+// the camera takes the card; Rejected when the camera refuses a write of the introduction or the time;
+// Failed on a connection problem, and when the camera sends no 01 in time (it may be slow).
 Result poll();
 
 // Why the last session failed or was rejected (for the caller's log).
@@ -31,6 +32,17 @@ const char *failure();
 
 // Whether the last session got no link at all (no answer, or HCI 0x3e), for pairing's quick retries.
 camera_link::LinkFailure linkFailure();
+
+// The HCI reason of the disconnect that ended the last session (0x13: the camera closed it, as when
+// it is switched off), or 0 if it ended otherwise. For the link's pause (link_control).
+uint16_t disconnectReason();
+
+// Whether the camera did not take the card in the last session: it refused a write of the introduction
+// or the time (Rejected), or sent no 01 in time (Failed). The link stops after a few in a row.
+bool cardNotTaken();
+
+// Locations the camera took in the last (or running) session.
+uint32_t locationsWritten();
 
 // Disconnects and stops; does nothing when idle.
 void cancel();

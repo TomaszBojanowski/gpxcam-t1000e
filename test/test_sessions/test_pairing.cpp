@@ -53,11 +53,26 @@ void test_pairing_switches_to_the_older_dialect_and_waits_for_the_wifi_step()
     fake::loop(1000);
     TEST_ASSERT_TRUE(fake::logged("switching to the older dialect"));
     TEST_ASSERT_TRUE(fake::logged("older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E"));
+    TEST_ASSERT_FALSE(fake::kept("register identity")); // sent for the app, not in 'log' and Copy log
     TEST_ASSERT_TRUE(pairing::active());
     fake::notify(fake::OLDER_LOCATION_NOTIFY, lumix::OLDER_KNOWN); // the Wi-Fi step is done
     TEST_ASSERT_TRUE(fake::loopUntil(pairingIdle, 10000));
     TEST_ASSERT_TRUE(pairing::progress().lastResult == Result::Paired);
     TEST_ASSERT_EQUAL(pairing_record::DIALECT_OLDER, fake::record.dialect);
+}
+
+void test_pairing_an_older_camera_takes_the_time_of_the_last_fix_when_the_gps_lost_it()
+{
+    fake::camera.dialect = fake::Dialect::Older;
+    fake::camera.knowsCard = false;
+    startPairing();
+    TEST_ASSERT_TRUE(fake::loopUntil(waitingForWifi, 30000));
+    fake::gpsFix = false; // the card carried indoors to the computer
+    fake::loop(120000);
+    fake::notify(fake::OLDER_LOCATION_NOTIFY, lumix::OLDER_KNOWN); // the Wi-Fi step is done
+    TEST_ASSERT_TRUE(fake::loopUntil(pairingIdle, 10000));
+    TEST_ASSERT_TRUE(pairing::progress().lastResult == Result::Paired);
+    TEST_ASSERT_EQUAL(1, fake::loggedCount("older: no fresh GPS time - the time of the fix 120 s ago"));
 }
 
 void test_pairing_tries_a_link_that_never_came_up_five_times_at_once()
@@ -113,6 +128,7 @@ void runPairingTests()
 {
     RUN_TEST(test_pairing_pairs_a_newer_camera_and_starts_the_link);
     RUN_TEST(test_pairing_switches_to_the_older_dialect_and_waits_for_the_wifi_step);
+    RUN_TEST(test_pairing_an_older_camera_takes_the_time_of_the_last_fix_when_the_gps_lost_it);
     RUN_TEST(test_pairing_tries_a_link_that_never_came_up_five_times_at_once);
     RUN_TEST(test_pairing_pauses_between_three_attempts_then_gives_up);
     RUN_TEST(test_pairing_without_a_camera_keeps_the_gps_for_another_try);

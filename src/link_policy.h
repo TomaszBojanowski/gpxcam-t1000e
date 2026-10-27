@@ -138,6 +138,12 @@ constexpr uint8_t EARLY_ENDS_FOR_UNKNOWN_CARD = 3;
 // its refusal shows an unknown card, so early ends do not count and the count goes back to 0.
 bool earlyEndMeansUnknownCard(bool timeWritten, uint8_t *earlyEndsInARow);
 
+// The older dialect (link_control): a connection in which the camera did not take the card - it refused a
+// write of the introduction or the time, or sent no 01 in time - counts in *refusalsInARow (link_control
+// sets it to 0 when the camera takes a location), and the EARLY_ENDS_FOR_UNKNOWN_CARD-th in a row stops the
+// card as a refusal does. One alone may be a slow or busy camera; up to 1.5.0-beta.5 it stopped the card.
+bool olderRefusalMeansUnknownCard(uint8_t *refusalsInARow);
+
 // Distance in metres between two positions in degrees * 10^7 (equirectangular
 // approximation; good to well under 1 % for the short distances it is used for).
 uint32_t distanceMetres(int32_t latitude1E7, int32_t longitude1E7, int32_t latitude2E7, int32_t longitude2E7);

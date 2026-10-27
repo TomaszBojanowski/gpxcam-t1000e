@@ -23,6 +23,8 @@ namespace fake {
 namespace {
 
 uint32_t nowMs = 0;
+bool fixSeen = false;  // the GPS had a fix since it was switched on
+uint32_t lastFixMs = 0; // when, for gps::utcSinceFix()
 
 struct LogLine {
     std::string text;
@@ -96,6 +98,10 @@ void loop(uint32_t ms)
 {
     for (uint32_t done = 0; done < ms; done += LOOP_STEP_MS) {
         nowMs += LOOP_STEP_MS;
+        if (gpsOn && gpsFix) {
+            fixSeen = true;
+            lastFixMs = nowMs;
+        }
         refreshScan();
         pairing::poll();
         link_control::poll();
@@ -127,6 +133,7 @@ void reset()
     advertising = false;
     gpsOn = false;
     gpsFix = false;
+    fixSeen = false;
     gpsOffCount = 0;
     pairedSounds = 0;
     refuseSounds = 0;
@@ -144,6 +151,14 @@ void reset()
 bool logged(const char *part)
 {
     return loggedCount(part) > 0;
+}
+
+bool kept(const char *part)
+{
+    for (const LogLine &line : logLines)
+        if (line.kept && line.text.find(part) != std::string::npos)
+            return true;
+    return false;
 }
 
 int loggedCount(const char *part)
@@ -221,6 +236,7 @@ namespace gps {
 void on()
 {
     fake::gpsOn = true;
+    fake::fixSeen = false; // as gps.cpp: a GPS switched on again forgets the last fix
 }
 
 void off()
@@ -239,6 +255,16 @@ bool utcNow(int64_t *unixSeconds)
     if (!fake::gpsOn || !fake::gpsFix)
         return false;
     *unixSeconds = 1791930000 + fake::now() / 1000; // a made-up moment in 2026
+    return true;
+}
+
+bool utcSinceFix(uint32_t maxAgeMs, int64_t *unixSeconds, uint32_t *ageMs)
+{
+    const uint32_t age = fake::now() - fake::lastFixMs;
+    if (!fake::fixSeen || age > maxAgeMs)
+        return false;
+    *unixSeconds = 1791930000 + fake::now() / 1000;
+    *ageMs = age;
     return true;
 }
 

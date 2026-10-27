@@ -38,6 +38,7 @@ void reset();
 
 bool logged(const char *part);
 int loggedCount(const char *part);
+bool kept(const char *part); // a line with part that the card keeps in its history (logger::line)
 // Lines longer than the 125 characters a line of the card can have (log.cpp cuts them).
 int longLines();
 void clearLog();

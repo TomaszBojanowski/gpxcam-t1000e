@@ -249,6 +249,18 @@ void test_early_ends_mean_unknown_card()
         TEST_ASSERT_FALSE(link_policy::earlyEndMeansUnknownCard(true, &inARow));
 }
 
+// The older dialect: the third connection in a row in which the camera did not take the card stops it.
+void test_older_refusals_mean_unknown_card_from_the_third_in_a_row()
+{
+    uint8_t inARow = 0;
+    TEST_ASSERT_FALSE(link_policy::olderRefusalMeansUnknownCard(&inARow));
+    TEST_ASSERT_FALSE(link_policy::olderRefusalMeansUnknownCard(&inARow));
+    TEST_ASSERT_TRUE(link_policy::olderRefusalMeansUnknownCard(&inARow));
+    inARow = UINT8_MAX; // never wraps to 0
+    TEST_ASSERT_TRUE(link_policy::olderRefusalMeansUnknownCard(&inARow));
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, inARow);
+}
+
 void test_distance()
 {
     // 0.0001 degree of latitude, of longitude at 54.6 N, 0.00018 degree of latitude
@@ -279,6 +291,7 @@ int main(int, char **)
     RUN_TEST(test_rate_guard_with_normal_chosen);
     RUN_TEST(test_refusal_means_unknown_card);
     RUN_TEST(test_early_ends_mean_unknown_card);
+    RUN_TEST(test_older_refusals_mean_unknown_card_from_the_third_in_a_row);
     RUN_TEST(test_distance);
     return UNITY_END();
 }
