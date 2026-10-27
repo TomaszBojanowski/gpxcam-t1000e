@@ -366,8 +366,14 @@ void onMtu(const camera_link::Event &event)
 void onService(const camera_link::Event &event)
 {
     if (!event.service.found) {
-        newerServiceAbsent = true; // 'pair' uses this to switch to the older dialect (pairing.cpp)
-        setFailure("service: the newer dialect is not on this camera (GATT 0x%04x)", event.status);
+        // The camera says it has no such service: "attribute not found", or an answer without one. 'pair'
+        // switches to the older dialect then (pairing.cpp); any other error is only a failed attempt.
+        newerServiceAbsent = event.status == BLE_GATT_STATUS_ATTERR_ATTRIBUTE_NOT_FOUND ||
+                             event.status == BLE_GATT_STATUS_SUCCESS;
+        if (newerServiceAbsent)
+            setFailure("service: the newer dialect is not on this camera (GATT 0x%04x)", event.status);
+        else
+            setFailure("service: not found (GATT 0x%04x)", event.status);
         fail();
         return;
     }

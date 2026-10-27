@@ -59,6 +59,8 @@ extern int refuseSounds;
 // ---- Scanner (bluetooth.h)
 
 extern bool scanning;
+extern bool scanForDump; // the scan is on only for a 'diag scan' run
+extern int keptScanLines; // scan on/off lines that go into the history
 extern uint16_t scanIntervalMs;
 // The test camera advertises in this state: the scan sees it at every loop step while it is on.
 void advertise(uint8_t state, int8_t rssi = -50);
@@ -95,12 +97,17 @@ struct Camera {
     Trigger silent;       // gets no answer: its step times out
     Trigger disconnectAt; // the camera ends the connection on it, with disconnectReason
     uint8_t disconnectReason = 0x13;
-    Trigger refuse; // a refused Write (or Read), with refuseStatus
+    Trigger refuse; // a refused Write, Read or Service search, with refuseStatus
     uint16_t refuseStatus = BLE_GATT_STATUS_ATTERR_WRITE_NOT_PERMITTED;
     bool knowsCard = true; // older dialect: 01 on the location notify after the device name
     Descriptors descriptors = Descriptors::NoCccd;
 };
 extern Camera camera;
+// Milliseconds the clock moves on at every request to camera_link, as time passes on the card while it
+// works through events (0: none).
+extern uint32_t requestMs;
+// Milliseconds after which an event can be read (0: at once): a camera that answers in a later loop step.
+extern uint32_t answerMs;
 
 // The test camera's value handles.
 constexpr uint16_t SERVICE_START = 0x0010;

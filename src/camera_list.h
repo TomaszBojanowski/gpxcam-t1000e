@@ -29,6 +29,7 @@ struct Report {
     uint8_t addressType;
     int8_t rssi; // dBm
     advert_kind::Kind kind;
+    uint32_t receivedMs; // millis() when the BLE task got it (bluetooth.cpp), not when the loop reads it
 };
 
 struct Entry {
@@ -49,8 +50,9 @@ enum class Change {
 
 class CameraList {
 public:
-    // Stores the report (unless TableFull) and says what is new about it.
-    Change add(const Report &report, uint32_t nowMs);
+    // Stores the report (unless TableFull) and says what is new about it. seenMs: when the report came
+    // (Report::receivedMs), so that a report the loop reads late is not taken for a fresh one.
+    Change add(const Report &report, uint32_t seenMs);
 
     // Removes one camera not seen for LOST_AFTER_MS and copies it to *lost; false if none.
     // Call until false. Works across the 49-day wrap of millis().

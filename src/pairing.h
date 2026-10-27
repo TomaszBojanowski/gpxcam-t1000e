@@ -50,6 +50,10 @@ void prepare();
 // 'status' gps_hold.
 uint32_t gpsHoldSeconds();
 
+// The link stays off after the running session ('link off' or 'unpair' while pairing): it was on
+// before the session, which would start it again. True if that changed anything.
+bool keepLinkOff();
+
 // Cancels a running session: disconnects and puts GPS and scanning back as they were, or,
 // with resumeLink, starts the link again if it was on (System OFF passes false). Does
 // nothing when idle.

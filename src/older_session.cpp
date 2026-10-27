@@ -615,6 +615,10 @@ Result poll()
 {
     if (step == Step::Idle)
         return Result::Failed;
+    // A connection gone without its Disconnected event (camera_link's queue was full): read before the
+    // events, so that a Disconnected queued meanwhile is handled as usual. While sending without a GPS
+    // fix no time limit would end the session.
+    const bool gone = step != Step::Connecting && !camera_link::connected();
     camera_link::Event event;
     while (step != Step::Idle && camera_link::nextEvent(&event))
         handleEvent(event);
@@ -626,6 +630,10 @@ Result poll()
         return Result::Accepted; // pairing: accepted, the connection stays until the caller cancels
     if (step == Step::Idle)
         return rejected ? Result::Rejected : Result::Failed;
+    if (gone) {
+        fail("the connection ended without its event");
+        return Result::Failed;
+    }
     if (stepLimit != NO_LIMIT && millis() - stepStart >= stepLimit) {
         handleTimeout();
         if (step == Step::Idle)

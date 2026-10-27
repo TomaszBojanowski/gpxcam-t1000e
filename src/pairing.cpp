@@ -102,12 +102,14 @@ void finish(bool resumeLink = true)
     phase = Phase::Idle;
     if (resumeLink && (linkWasOn || paired)) {
         link_control::start();
-        return;
+        if (link_control::active())
+            return;
+        // not started (no camera paired any more): GPS and scanning go back as below
     }
     if (scanWasOn && !bluetooth::scanning())
         bluetooth::scanOn();
-    else if (!scanWasOn && bluetooth::scanning())
-        bluetooth::scanOff();
+    else if (!scanWasOn && bluetooth::scanning() && !bluetooth::scanForDumpOnly())
+        bluetooth::scanOff(); // a 'diag scan' run still going switches its scan off itself
     if (gpsWasOn)
         return;
     if (resumeLink)
@@ -353,9 +355,11 @@ static void startSession(bool older)
     linkWasOn = link_control::active();
     if (linkWasOn)
         link_control::stop(true); // keeps the GPS on
-    gpsWasOn = gps::isOn() && !gpsHeld; // a GPS on only for this pairing goes off after it
+    // A GPS on only for this pairing goes off after it; so does the link's when the link stays off after it
+    // ('link off', 'unpair' meanwhile): it comes back with the link otherwise.
+    gpsWasOn = gps::isOn() && !gpsHeld && !linkWasOn;
     gpsHeld = false;
-    scanWasOn = bluetooth::scanning();
+    scanWasOn = bluetooth::scanning() && !bluetooth::scanForDumpOnly(); // a 'diag scan' run's is not ours
     attempt = 0;
     quickRetries = 0;
     otherStateLogged = false;
@@ -400,6 +404,14 @@ uint32_t gpsHoldSeconds()
         return 0;
     const uint32_t held = millis() - gpsHoldStartMs;
     return held >= gpsHoldMs ? 0 : (gpsHoldMs - held + 999) / 1000;
+}
+
+bool keepLinkOff()
+{
+    if (phase == Phase::Idle || !linkWasOn)
+        return false;
+    linkWasOn = false;
+    return true;
 }
 
 void stop(bool resumeLink)

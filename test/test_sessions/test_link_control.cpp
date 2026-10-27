@@ -77,6 +77,18 @@ void test_link_connects_and_sends_the_first_location()
     TEST_ASSERT_TRUE(fake::askedCount("write 0022") >= 1); // a location
 }
 
+void test_link_finds_a_cccd_in_a_later_answer()
+{
+    fake::camera.descriptors = fake::Descriptors::CccdInSecondAnswer;
+    fake::requestMs = 1; // time passes while the card works through an answer
+    fake::answerMs = fake::LOOP_STEP_MS; // the next answer comes in a later loop step
+    connectLink();
+    TEST_ASSERT_EQUAL(1, fake::askedCount("descriptors 001f"));
+    TEST_ASSERT_EQUAL(1, fake::askedCount("descriptors 0020"));
+    TEST_ASSERT_EQUAL(1, fake::askedCount("write 0020")); // notifications on
+    TEST_ASSERT_FALSE(fake::logged("no answer in time"));
+}
+
 void test_link_waits_for_gps_time_before_connecting()
 {
     fake::pairCamera(pairing_record::DIALECT_NEWER);
@@ -93,6 +105,37 @@ void test_link_pauses_5_s_after_every_switch_off()
     for (int i = 0; i < 3; i++)
         endAndReconnect(BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
     TEST_ASSERT_EQUAL(3, fake::loggedCount("looking again in 5 s"));
+}
+
+void test_link_keeps_the_scan_lines_of_its_connection_attempts_out_of_the_history()
+{
+    connectLink();
+    for (int i = 0; i < 3; i++)
+        endAndReconnect(BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+    TEST_ASSERT_EQUAL(0, fake::keptScanLines);
+}
+
+constexpr const char *SLOWED = "the last connection did not end by the camera's own close";
+
+bool linkSearching()
+{
+    return link_control::state() == State::Searching || link_control::state() == State::Pausing;
+}
+
+// After a connection that ended badly the next uses the normal timing (link_policy::RateGuard); 'link off'
+// and 'link on' start afresh.
+void test_link_on_starts_the_rate_guard_afresh()
+{
+    fake::updates = link_policy::Updates::Frequent;
+    connectLink();
+    endAndReconnect(BLE_HCI_CONNECTION_TIMEOUT);
+    TEST_ASSERT_EQUAL(1, fake::loggedCount(SLOWED));
+    fake::endConnection(BLE_HCI_CONNECTION_TIMEOUT);
+    TEST_ASSERT_TRUE(fake::loopUntil(linkSearching, 1000));
+    link_control::stop(false);
+    link_control::start();
+    TEST_ASSERT_TRUE(fake::loopUntil(linkConnected, 10000));
+    TEST_ASSERT_EQUAL(1, fake::loggedCount(SLOWED));
 }
 
 void test_link_pauses_longer_after_each_lost_connection()
@@ -196,6 +239,28 @@ void test_older_link_tries_a_link_not_established_again_after_1_s_once()
     TEST_ASSERT_EQUAL(1, fake::loggedCount("looking again in 5 s"));
 }
 
+void test_link_ends_a_connection_whose_disconnect_was_lost()
+{
+    connectLink();
+    fake::loop(100);
+    fake::gpsFix = false; // no locations: no time limit would end the connection
+    fake::loseNextEvent();
+    fake::endConnection(BLE_HCI_CONNECTION_TIMEOUT);
+    TEST_ASSERT_TRUE(fake::loopUntil(linkPausing, 1000));
+    TEST_ASSERT_TRUE(fake::logged("the connection ended without its event"));
+}
+
+void test_older_link_ends_a_connection_whose_disconnect_was_lost()
+{
+    connectOlderLink();
+    fake::loop(100);
+    fake::gpsFix = false;
+    fake::loseNextEvent();
+    fake::endConnection(BLE_HCI_CONNECTION_TIMEOUT);
+    TEST_ASSERT_TRUE(fake::loopUntil(linkPausing, 1000));
+    TEST_ASSERT_TRUE(fake::logged("the connection ended without its event"));
+}
+
 bool linkStopped()
 {
     return link_control::state() == State::Stopped;
@@ -254,8 +319,11 @@ void test_older_link_counts_refusals_only_in_a_row()
 void runLinkTests()
 {
     RUN_TEST(test_link_connects_and_sends_the_first_location);
+    RUN_TEST(test_link_finds_a_cccd_in_a_later_answer);
     RUN_TEST(test_link_waits_for_gps_time_before_connecting);
     RUN_TEST(test_link_pauses_5_s_after_every_switch_off);
+    RUN_TEST(test_link_keeps_the_scan_lines_of_its_connection_attempts_out_of_the_history);
+    RUN_TEST(test_link_on_starts_the_rate_guard_afresh);
     RUN_TEST(test_link_pauses_longer_after_each_lost_connection);
     RUN_TEST(test_link_tries_a_link_not_established_again_after_1_s_once);
     RUN_TEST(test_link_stops_when_the_camera_refuses_the_time);
@@ -265,6 +333,8 @@ void runLinkTests()
     RUN_TEST(test_older_link_pauses_5_s_after_every_switch_off);
     RUN_TEST(test_older_link_pauses_longer_after_each_lost_connection);
     RUN_TEST(test_older_link_tries_a_link_not_established_again_after_1_s_once);
+    RUN_TEST(test_link_ends_a_connection_whose_disconnect_was_lost);
+    RUN_TEST(test_older_link_ends_a_connection_whose_disconnect_was_lost);
     RUN_TEST(test_older_link_stops_after_three_connections_without_01);
     RUN_TEST(test_older_link_counts_refusals_only_in_a_row);
 }

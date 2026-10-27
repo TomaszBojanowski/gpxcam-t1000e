@@ -158,6 +158,16 @@ void test_session_finds_no_newer_dialect_on_an_older_camera()
     TEST_ASSERT_FALSE(fake::linkUp());
 }
 
+void test_session_takes_another_error_of_the_service_search_as_a_failure_only()
+{
+    fake::camera.refuse = {Request::Service, 0};
+    fake::camera.refuseStatus = 0x0105; // insufficient authentication: not "attribute not found"
+    TEST_ASSERT_TRUE(startSession(false));
+    TEST_ASSERT_EQUAL(Result::Failed, run());
+    TEST_ASSERT_FALSE(camera_session::lacksNewerService());
+    TEST_ASSERT_EQUAL_STRING("service: not found (GATT 0x0105)", camera_session::failure());
+}
+
 void test_session_refused_time_means_an_unknown_card_but_other_refusals_do_not()
 {
     fake::camera.refuse = {Request::Write, fake::TIME};
@@ -188,6 +198,7 @@ void runCameraSessionTests()
     RUN_TEST(test_session_without_an_answer_to_connect_cancels_it_after_5_s);
     RUN_TEST(test_session_tells_a_link_that_was_not_established);
     RUN_TEST(test_session_finds_no_newer_dialect_on_an_older_camera);
+    RUN_TEST(test_session_takes_another_error_of_the_service_search_as_a_failure_only);
     RUN_TEST(test_session_refused_time_means_an_unknown_card_but_other_refusals_do_not);
     RUN_TEST(test_session_never_connects_to_a_camera_in_standby);
 }

@@ -17,10 +17,10 @@ bool sameStateAndAddress(const Report &a, const Report &b)
            memcmp(a.address, b.address, ADDRESS_LENGTH) == 0;
 }
 
-void store(Entry &entry, const Report &report, uint32_t nowMs)
+void store(Entry &entry, const Report &report, uint32_t seenMs)
 {
     entry.last = report;
-    entry.lastSeenMs = nowMs;
+    entry.lastSeenMs = seenMs;
     if (report.kind == advert_kind::Kind::ScanResponse) {
         entry.scanResponseCount++;
     } else {
@@ -32,7 +32,7 @@ void store(Entry &entry, const Report &report, uint32_t nowMs)
 
 } // namespace
 
-Change CameraList::add(const Report &report, uint32_t nowMs)
+Change CameraList::add(const Report &report, uint32_t seenMs)
 {
     Entry *freeSlot = nullptr;
     for (Entry &entry : entries_) {
@@ -44,14 +44,14 @@ Change CameraList::add(const Report &report, uint32_t nowMs)
         if (!sameSerial(entry.last.camera, report.camera))
             continue;
         const bool changed = !sameStateAndAddress(entry.last, report);
-        store(entry, report, nowMs);
+        store(entry, report, seenMs);
         return changed ? Change::Changed : Change::None;
     }
     if (freeSlot == nullptr)
         return Change::TableFull;
     *freeSlot = Entry{};
     freeSlot->used = true;
-    store(*freeSlot, report, nowMs);
+    store(*freeSlot, report, seenMs);
     return Change::New;
 }
 

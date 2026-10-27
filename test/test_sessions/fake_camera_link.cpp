@@ -16,7 +16,11 @@ namespace fake {
 
 namespace {
 
-std::deque<camera_link::Event> events;
+struct Queued {
+    uint32_t readableAtMs;
+    camera_link::Event event;
+};
+std::deque<Queued> events;
 bool linkOpen = false;
 bool dropNext = false;       // loseNextEvent()
 bool dieOnFirstRequest = false; // Answer::NotEstablished: the camera sends nothing after connecting
@@ -25,6 +29,7 @@ uint32_t lost = 0;
 
 void ask(const char *what, uint16_t handle = 0)
 {
+    advance(requestMs);
     char text[40];
     if (handle != 0)
         snprintf(text, sizeof(text), "%s %04x", what, handle);
@@ -40,7 +45,7 @@ void queue(const camera_link::Event &event)
         lost++;
         return;
     }
-    events.push_back(event);
+    events.push_back({now() + answerMs, event});
 }
 
 camera_link::Event made(camera_link::EventType type, uint16_t status = BLE_GATT_STATUS_SUCCESS)
@@ -94,6 +99,8 @@ void addOlder(camera_link::Event *event, camera_link::OlderCharacteristic which,
 
 const uint8_t SERIAL[lumix::SERIAL_LENGTH] = {0x12, 0x34, 0x56, 0x78, 0x9a};
 Camera camera;
+uint32_t requestMs = 0;
+uint32_t answerMs = 0;
 std::vector<std::string> requests;
 
 void resetCameraLink()
@@ -104,6 +111,8 @@ void resetCameraLink()
     dieOnFirstRequest = false;
     cccdAsked = false;
     camera = Camera();
+    requestMs = 0;
+    answerMs = 0;
     requests.clear();
 }
 
@@ -150,9 +159,9 @@ using fake::Request;
 
 bool nextEvent(Event *event)
 {
-    if (fake::events.empty())
+    if (fake::events.empty() || (int32_t)(fake::now() - fake::events.front().readableAtMs) < 0)
         return false;
-    *event = fake::events.front();
+    *event = fake::events.front().event;
     fake::events.pop_front();
     return true;
 }
@@ -213,7 +222,9 @@ bool findService()
     fake::ask("service");
     bool accepted = false;
     if (fake::answers(Request::Service, 0, &accepted)) {
-        if (fake::camera.dialect == fake::Dialect::Older) {
+        if (fake::matches(fake::camera.refuse, Request::Service, 0)) {
+            fake::queue(fake::made(EventType::ServiceFound, fake::camera.refuseStatus));
+        } else if (fake::camera.dialect == fake::Dialect::Older) {
             fake::queue(fake::made(EventType::ServiceFound, BLE_GATT_STATUS_ATTERR_ATTRIBUTE_NOT_FOUND));
         } else {
             Event event = fake::made(EventType::ServiceFound);

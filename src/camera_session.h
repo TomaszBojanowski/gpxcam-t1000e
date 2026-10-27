@@ -50,8 +50,9 @@ bool endedAfterConnecting();
 // Whether the last session got no link at all (no answer, or HCI 0x3e), for pairing's quick retries.
 camera_link::LinkFailure linkFailure();
 
-// True if the last session failed because the camera has no newer-dialect service (1FE71B85):
-// it speaks only the older dialect, so 'pair' switches to it (pairing.cpp).
+// True if the last session failed because the camera has no newer-dialect service (1FE71B85): its
+// search ended with "attribute not found" or found none. It speaks only the older dialect, so 'pair'
+// switches to it (pairing.cpp). Another error of that search is a failed attempt only.
 bool lacksNewerService();
 
 // Whether the last session wrote the time: always when pairing; in a connection that stays

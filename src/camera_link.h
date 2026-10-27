@@ -140,6 +140,7 @@ enum class LinkFailure : uint8_t { None, NoAnswer, NotEstablished };
 // connection parameters (camera_link.cpp), the radio listening all the time until it connects.
 // Scanning must be off. False if the SoftDevice refused.
 bool connect(const camera_list::Report &camera);
+// Gives up connecting. A connection that comes up all the same is closed at once (camera_link.cpp).
 void cancelConnect();
 bool connected();
 
@@ -156,13 +157,15 @@ bool findDescriptors(uint16_t startHandle, uint16_t endHandle);
 bool read(uint16_t handle);
 // Write with response. The data must stay unchanged until WriteDone.
 bool write(uint16_t handle, const uint8_t *data, uint16_t length);
+// Closes the connection; one still coming up is closed when it does. False if the SoftDevice refused
+// (no connection yet).
 bool disconnect();
 
 // Events lost because the queue was full, since start.
 uint32_t lostEvents();
 
 // Call from loop(): logs the parameters of each connection (interval, latency, supervision
-// timeout) and every change of them.
+// timeout) and every change of them, and a connection that came up after it was given up.
 void poll();
 
 } // namespace camera_link

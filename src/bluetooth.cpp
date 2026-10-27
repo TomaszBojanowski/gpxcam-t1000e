@@ -145,6 +145,15 @@ uint32_t restartsTotal = 0;
 bool restartLogged = false; // one line per silence: where no device advertises at all, it restarts every 5 s
 uint32_t resumeFailuresSeen = 0; // the watchdog's last look at resumeFailuresTotal
 bool resumeRestartLogged = false; // a restart after a failed resume: one line per scan, then counted only
+bool startFailureLogged = false;  // "could not start" once until a scan starts again
+
+void logScanLine(bluetooth::Lines lines, const char *text)
+{
+    if (lines == bluetooth::Lines::Kept)
+        logger::line("%s", text);
+    else
+        logger::transient("%s", text);
+}
 
 Counts countsNow()
 {
@@ -187,7 +196,8 @@ void onBleEvent(ble_evt_t *event)
     }
     const ble_gap_evt_adv_report_t &advert = event->evt.gap_evt.params.adv_report;
     reportsTotal++;
-    lastReportMs = millis();
+    const uint32_t receivedMs = millis();
+    lastReportMs = receivedMs;
     const advert_kind::Kind kind =
         advert_kind::fromReport(advert.type.connectable, advert.type.scannable, advert.type.scan_response);
 
@@ -199,6 +209,7 @@ void onBleEvent(ble_evt_t *event)
         report.addressType = advert.peer_addr.addr_type;
         report.rssi = advert.rssi;
         report.kind = kind;
+        report.receivedMs = receivedMs;
         if (xQueueSend(reportQueue, &report, 0) != pdTRUE)
             droppedTotal++;
         break;
@@ -325,7 +336,7 @@ bool begin()
     return true;
 }
 
-void scanOn()
+void scanOn(Lines lines)
 {
     if (!started) {
         logger::line("scan: not possible, the SoftDevice did not start");
@@ -347,14 +358,19 @@ void scanOn()
     scanActive = true; // before starting: the first report must already resume the scan
     if (!Bluefruit.Scanner.start(SCAN_UNTIL_STOPPED)) {
         scanActive = false;
-        logger::line("scan: could not start");
+        if (!startFailureLogged) // pairing tries again every second
+            logger::line("scan: could not start (tried again quietly until it starts)");
+        startFailureLogged = true;
         return;
     }
+    startFailureLogged = false;
     scanStartMs = millis();
     lastStatusMs = scanStartMs;
     scanWatchStartMs = scanStartMs;
-    logger::line("scan: on - active, radio %u ms of every %u ms, logging LUMIX cameras only", scanWindowMs,
-                 scanIntervalMs);
+    char text[logger::LINE_MAX];
+    snprintf(text, sizeof(text), "scan: on - active, radio %u ms of every %u ms, logging LUMIX cameras only",
+             scanWindowMs, scanIntervalMs);
+    logScanLine(lines, text);
 }
 
 bool setScanTiming(uint16_t intervalMs, uint16_t windowMs)
@@ -385,7 +401,7 @@ void setNormalScanTiming()
     setScanTiming(SCAN_INTERVAL_MS, SCAN_WINDOW_MS);
 }
 
-void scanOff()
+void scanOff(Lines lines)
 {
     if (!scanActive)
         return;
@@ -393,15 +409,23 @@ void scanOff()
     // Stopping also works while the scan is paused after a report (ble_gap.h).
     const bool stopped = Bluefruit.Scanner.stop();
     const Counts counts = sinceScanStart();
-    logger::line("scan: off after %lu s%s, %lu reports, %lu camera, %lu other Panasonic, %lu dropped, %lu untracked",
-                 (unsigned long)((millis() - scanStartMs) / 1000), stopped ? "" : " (stop error)",
-                 (unsigned long)counts.reports, (unsigned long)cameraReports, (unsigned long)counts.otherPanasonic,
-                 (unsigned long)counts.dropped, (unsigned long)untracked);
+    char text[logger::LINE_MAX];
+    snprintf(text, sizeof(text),
+             "scan: off after %lu s%s, %lu reports, %lu camera, %lu other Panasonic, %lu dropped, %lu untracked",
+             (unsigned long)((millis() - scanStartMs) / 1000), stopped ? "" : " (stop error)",
+             (unsigned long)counts.reports, (unsigned long)cameraReports, (unsigned long)counts.otherPanasonic,
+             (unsigned long)counts.dropped, (unsigned long)untracked);
+    logScanLine(lines, text);
 }
 
 bool scanning()
 {
     return scanActive;
+}
+
+bool scanForDumpOnly()
+{
+    return scanActive && dumpActive && dumpStartedScan;
 }
 
 bool ready()
@@ -569,14 +593,13 @@ void poll()
 {
     if (!started)
         return;
-    const uint32_t now = millis();
-    drainScanDump(now);
+    drainScanDump(millis());
     camera_list::Report report;
     while (xQueueReceive(reportQueue, &report, 0) == pdTRUE) {
         if (!scanActive)
             continue; // left over from before 'scan off'
         cameraReports++;
-        switch (cameras.add(report, now)) {
+        switch (cameras.add(report, report.receivedMs)) {
         case camera_list::Change::New:
             logCamera("seen", report);
             break;
@@ -593,6 +616,9 @@ void poll()
     if (!scanActive)
         return;
     watchScan();
+    // Read after the reports: a report keeps the time it came (Report::receivedMs), which may be later
+    // than a time read before them, and the camera list's ages are unsigned.
+    const uint32_t now = millis();
     camera_list::Entry lost;
     while (cameras.removeLost(now, &lost))
         logLost(lost);

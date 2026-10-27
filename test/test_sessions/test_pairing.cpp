@@ -112,6 +112,52 @@ void test_pairing_without_a_camera_keeps_the_gps_for_another_try()
     TEST_ASSERT_FALSE(fake::gpsOn);
 }
 
+void test_pairing_leaves_no_scan_on_after_a_diag_scan_that_ended_meanwhile()
+{
+    fake::scanning = true; // a 'diag scan' run switched it on
+    fake::scanForDump = true;
+    fake::gpsFix = true;
+    pairing::start();
+    fake::loop(5000);
+    fake::scanning = false; // the run ends and switches it off; the search switches it on again
+    fake::scanForDump = false;
+    TEST_ASSERT_TRUE(fake::loopUntil(pairingIdle, 130000));
+    TEST_ASSERT_FALSE(fake::scanning);
+}
+
+// 'link off' while pairing: the link stays off after it.
+void test_pairing_keeps_the_link_off_when_asked_during_the_session()
+{
+    fake::pairCamera(pairing_record::DIALECT_NEWER);
+    fake::gpsFix = true;
+    link_control::start();
+    fake::loop(100);
+    pairing::start();
+    TEST_ASSERT_TRUE(pairing::keepLinkOff());
+    TEST_ASSERT_TRUE(fake::loopUntil(pairingIdle, 130000));
+    TEST_ASSERT_FALSE(link_control::active());
+    TEST_ASSERT_FALSE(fake::scanning);
+    fake::loop(600000); // the GPS kept for another try goes off
+    TEST_ASSERT_FALSE(fake::gpsOn);
+}
+
+// 'unpair' while pairing (no camera paired any more): the link cannot start after it, and GPS and
+// scanning go back as they were instead of staying on with no owner.
+void test_pairing_puts_gps_and_scan_back_when_the_link_cannot_start_after_it()
+{
+    fake::pairCamera(pairing_record::DIALECT_NEWER);
+    fake::gpsFix = true;
+    link_control::start();
+    fake::loop(100);
+    pairing::start();
+    fake::record.paired = false;
+    TEST_ASSERT_TRUE(fake::loopUntil(pairingIdle, 130000));
+    TEST_ASSERT_FALSE(link_control::active());
+    TEST_ASSERT_FALSE(fake::scanning);
+    fake::loop(600000);
+    TEST_ASSERT_FALSE(fake::gpsOn);
+}
+
 void test_pairing_starts_the_link_again_when_it_ends()
 {
     fake::pairCamera(pairing_record::DIALECT_NEWER);
@@ -132,5 +178,8 @@ void runPairingTests()
     RUN_TEST(test_pairing_tries_a_link_that_never_came_up_five_times_at_once);
     RUN_TEST(test_pairing_pauses_between_three_attempts_then_gives_up);
     RUN_TEST(test_pairing_without_a_camera_keeps_the_gps_for_another_try);
+    RUN_TEST(test_pairing_leaves_no_scan_on_after_a_diag_scan_that_ended_meanwhile);
+    RUN_TEST(test_pairing_keeps_the_link_off_when_asked_during_the_session);
+    RUN_TEST(test_pairing_puts_gps_and_scan_back_when_the_link_cannot_start_after_it);
     RUN_TEST(test_pairing_starts_the_link_again_when_it_ends);
 }

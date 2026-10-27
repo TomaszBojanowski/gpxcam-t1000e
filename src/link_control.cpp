@@ -122,7 +122,7 @@ const char *reasonText(link_policy::Send reason)
 void startSearch()
 {
     if (!bluetooth::scanning())
-        bluetooth::scanOn();
+        bluetooth::scanOn(bluetooth::Lines::Sent); // one per connection attempt: kept out of the history
     waitingForTimeLogged = false;
     weakSignalLogged = false;
     enter(Phase::Searching);
@@ -497,8 +497,19 @@ void sendLocationIfDue(uint32_t now)
     pendingReason = due;
 }
 
+// The connection is gone but its Disconnected event was lost (camera_link's queue was full; 'p' counts
+// it). Without a GPS fix nothing is written, so no time limit would end the phase. Read before the
+// phase's events, so that a Disconnected queued meanwhile is handled as usual.
+bool linkGone()
+{
+    return !camera_link::connected();
+}
+
+constexpr const char *LOST_WITHOUT_EVENT = "the connection ended without its event";
+
 void connected(uint32_t now)
 {
+    const bool gone = linkGone();
     camera_link::Event event;
     while (phase == Phase::Connected && camera_link::nextEvent(&event)) {
         if (handleConnectionEvent(event))
@@ -508,6 +519,10 @@ void connected(uint32_t now)
     }
     if (phase != Phase::Connected)
         return;
+    if (gone) {
+        connectionFailed(LOST_WITHOUT_EVENT);
+        return;
+    }
     if (writePending) {
         if (now - writeStartMs >= STEP_MS)
             connectionFailed("location: no answer in time");
@@ -516,9 +531,12 @@ void connected(uint32_t now)
     sendLocationIfDue(now);
 }
 
-// GPS mode, descriptors and notifications: one request each, with a time limit.
-void settingUp(uint32_t now)
+// GPS mode, descriptors and notifications: one request each, with a time limit. The limit counts from
+// the request: a new descriptor search in the same phase (findCccd()) restarts it with millis(), later
+// than a time read before the events.
+void settingUp()
 {
+    const bool gone = linkGone();
     camera_link::Event event;
     const Phase current = phase;
     while (phase == current && camera_link::nextEvent(&event)) {
@@ -560,7 +578,11 @@ void settingUp(uint32_t now)
             enterConnected();
         }
     }
-    if (phase == current && now - phaseStart >= STEP_MS)
+    if (phase == current && gone) {
+        connectionFailed(LOST_WITHOUT_EVENT);
+        return;
+    }
+    if (phase == current && millis() - phaseStart >= STEP_MS)
         connectionFailed(phase == Phase::GpsMode ? "GPS mode: no answer in time" : "notifications: no answer in time");
 }
 
@@ -630,7 +652,7 @@ void search(uint32_t now)
         const camera_list::Entry *camera = bluetooth::camera(i);
         if (camera == nullptr || !link_policy::shouldConnect(record, *camera, now))
             continue;
-        bluetooth::scanOff(); // connecting needs the radio
+        bluetooth::scanOff(bluetooth::Lines::Sent); // connecting needs the radio; one per attempt
         logger::transient("link: camera %s is on, %d dBm - connecting", serialText, camera->last.rssi);
         if (record.dialect == pairing_record::DIALECT_OLDER) {
             olderAccepted = false;
@@ -703,6 +725,7 @@ void start()
     failuresInARow = 0;
     quickRetryUsed = false;
     earlyEndsInARow = 0;
+    rateGuard = link_policy::RateGuard(); // a bad end before 'link off' does not slow the next 'link on'
     cameraSeen = false;
     searchStartMs = millis();
     mode = link_policy::SearchMode::Normal;
@@ -894,7 +917,7 @@ void poll()
     case Phase::GpsMode:
     case Phase::FindingCccd:
     case Phase::EnablingNotifications:
-        settingUp(now);
+        settingUp();
         break;
     case Phase::Connected:
         connected(now);

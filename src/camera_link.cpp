@@ -23,6 +23,15 @@ QueueHandle_t eventQueue = nullptr;
 volatile uint16_t connHandle = BLE_CONN_HANDLE_INVALID; // written by the BLE task
 volatile uint32_t lost = 0;
 
+// Whether a connection is wanted: set by connect(), cleared by cancelConnect() and disconnect() (loop
+// task). A connection can come up just as the loop task gives it up: sd_ble_gap_connect_cancel() then
+// fails ("connection completed occurred", ble_gap.h) and the Connected event is still on its way, so a
+// session that ends sees no connection and closes none. The BLE task closes such a connection at once
+// instead of handing it to nobody (it would stay open, the camera showing a connection without locations).
+volatile bool connectionWanted = false;
+volatile uint32_t unwantedClosed = 0; // written by the BLE task
+uint32_t unwantedLogged = 0;          // loop task
+
 // The connection as Android 15 (gpxcam app) sets it up with the S5II, read from the phone's
 // HCI log (docs/PROTOCOL.md): interval 48.75 ms, latency 0, supervision timeout 5 s, and
 // packets of 61 bytes (the camera's MTU 57 plus the 4-byte L2CAP header). With Bluefruit's
@@ -227,6 +236,11 @@ void onBleEvent(const ble_evt_t *event)
     if (id == BLE_GAP_EVT_CONNECTED) {
         if (event->evt.gap_evt.params.connected.role != BLE_GAP_ROLE_CENTRAL)
             return;
+        if (!connectionWanted) { // given up meanwhile: closed, and its Disconnected is not for us
+            sd_ble_gap_disconnect(eventConn, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+            unwantedClosed++;
+            return;
+        }
         connHandle = eventConn;
         out.type = EventType::Connected;
         queueEvent(out);
@@ -331,11 +345,16 @@ bool connect(const camera_list::Report &camera)
     initiator.interval = INITIATOR_INTERVAL;
     initiator.window = INITIATOR_WINDOW;
     initiator.timeout = BLE_GAP_SCAN_TIMEOUT_UNLIMITED; // the sessions cancel after CONNECT_TIMEOUT_MS
-    return sd_ble_gap_connect(&address, &initiator, &params, CONN_CFG_CENTRAL) == NRF_SUCCESS;
+    connectionWanted = true; // before: the Connected event may come at once
+    if (sd_ble_gap_connect(&address, &initiator, &params, CONN_CFG_CENTRAL) == NRF_SUCCESS)
+        return true;
+    connectionWanted = false;
+    return false;
 }
 
 void cancelConnect()
 {
+    connectionWanted = false; // first: a connection that completes now is closed by onBleEvent()
     sd_ble_gap_connect_cancel(); // NRF_ERROR_INVALID_STATE when no connection is being made
 }
 
@@ -392,6 +411,7 @@ bool write(uint16_t handle, const uint8_t *data, uint16_t length)
 
 bool disconnect()
 {
+    connectionWanted = false; // also one that has not come up yet (onBleEvent())
     return sd_ble_gap_disconnect(connHandle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION) == NRF_SUCCESS;
 }
 
@@ -404,6 +424,12 @@ void poll()
 {
     if (paramsQueue == nullptr)
         return;
+    const uint32_t closed = unwantedClosed;
+    if (closed != unwantedLogged) {
+        unwantedLogged = closed;
+        logger::line("camera: a connection that came up after it was given up was closed (%lu since start)",
+                     (unsigned long)closed);
+    }
     ParamsInfo info;
     char text[PARAMS_TEXT_MAX];
     while (xQueueReceive(paramsQueue, &info, 0) == pdTRUE) {

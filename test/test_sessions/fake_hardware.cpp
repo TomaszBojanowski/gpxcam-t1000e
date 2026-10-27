@@ -75,6 +75,8 @@ int gpsOffCount = 0;
 int pairedSounds = 0;
 int refuseSounds = 0;
 bool scanning = false;
+bool scanForDump = false;
+int keptScanLines = 0;
 uint16_t scanIntervalMs = 100;
 pairing_record::Record record = {};
 bool storeWritable = true;
@@ -138,6 +140,8 @@ void reset()
     pairedSounds = 0;
     refuseSounds = 0;
     scanning = false;
+    scanForDump = false;
+    keptScanLines = 0;
     scanIntervalMs = 100;
     record = {};
     memcpy(record.uuid, CARD_UUID, sizeof(record.uuid));
@@ -307,20 +311,30 @@ bool ready()
     return true;
 }
 
-void scanOn()
+void scanOn(Lines lines)
 {
+    if (lines == Lines::Kept)
+        fake::keptScanLines++;
     fake::scanning = true;
+    fake::scanForDump = false;
     fake::seen.used = false; // as bluetooth::scanOn(): the camera list starts empty
 }
 
-void scanOff()
+void scanOff(Lines lines)
 {
+    if (fake::scanning && lines == Lines::Kept)
+        fake::keptScanLines++;
     fake::scanning = false;
 }
 
 bool scanning()
 {
     return fake::scanning;
+}
+
+bool scanForDumpOnly()
+{
+    return fake::scanning && fake::scanForDump;
 }
 
 bool setScanTiming(uint16_t intervalMs, uint16_t)

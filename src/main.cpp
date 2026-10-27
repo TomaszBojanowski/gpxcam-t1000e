@@ -256,6 +256,7 @@ void forgetCamera()
         return;
     }
     link_control::stop(false); // it would go on with the forgotten camera
+    pairing::keepLinkOff();    // and a pairing that runs would start it again
     if (pairing_store::forgetCamera())
         logger::line("pair: camera forgotten (the card id stays)");
     else
@@ -464,6 +465,8 @@ void runCommand(char *cmd)
     } else if (strcmp(cmd, "link off") == 0) {
         if (link_control::active())
             link_control::stop(false);
+        else if (pairing::keepLinkOff())
+            logger::line("link: off - it stays off after the pairing");
         else
             logger::line("link: already off");
     } else if (strcmp(cmd, "pair") == 0) {
