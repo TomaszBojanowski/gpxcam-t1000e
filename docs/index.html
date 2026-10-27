@@ -296,6 +296,13 @@ ol.steps li { margin: var(--s1) 0; }
   font: var(--fs-small)/1.45 ui-monospace, Menlo, Consolas, monospace;
   resize: vertical;
 }
+.unmasked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
 progress { display: block; width: 100%; height: 8px; margin: var(--s2) 0 0; accent-color: var(--accent); }
 .good { color: var(--good); font-weight: 600; }
 /* The user's turn while the card waits: what to do now, on the camera */
@@ -526,10 +533,14 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
               about 30 seconds, so the card must already be looking for them.</li>
           <li>When the page says <em>Now start Bluetooth pairing on the camera</em>, start pairing in the
               camera's Bluetooth menu. The card looks for it for up to 2 minutes and tries up to 3 times.</li>
+          <li>Older cameras (the ones that pair with the older Panasonic phone app, not LUMIX Lab) then need
+              one more step, over the camera's own Wi-Fi network, which only the gpxcam card app can do: the app
+              starts it by itself and says what to do.</li>
         </ol>
       </details>
       <div id="pair-row" class="row">
         <button id="pair" type="button" disabled>Pair</button>
+        <button id="pair-resume" type="button" class="hidden">Resume</button>
         <button id="pair-cancel" type="button" class="secondary hidden">Cancel</button>
         <button id="unpair" type="button" class="danger hidden">Forget the camera</button>
       </div>
@@ -542,35 +553,6 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
           <button id="unpair-no" type="button" class="secondary">Keep</button>
         </div>
       </div>
-    </section>
-
-    <section id="older" class="panel section hidden">
-      <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M5 12.5a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/>
-          <circle cx="12" cy="19" r="1"/>
-        </svg>Pair an older camera</h2>
-      <p>Older LUMIX cameras (the ones that pair with the older Panasonic phone app, not LUMIX Lab) need one
-         extra step, over the camera's own Wi-Fi network, which the app does for you. Use this only for such a
-         camera &ndash; for an S5II and the like, use <em>Pair</em> above.</p>
-      <details class="help">
-        <summary>How it works</summary>
-        <ol class="steps">
-          <li>Put the card where its GPS gets a fix, outdoors or by a window. The app switches the GPS on
-              when it connects; the GPS tile above shows <em>Fix</em> when it is ready.</li>
-          <li>Click <em>Start</em>. Do not start pairing on the camera yet: it stays in pairing mode only about
-              30 seconds, so the card must already be looking for it.</li>
-          <li>When the app says <em>Now start Bluetooth pairing on the camera</em>, do it (the camera's
-              Bluetooth menu &rarr; Pairing). The card introduces itself; the camera then shows a Wi-Fi network
-              and a password.</li>
-          <li>On this computer, join that Wi-Fi network by hand. The app finishes the pairing and tells you how
-              it went.</li>
-        </ol>
-      </details>
-      <div class="row">
-        <button id="older-start" type="button" disabled>Start</button>
-        <button id="older-cancel" type="button" class="secondary hidden">Cancel</button>
-      </div>
-      <p id="older-progress" role="status"></p>
     </section>
 
     <section class="panel section">
@@ -639,6 +621,40 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
       <p id="sound-answer" role="status"></p>
     </section>
 
+    <section id="older" class="panel section hidden">
+      <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 12.5a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/>
+          <circle cx="12" cy="19" r="1"/>
+        </svg>Pair an older camera</h2>
+      <p><em>Pair</em> above recognises an older LUMIX camera (one that pairs with the older Panasonic phone app,
+         not LUMIX Lab) by itself and does its extra step over the camera's own Wi-Fi network. Use this only when
+         <em>Pair</em> does not recognise such a camera: it pairs the card as with an older camera from the
+         start.</p>
+      <details class="help">
+        <summary>How it works</summary>
+        <ol class="steps">
+          <li>Put the card where its GPS gets a fix, outdoors or by a window. The app switches the GPS on
+              when it connects; the GPS tile above shows <em>Fix</em> when it is ready.</li>
+          <li>Click <em>Start</em>. Do not start pairing on the camera yet: it stays in pairing mode only about
+              30 seconds, so the card must already be looking for it.</li>
+          <li>When the app says <em>Now start Bluetooth pairing on the camera</em>, do it (the camera's
+              Bluetooth menu &rarr; Pairing). The card introduces itself; the camera then shows a Wi-Fi network
+              and a password.</li>
+          <li>On this computer, join that Wi-Fi network by hand. The app finishes the pairing and tells you how
+              it went.</li>
+        </ol>
+      </details>
+      <p id="older-phone" class="note">Before pairing, remove the phone from the camera's Bluetooth device list
+         (Setup &rarr; Bluetooth &rarr; Delete), or at least turn the phone's Bluetooth off. A phone that is still
+         registered may grab the camera the moment it starts advertising, and the card will not get in.</p>
+      <div class="row">
+        <button id="older-start" type="button" disabled>Start</button>
+        <button id="older-resume" type="button" class="hidden">Resume</button>
+        <button id="older-cancel" type="button" class="secondary hidden">Cancel</button>
+      </div>
+      <p id="older-progress" role="status"></p>
+    </section>
+
     <section class="panel section">
       <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M3 12h4l2.5-6 5 12 2.5-6h4"/>
@@ -651,8 +667,8 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
         <button id="copy-log" type="button" class="secondary" disabled>Copy log</button>
         <button id="scan" type="button" class="secondary" disabled>Scan for cameras</button>
       </div>
-      <p class="note">The log and the scan contain your camera's serial number. Send them privately, not in a
-         public thread.</p>
+      <p class="note">What is copied hides your camera's serial number, the Bluetooth addresses and the card's
+         identity.</p>
       <div id="diag-answer" class="gap-top hidden">
         <p id="diag-status" role="status"></p>
         <progress id="diag-progress" class="hidden" max="30000" value="0"></progress>
@@ -660,6 +676,7 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
                   aria-label="What the card sent"></textarea>
         <div class="row gap-top">
           <button id="diag-copy" type="button" class="secondary small">Copy</button>
+          <label class="unmasked"><input id="diag-unmasked" type="checkbox"> Copy unmasked</label>
         </div>
       </div>
     </section>
@@ -670,7 +687,7 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
     <p><span id="about-runs">The page runs only in your browser and sends</span> nothing over the internet. It talks
        to the card over USB at
        115200 baud and sends it only <code>v</code>, <code>status</code>, <code>pair</code>, <code>pair off</code>,
-       <code>pair older</code>, <code>pair prepare</code>, <code>unpair</code>, <code>clock on</code>,
+       <code>pair older</code>, <code>pair prepare</code>, <code>p</code>, <code>unpair</code>, <code>clock on</code>,
        <code>clock off</code>, <code>updates normal</code>, <code>updates frequent</code>, <code>sound loud</code>,
        <code>sound quiet</code>, <code>sound off</code>, <code>log</code>, <code>diag scan</code>, <code>tz</code>
        and <code>tz</code> with the zone you chose.
@@ -1568,6 +1585,7 @@ const UPDATES_TIMEOUT_MS = 6000; // saved in the same file as the sound
 const UPDATES_SETTINGS = ["normal", "frequent"]; // src/link_policy.cpp updatesName()
 const ANSWER_QUIET_MS = 400; // an answer is complete after this long without another of its lines
 const LOG_TIMEOUT_MS = 3000; // 'log' shows the card's last 32 lines at once (src/log.cpp dumpHistory())
+const CARD_ID_TIMEOUT_MS = 3000; // 'p' shows the card's state at once (src/main.cpp)
 const SCAN_RUN_MS = 30000; // one 'diag scan' run (src/scan_dump.h DURATION_MS)
 const SCAN_TIMEOUT_MS = SCAN_RUN_MS + 10000; // the run ends with "diag scan: done"; this much is waited at most
 const MAX_RESULTS = 60;
@@ -1700,10 +1718,11 @@ function computerZone() {
 
 // ---- The card's console (pure functions) ----
 
-// The only commands the page may send: v, status, pair, pair off, pair older, pair prepare, unpair,
-// clock on, clock off, updates normal, updates frequent, sound loud, sound quiet, sound off, log,
-// diag scan, tz, and tz with a name exactly as the table spells it.
-const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "pair older", "pair prepare", "unpair",
+// The only commands the page may send: v, status, pair, pair off, pair older, pair prepare, p (only
+// read: the card's id for resuming older pairing), unpair, clock on, clock off, updates normal,
+// updates frequent, sound loud, sound quiet, sound off, log, diag scan, tz, and tz with a name exactly
+// as the table spells it.
+const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "pair older", "pair prepare", "p", "unpair",
   "clock on", "clock off",
   ...UPDATES_SETTINGS.map((setting) => `updates ${setting}`), ...SOUND_SETTINGS.map((setting) => `sound ${setting}`),
   "log", "diag scan", "tz"]);
@@ -2027,13 +2046,15 @@ function gpsTile(state) {
   return ["warn", "No fix yet", `${satellites}; outdoors 1\u20133 min`];
 }
 
-// On USB the battery reads higher than it is, so the percent is only about.
+// On USB the battery reads higher than it is, so the percent is only about. When the charger
+// reports the charge complete, the battery is full whatever the voltage gives (about 98 % at
+// 4.18 V): the tile says 100 %. The card's own percent ('status' battery_pct) does not change.
 function batteryTile(state) {
   const volts = `${(state.batteryMv / 1000).toFixed(2)} V`;
   const percent = `${state.batteryPercent} %`;
   switch (state.charger) {
     case "charging": return ["good", "Charging", `about ${percent} \u00b7 ${volts}`];
-    case "charged": return ["good", "Charged", `about ${percent} \u00b7 ${volts}`];
+    case "charged": return ["good", "Charged", `100 % \u00b7 ${volts}`];
     case "not_charging": return ["idle", "On USB", `not charging, about ${percent} \u00b7 ${volts}`];
     default:
       if (state.batteryPercent < BATTERY_VERY_LOW_PERCENT) return ["bad", "Very low", `${percent} \u00b7 ${volts}`];
@@ -2051,8 +2072,9 @@ function zoneTile(state) {
   return ["good", name, offset ? `Clock on \u00b7 now ${offset}` : "Clock on \u00b7 a rule given directly"];
 }
 
-// What the card does while it pairs ('status': pair, pair_attempt).
-function pairingText(state) {
+// What the card does while it pairs ('status': pair, pair_attempt); inApp: the page runs in the
+// desktop app, which can do the Wi-Fi step of an older camera.
+function pairingText(state, inApp = false) {
   const satellites = state.gpsSatellites === 1 ? "1 satellite" : `${state.gpsSatellites} satellites`;
   switch (state.pair) {
     case "waiting_gps": return `Waiting for GPS time, up to ${PAIR_FIX_WAIT_TEXT} (${satellites} so far). Do not ` +
@@ -2060,11 +2082,15 @@ function pairingText(state) {
     case "searching": return state.pairAttempt === 0 ? NOW_START_TEXT :
       `Looking for the camera again (attempt ${state.pairAttempt + 1} of ${PAIR_ATTEMPTS})...`;
     case "connecting": return `Talking to the camera (attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS})...`;
-    case "waiting_wifi": return "This is an older camera - use \"Pair an older camera\" in the gpxcam card app for the one-time Wi-Fi step.";
+    case "waiting_wifi": return inApp ? WAITING_WIFI_TEXT : "This is an older camera: it needs a one-time step " +
+      "over the camera's Wi-Fi network, which only the gpxcam card app can do. Cancel, then pair it in the app.";
     case "pausing": return `Attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS} did not work; trying again in a moment...`;
     default: return "Pairing...";
   }
 }
+
+// A pairing left waiting at the Wi-Fi step (the app was closed, the cable came off): the app can go on.
+const WAITING_WIFI_TEXT = "The card is waiting for the Wi-Fi step of an earlier start: Resume it, or Cancel.";
 
 // The user's turn: the card is looking, so the camera's short pairing mode (an S5: about 30 s) is not
 // lost while the card waits for GPS time. Shown as 'act' (pairingKind()).
@@ -2110,12 +2136,12 @@ function parseOlderRegister(line) {
 function olderOutcomeText(outcome) {
   switch (outcome) {
     case "accepted": return ["The camera accepted the card. Older pairing done.", "good"];
-    case "not-confirmed": return ["The camera did not confirm. On the camera, allow the connection, then start over.",
-      "bad"];
+    case "not-confirmed": return ["The camera did not confirm. On the camera, allow the connection, then try the " +
+      "Wi-Fi step again.", "bad"];
     case "not-on-network": return ["Could not reach the camera. Join the camera's Wi-Fi network on this computer, " +
-      "then start over.", "bad"];
+      "then try the Wi-Fi step again.", "bad"];
     case "cancelled": return ["Cancelled.", ""];
-    default: return ["Older pairing failed. Start over.", "bad"];
+    default: return ["The Wi-Fi step failed. Try it again, or cancel.", "bad"];
   }
 }
 
@@ -2141,6 +2167,25 @@ function olderStartProgress(pairPhase, cameraSeen = false) {
 // for 10 minutes, so that pairing finds the time ready. The card is on USB then: it costs no battery.
 function shouldPrepareGps(state) {
   return state.gpsHold !== null && !state.paired && state.pair === "idle";
+}
+
+// The card's UUID from its answer to 'p': "pair: card id 00112233-4455-4677-8899-a1b2c3d4e5f6, ..."
+// (src/pairing_store.cpp, lower case with dashes), or null.
+function parseCardId(line) {
+  const match = /^pair: card id ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/.exec(line);
+  return match ? match[1] : null;
+}
+
+// The card's identity in the older dialect and its device name, as the firmware makes them
+// (src/device_identity.h, src/older_session.cpp DEVICE_NAME): the fixed prefix, then the seed - the last
+// 6 bytes of the card's UUID - in upper case. What the card registers at the Wi-Fi step, so a pairing left
+// waiting there can be resumed without the line the card printed for it.
+const OLDER_IDENTITY_PREFIX = "4D454930-0100-1000-8001-";
+const OLDER_DEVICE_NAME = "T1000-E";
+const SEED_HEX_DIGITS = 12;
+function olderIdentity(cardId) {
+  const seed = cardId.replaceAll("-", "").slice(-SEED_HEX_DIGITS).toUpperCase();
+  return { identity: OLDER_IDENTITY_PREFIX + seed, name: OLDER_DEVICE_NAME };
 }
 
 // ---- Diagnostics (pure functions) ----
@@ -2173,6 +2218,23 @@ function scanResultText(lines, version) {
   return ["Scan done.", "good"];
 }
 
+// The identifiers in what Diagnostics shows and copies, hidden: Bluetooth addresses keep their last
+// byte, UUIDs their last 4 hex digits (the card's older-dialect identity also its known prefix,
+// docs/PROTOCOL.md), camera serial numbers (10 hex digits, and the bytes after "ff 3a 00 <state>" in
+// a 'diag scan' line) their last 2, the camera's Wi-Fi name nothing. The card logs no position.
+const MASK_RULES = [
+  [/(register identity 4D454930-0100-1000-8001-)[0-9A-Fa-f]{8}([0-9A-Fa-f]{4})/g, "$1********$2"],
+  [/\b(?:[0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})\b/g, "**:**:**:**:**:$1"],
+  [/\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{8}([0-9A-Fa-f]{4})\b/g,
+    "********-****-****-****-********$1"],
+  [/\b[0-9A-Fa-f]{8}([0-9A-Fa-f]{2})\b/g, "********$1"],
+  [/S5M2-[0-9A-Fa-f]{6}/g, "S5M2-******"],
+  [/(ff 3a 00 [0-9a-f]{2})(?: [0-9a-f]{2}){4} ([0-9a-f]{2})/g, "$1 ** ** ** ** $2"],
+];
+function maskIdentifiers(text) {
+  return MASK_RULES.reduce((masked, [rule, replacement]) => masked.replace(rule, replacement), text);
+}
+
 // What the user sends: a heading with what it is, the firmware and the time, then the card's lines.
 function diagnosticsText(title, firmware, lines, date = new Date()) {
   return [`${title} - ${firmware} - ${date.toISOString()}`, ...lines].join("\n") + "\n";
@@ -2189,6 +2251,7 @@ class Card {
     this.readError = null; // why reading ended, if it failed
     this.onClosed = null; // called once when reading ends (unplugged, closed)
     this.queue = Promise.resolve(); // one command at a time: answers are told apart only by their lines
+    this.writing = Promise.resolve(); // one write at a time: a second writer on the port would throw
   }
 
   async open() {
@@ -2219,14 +2282,21 @@ class Card {
     for (const waiter of this.waiters) waiter(line);
   }
 
-  async send(command) {
-    if (!allowedCommand(command)) throw new Error(`not sent: ${command}`);
-    const writer = this.port.writable.getWriter();
-    try {
-      await writer.write(new TextEncoder().encode(command + "\n"));
-    } finally {
-      writer.releaseLock();
-    }
+  // Writes one command after any write still under way. Commands sent outside the one-command queue
+  // ('pair older', 'diag scan') would otherwise meet a status request being written, and taking a
+  // second writer of the port's stream throws while the first one holds it.
+  send(command) {
+    if (!allowedCommand(command)) return Promise.reject(new Error(`not sent: ${command}`));
+    const written = this.writing.then(async () => {
+      const writer = this.port.writable.getWriter();
+      try {
+        await writer.write(new TextEncoder().encode(command + "\n"));
+      } finally {
+        writer.releaseLock();
+      }
+    });
+    this.writing = written.catch(() => {});
+    return written;
   }
 
   // Sends a command, after the answers to the commands before it, and collects the lines that
@@ -2288,6 +2358,12 @@ class Card {
 
   log() {
     return this.ask("log", isLogLine, LOG_TIMEOUT_MS);
+  }
+
+  // The card's UUID (parseCardId()) from 'p', or null.
+  async cardId() {
+    const lines = await this.ask("p", (line) => parseCardId(line) !== null, CARD_ID_TIMEOUT_MS, () => true);
+    return lines.length ? parseCardId(lines[0]) : null;
   }
 
   prepareGps() {
@@ -2468,6 +2544,8 @@ function startPage() {
     unpairNo: element("unpair-no"),
     olderStart: element("older-start"),
     olderCancel: element("older-cancel"),
+    olderResume: element("older-resume"),
+    pairResume: element("pair-resume"),
     olderProgress: element("older-progress"),
     clock: element("clock"),
     clockNote: element("clock-note"),
@@ -2495,6 +2573,7 @@ function startPage() {
     diagProgress: element("diag-progress"),
     diagText: element("diag-text"),
     diagCopy: element("diag-copy"),
+    diagUnmasked: element("diag-unmasked"),
   };
   const soundChoices = new Map(SOUND_SETTINGS.map((setting) => [setting, element(`sound-${setting}`)]));
   const updatesChoices = new Map(UPDATES_SETTINGS.map((setting) => [setting, element(`updates-${setting}`)]));
@@ -2513,9 +2592,14 @@ function startPage() {
   let watchingPairing = false; // a pairing ran since the last answer: its result is shown when it ends
   let pairMessage = null; // [text, kind] of the last pairing or unpairing
   let olderCancelled = false; // the user pressed Cancel during older-camera pairing
+  let olderRunning = false; // the wizard or a resumed Wi-Fi step is under way
+  let olderRetry = false; // the last Wi-Fi step failed: Resume reads "Try the Wi-Fi step again"
+  let wifiText = null; // [text, kind] of the Wi-Fi step, shown in both pairing sections until the pairing ends
+  let wifiAccepted = false; // the camera accepted the card; the card finishes the pairing by itself
   const transport = chooseTransport(navigator, window);
+  const inApp = transport !== null && transport.name === "app"; // only the app can do the Wi-Fi step
 
-  if (transport !== null && transport.name === "app") {
+  if (inApp) {
     element("intro-choose").classList.add("hidden"); // no chooser: the app takes the card by itself
     element("about-title").textContent = "About this app";
     element("about-runs").textContent = "The app sends";
@@ -2550,7 +2634,9 @@ function startPage() {
     ui.pair.disabled = card === null || busy || lastState === null || pairing || storageDamaged;
     ui.olderStart.disabled = card === null || busy || lastState === null || pairing || storageDamaged;
     ui.olderCancel.disabled = card === null;
-    ui.pairCancel.disabled = card === null || busy;
+    ui.olderResume.disabled = card === null || busy;
+    ui.pairResume.disabled = card === null || busy;
+    ui.pairCancel.disabled = card === null || (busy && !olderRunning); // it also stops a Wi-Fi step
     for (const button of [ui.unpair, ui.unpairYes]) button.disabled = card === null || busy || storageDamaged;
     ui.copyLog.disabled = card === null || busy;
     ui.scan.disabled = card === null || busy;
@@ -2576,9 +2662,48 @@ function startPage() {
     ui.pairCancel.classList.toggle("hidden", !pairing);
     ui.unpair.classList.toggle("hidden", !paired || pairing);
     if (!paired || pairing) ui.unpairConfirm.classList.add("hidden");
-    const [text, kind] = pairing ? [pairingText(lastState), pairingKind(lastState)] : pairMessage || ["", ""];
+    const atWifiStep = pairing && lastState.pair === "waiting_wifi";
+    ui.pairResume.classList.toggle("hidden", !inApp || !atWifiStep || olderRunning || wifiAccepted);
+    ui.pairResume.textContent = olderRetry ? RETRY_WIFI_TEXT : "Resume";
+    const [text, kind] = pairing && wifiText ? wifiText :
+      pairing ? [pairingText(lastState, inApp), pairingKind(lastState)] : pairMessage || ["", ""];
     setStatus(ui.pairProgress, text, kind);
     refreshButtons();
+    showOlder();
+  };
+
+  // The Wi-Fi step's progress goes to both sections: it may have started from either.
+  const showWifi = (text, kind) => {
+    wifiText = [text, kind];
+    setStatus(ui.pairProgress, text, kind);
+    setStatus(ui.olderProgress, text, kind);
+  };
+
+  const RETRY_WIFI_TEXT = "Try the Wi-Fi step again";
+
+  // The older-camera wizard's buttons from the card's state while no run of it is under way: a pairing
+  // left from before (the USB cable came off, the app was closed) can be cancelled, and at the Wi-Fi
+  // step resumed; after a failed Wi-Fi step the same button tries it again. Only the app shows this.
+  const showOlder = () => {
+    if (olderRunning) return;
+    const phase = card !== null && lastState !== null ? lastState.pair : "idle";
+    const pairing = phase !== "idle";
+    if (olderRetry && phase !== "waiting_wifi") { // its 300 s ran out, or its pairing was cancelled
+      olderRetry = false;
+      setStatus(ui.olderProgress, "The card no longer waits for the Wi-Fi step. Start again.", "bad");
+    }
+    ui.olderStart.classList.toggle("hidden", pairing);
+    ui.olderResume.classList.toggle("hidden", phase !== "waiting_wifi" || wifiAccepted);
+    ui.olderResume.textContent = olderRetry ? RETRY_WIFI_TEXT : "Resume";
+    ui.olderCancel.classList.toggle("hidden", !pairing);
+    if (phase === "waiting_wifi" && wifiText) {
+      setStatus(ui.olderProgress, ...wifiText);
+    } else if (phase === "waiting_wifi") {
+      setStatus(ui.olderProgress, WAITING_WIFI_TEXT, "");
+    } else if (pairing && phase !== "waiting_wifi") {
+      setStatus(ui.olderProgress, olderStartProgress(phase) || "A pairing is under way.",
+        phase === "searching" ? "busy act" : "busy");
+    }
   };
 
   // Follows a pairing, also one started with the card's button, to its result.
@@ -2649,6 +2774,14 @@ function startPage() {
     ui.stateTime.textContent = `Updated ${new Date().toLocaleTimeString()}.`;
     ui.state.classList.remove("hidden");
     ui.refreshRow.classList.remove("hidden");
+    // In the app, a pairing seen reaching the Wi-Fi step (Pair found an older camera) goes on by itself;
+    // one found already waiting there, after a reconnect, waits for Resume.
+    const reachedWifiStep = inApp && lastState !== null && lastState.pair !== "waiting_wifi" &&
+      state.pair === "waiting_wifi";
+    if (state.pair === "idle") {
+      wifiText = null;
+      wifiAccepted = false;
+    }
     lastState = state;
     if (!busy) { // a change being saved is shown when it is done
       clockOn = state.clockOn;
@@ -2660,6 +2793,7 @@ function startPage() {
     }
     showSelected();
     followPairing(state);
+    if (reachedWifiStep && !olderRunning) resumeOlder(); // shows its first step at once
     showPairing();
   };
 
@@ -2695,6 +2829,9 @@ function startPage() {
     lastState = null;
     watchingPairing = false;
     pairMessage = null;
+    olderRetry = false;
+    wifiText = null;
+    wifiAccepted = false;
     if (ui.diagStatus.className === "busy") { // a log or a scan cut short
       ui.diagProgress.classList.add("hidden");
       setStatus(ui.diagStatus, "Stopped: the connection to the card ended.", "bad");
@@ -2987,6 +3124,22 @@ function startPage() {
     return core.invoke("register_older", { identity, name, onEvent: channel });
   };
 
+  // The one-time Wi-Fi step of an older camera (app only): the card has introduced itself and waits for
+  // it; the app registers the same identity and name over the camera's own Wi-Fi. show(text, kind) puts
+  // the progress where the step was started from. The outcome of register_older (olderOutcomeText()),
+  // or null when the card went away meanwhile.
+  const runWifiStep = async (asked, info, show) => {
+    show("Join the camera's Wi-Fi network shown on its screen and keep this window open. On the S5 and similar " +
+      "it has no password by default - just pick it from the list; if the camera asks for one, it is on the " +
+      "camera's screen or in its Wi-Fi setup (Setup → Wi-Fi → Wi-Fi Setup → Wi-Fi Password).", "busy");
+    const outcome = await registerOlder(info.identity, info.name, (stage) => {
+      if (card !== asked || olderCancelled) return;
+      if (stage === "on-network") show("On the camera's network - registering the card...", "busy");
+      else if (stage === "registering") show("Registering - allow the connection on the camera if it asks...", "busy");
+    });
+    return card === asked ? outcome : null;
+  };
+
   // Cancel is a direct command (not queued behind the card's console), so it stops the Wi-Fi wait at
   // once; register_older returns "cancelled". A cancel during the first step (before the Wi-Fi wait)
   // takes effect when that step ends.
@@ -3001,17 +3154,45 @@ function startPage() {
     }
   };
 
+  // A run of the wizard (Start, Resume) holds the buttons; when it ends they follow the card's state.
+  const olderStarted = () => {
+    busy = true;
+    olderRunning = true;
+    olderCancelled = false;
+    wifiText = null;
+    wifiAccepted = false;
+    ui.olderStart.classList.add("hidden");
+    ui.olderResume.classList.add("hidden");
+    ui.pairResume.classList.add("hidden");
+    ui.olderCancel.classList.remove("hidden");
+    refreshButtons();
+  };
+
+  const olderEnded = () => {
+    busy = false;
+    olderRunning = false;
+    showPairing();
+  };
+
+  // The Wi-Fi step and what follows it. When it fails the card keeps waiting (up to 300 s from its
+  // introduction, src/older_session.cpp), so it can be tried again; a cancel stops the card's pairing.
+  const finishWifiStep = async (asked, info) => {
+    const outcome = await runWifiStep(asked, info, showWifi);
+    if (outcome === null) return;
+    wifiAccepted = outcome === "accepted";
+    olderRetry = !wifiAccepted && outcome !== "cancelled";
+    showWifi(...olderOutcomeText(outcome));
+    if (outcome === "cancelled") await asked.cancelPairing().catch(() => {});
+    await refresh();
+  };
+
   const pairOlder = async () => {
     const asked = card;
     if (!asked || busy) return;
-    busy = true;
-    olderCancelled = false;
-    ui.olderStart.classList.add("hidden");
-    ui.olderCancel.classList.remove("hidden");
-    refreshButtons();
+    olderStarted();
+    olderRetry = false;
     setStatus(ui.olderProgress, "Starting - wait for \"Looking for the camera\" before you start pairing on the " +
       "camera...", "busy");
-    let accepted = false;
     let info = null;
     let notInPairingMode = false; // the card saw a camera, but not in Bluetooth pairing mode
     // The card prints one line with the identity and name when it reaches the Wi-Fi step; catch it
@@ -3039,24 +3220,13 @@ function startPage() {
         }
       }
       if (card !== asked) return;
+      if (info && !olderCancelled) {
+        stopWatch();
+        await finishWifiStep(asked, info);
+        return;
+      }
       if (olderCancelled) {
         setStatus(ui.olderProgress, "Cancelled.", "");
-      } else if (info) {
-        setStatus(ui.olderProgress, "Join the camera's Wi-Fi network shown on its screen and keep this window " +
-          "open. On the S5 and similar it has no password by default - just pick it from the list; if the camera " +
-          "asks for one, it is on the camera's screen or in its Wi-Fi setup (Setup → Wi-Fi → Wi-Fi Setup → " +
-          "Wi-Fi Password).", "busy");
-        const outcome = await registerOlder(info.identity, info.name, (stage) => {
-          if (card !== asked || olderCancelled) return;
-          if (stage === "on-network")
-            setStatus(ui.olderProgress, "On the camera's network - registering the card...", "busy");
-          else if (stage === "registering")
-            setStatus(ui.olderProgress, "Registering - allow the connection on the camera if it asks...", "busy");
-        });
-        if (card !== asked) return;
-        accepted = outcome === "accepted";
-        const [text, kind] = olderOutcomeText(outcome);
-        setStatus(ui.olderProgress, text, kind);
       } else {
         // The card gave up (or the wait ran out): show the card's own result.
         await refresh();
@@ -3064,17 +3234,55 @@ function startPage() {
         setStatus(ui.olderProgress, result ? result[0] : "The card did not reach the Wi-Fi step. Try again.",
           result ? result[1] : "bad");
       }
-      if (!accepted) await asked.cancelPairing().catch(() => {}); // any other end leaves the card waiting: stop it
+      await asked.cancelPairing().catch(() => {}); // the card may still be waiting: stop it
       await refresh();
     } catch (error) {
       if (card === asked) setStatus(ui.olderProgress, "Older pairing failed. Try again.", "bad");
     } finally {
       stopWatch();
-      busy = false;
-      ui.olderCancel.classList.add("hidden");
-      ui.olderStart.classList.remove("hidden");
-      refreshButtons();
+      olderEnded();
     }
+  };
+
+  // Resume (and try the Wi-Fi step again): the card waits at the Wi-Fi step, and the app registers the
+  // identity it computes from the card's UUID ('p'), as the firmware does.
+  const resumeOlder = async () => {
+    const asked = card;
+    if (!asked || busy) return;
+    olderStarted();
+    showWifi("Reading the card's identity...", "busy");
+    try {
+      const cardId = await asked.cardId();
+      if (card !== asked) return;
+      if (olderCancelled) {
+        showWifi("Cancelled.", "");
+        await asked.cancelPairing().catch(() => {});
+        await refresh();
+      } else if (cardId === null) {
+        showWifi("The card did not give its identity. Cancel, then start again.", "bad");
+      } else {
+        await finishWifiStep(asked, olderIdentity(cardId));
+      }
+    } catch (error) {
+      if (card === asked) showWifi("Older pairing failed. Try again.", "bad");
+    } finally {
+      olderEnded();
+    }
+  };
+
+  // Cancel while no run of the wizard is under way: the pairing left from before stops.
+  const cancelLeftOver = async () => {
+    const asked = card;
+    if (!asked || busy) return;
+    busy = true;
+    refreshButtons();
+    setStatus(ui.olderProgress, "Cancelling...", "busy");
+    await asked.cancelPairing().catch(() => {});
+    if (card !== asked) return;
+    busy = false;
+    olderRetry = false;
+    setStatus(ui.olderProgress, "Cancelled.", "");
+    await refresh();
   };
 
   // ---- Diagnostics: the card's log and a scan, shown and copied for a message ----
@@ -3096,8 +3304,15 @@ function startPage() {
     }
   };
 
+  // What the card sent, as it sent it; the text field shows it masked unless Copy unmasked is on.
+  let diagRaw = "";
+  const diagShown = () => (ui.diagUnmasked.checked ? diagRaw : maskIdentifiers(diagRaw));
+  const copiedText = () => (ui.diagUnmasked.checked ? "Copied unmasked: send it only privately." :
+    "Copied: paste it into a message.");
+
   const startDiagnostics = (text) => {
     busy = true;
+    diagRaw = "";
     ui.diagText.value = "";
     refreshButtons();
     ui.diagAnswer.classList.remove("hidden");
@@ -3108,10 +3323,11 @@ function startPage() {
   const showDiagnostics = async (text, [resultText, kind]) => {
     busy = false;
     ui.diagProgress.classList.add("hidden");
-    ui.diagText.value = text;
+    diagRaw = text;
+    ui.diagText.value = diagShown();
     refreshButtons();
-    const copied = await copyToClipboard(text);
-    setStatus(ui.diagStatus, `${resultText} ${copied ? "Copied: paste it into a private message." :
+    const copied = await copyToClipboard(ui.diagText.value);
+    setStatus(ui.diagStatus, `${resultText} ${copied ? copiedText() :
       "Click Copy, or select the text below and copy it."}`, kind);
   };
 
@@ -3166,20 +3382,27 @@ function startPage() {
 
   const copyAgain = async () => {
     const copied = await copyToClipboard(ui.diagText.value);
-    setStatus(ui.diagStatus, copied ? "Copied: paste it into a private message." :
+    setStatus(ui.diagStatus, copied ? copiedText() :
       "Copying did not work here: select the text below and copy it (Ctrl+C, on a Mac Cmd+C).", copied ? "good" : "");
   };
 
   ui.copyLog.addEventListener("click", copyLog);
   ui.scan.addEventListener("click", scanForCameras);
   ui.diagCopy.addEventListener("click", copyAgain);
+  ui.diagUnmasked.addEventListener("change", () => {
+    ui.diagText.value = diagShown();
+    refreshButtons();
+  });
   ui.pair.addEventListener("click", () => pairCommand((asked) => asked.pair()));
-  ui.pairCancel.addEventListener("click", () => pairCommand((asked) => asked.cancelPairing()));
+  ui.pairCancel.addEventListener("click", () => (olderRunning ? cancelOlder()
+    : pairCommand((asked) => asked.cancelPairing())));
+  ui.pairResume.addEventListener("click", resumeOlder);
   ui.unpair.addEventListener("click", () => ui.unpairConfirm.classList.remove("hidden"));
   ui.unpairNo.addEventListener("click", () => ui.unpairConfirm.classList.add("hidden"));
   ui.unpairYes.addEventListener("click", forgetCamera);
   ui.olderStart.addEventListener("click", pairOlder);
-  ui.olderCancel.addEventListener("click", cancelOlder);
+  ui.olderResume.addEventListener("click", resumeOlder);
+  ui.olderCancel.addEventListener("click", () => (olderRunning ? cancelOlder() : cancelLeftOver()));
   ui.connect.addEventListener("click", connect);
   ui.disconnect.addEventListener("click", disconnect);
   ui.save.addEventListener("click", save);

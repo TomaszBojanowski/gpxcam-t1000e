@@ -107,8 +107,8 @@ computer without Chrome or Edge use [the desktop app](#the-desktop-app)):
 - it sets how loud the card is (see [Sounds and LED](#sounds-and-led));
 - it sets how often the card sends the position, Normal or Frequent (see [Normal use](#normal-use));
 - when something does not work, it copies the card's log, or a 30-second scan of the Bluetooth
-  devices next to the card, ready to paste into a message (both contain the camera's serial number:
-  send them privately, not in a public thread).
+  devices next to the card, ready to paste into a message (with the camera's serial number, the
+  Bluetooth addresses and the card's identity hidden).
 
 1. Plug the card into the computer with a USB cable. Close serial monitors that use it.
 2. Open [the card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/).
@@ -117,7 +117,8 @@ computer without Chrome or Edge use [the desktop app](#the-desktop-app)):
 The page runs only in the browser and sends nothing over the internet. It sends the card only `v`,
 `status`, `pair`, `pair off`, `pair prepare`, `unpair`, `clock on`, `clock off`, `sound loud`,
 `sound quiet`, `sound off`, `updates normal`, `updates frequent`, `log`, `diag scan`, `tz` and `tz`
-with a zone from its list. With gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or
+with a zone from its list; the app also `pair older` and `p` (which only reads the card's id) for
+older cameras. With gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or
 newer, the location updates 1.4.0 and the scan 1.5.0-beta.1. On connecting to a card that is not
 paired yet, the page sends `pair prepare` (gpxcam 1.5.0-beta.2): the card switches its GPS on for 10
 minutes, so that pairing finds the time ready.
