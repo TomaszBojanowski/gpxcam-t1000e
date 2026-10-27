@@ -9,7 +9,10 @@ namespace {
 
 // Serial.write() in the core loops until everything is queued while a terminal
 // is open (Adafruit_USBD_CDC::write), so a host that keeps the port open without
-// reading would block the caller forever. We wait at most this long for space.
+// reading would block the caller forever. We wait at most this long for space, and after one
+// such wait not at all until there is space again: a host that stopped reading would otherwise
+// hold the loop for 50 ms per line ('bat log' with 1024 entries: about 51 s, past the 30 s
+// watchdog).
 constexpr uint32_t LOG_WAIT_MS = 50;
 constexpr size_t EOL_LEN = 2; // "\r\n"
 
@@ -28,12 +31,24 @@ size_t historyNext = 0;  // slot for the next line
 size_t historyCount = 0; // filled slots
 uint32_t droppedLines = 0;
 
+bool hostStalled = false; // the last wait for space ran out: no waiting until there is space again
+
 bool waitForTxSpace(size_t len)
 {
+    if (hostStalled) {
+        if (Serial.availableForWrite() < (int)len)
+            return false;
+        hostStalled = false; // the host reads again
+        return true;
+    }
     const uint32_t start = millis();
     while (Serial.availableForWrite() < (int)len) {
-        if (!Serial || millis() - start >= LOG_WAIT_MS)
+        if (!Serial)
             return false;
+        if (millis() - start >= LOG_WAIT_MS) {
+            hostStalled = true;
+            return false;
+        }
         delay(1); // lets the USB task send queued data
     }
     return true;

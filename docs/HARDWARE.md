@@ -613,6 +613,19 @@ The idle current (System OFF, in the µA range) cannot be measured this way: the
   never formats (`lfs_mount()` of littlefs 1.7 only reads). An area of all 0xFF (a new card) is formatted; anything else
   that does not mount is left as it is, Bluefruit gets a 2 KB littlefs in RAM for its bond directories, the card uses the
   default settings, and `storage format yes` erases the 7 pages and restarts. `status: storage=ok|damaged`.
+- **A file system that mounts but is damaged (1.5.0-beta.6):** littlefs writes 128-byte blocks, but the core's flash
+  cache erases and programs the whole 4 KB page (`flash_cache.c`, `flash_cache_flush()`), so a reset in that moment
+  (power, watchdog) can erase both halves of a directory, or blocks a file points to. `lfs_mount()` reads only the
+  superblock, so such a file system mounts, and littlefs then stops the card in an assert (`LFS_ASSERT(block <
+  block_count)`) at the first write that meets an erased pointer: a restart by the watchdog at every write, and at
+  every start if `pairing.bin` was hit. After mounting, the card now reads every directory and every file's block
+  list with `lfs_traverse()`, which passes each block number to a check before reading it; a block outside the area
+  or a directory with a bad CRC makes the file system damaged, as one that does not mount (`p`: `has a damaged
+  block`). `storage format yes` now works whatever the state (up to 1.5.0-beta.5 it was refused while the file system
+  mounted), so a card damaged in a way no check finds can still be repaired; the pairing comes back from its copy.
+  So "temporary file, rename" (`record_file.h`) protects a record from a cut-off write of that record's own blocks,
+  not from the loss of the page around them. The test build's `diag storage break middle yes` erases the page of the
+  file system, other than the first, with the most blocks in use, and restarts.
 - **Pairing copy** (`src/pairing_copy.h`, `src/pairing_copy_record.h`): 48 bytes at the start of a page – magic
   `GXPC`, version 1, a sequence number, the 32-byte pairing record as in `pairing.bin`, CRC-32 – on 0xEC000 and 0xEB000
   in turn, always on the older one. A page with anything else than 0xFF, a copy or Meshtastic's node cache (pages

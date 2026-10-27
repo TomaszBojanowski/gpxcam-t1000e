@@ -19,6 +19,18 @@ bool read(const char *path, uint8_t *data, size_t capacity, size_t *length)
     return true;
 }
 
+namespace {
+
+// The file at path holds exactly these size bytes.
+bool holds(const char *path, const uint8_t *data, size_t size)
+{
+    uint8_t check[MAX_SIZE + 1]; // one byte more, to notice a longer file
+    size_t length = 0;
+    return read(path, check, sizeof(check), &length) && length == size && memcmp(check, data, size) == 0;
+}
+
+} // namespace
+
 bool write(const char *path, const char *tempPath, const uint8_t *data, size_t size)
 {
     if (size > MAX_SIZE)
@@ -31,12 +43,12 @@ bool write(const char *path, const char *tempPath, const uint8_t *data, size_t s
     if (!file.open(tempPath, FILE_O_WRITE))
         return false;
     const size_t written = file.write(data, size);
-    file.close();
-    if (written != size || !InternalFS.rename(tempPath, path))
+    file.close(); // reports no errors: the temporary file is read back before it replaces the record
+    if (written != size || !holds(tempPath, data, size)) {
+        InternalFS.remove(tempPath); // the record stays as it was
         return false;
-    uint8_t check[MAX_SIZE + 1];
-    size_t length = 0;
-    return read(path, check, sizeof(check), &length) && length == size && memcmp(check, data, size) == 0;
+    }
+    return InternalFS.rename(tempPath, path) && holds(path, data, size);
 }
 
 } // namespace record_file

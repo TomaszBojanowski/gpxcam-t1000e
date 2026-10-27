@@ -6,7 +6,9 @@
 // the whole area when it cannot mount it (InternalFileSystem.cpp). On 2026-10-24 a flash write cut
 // off by a hang left it unmountable, and that format erased the pairing, the time zone and the
 // settings at the next start. So begin() runs before Bluefruit.begin():
-//  - the file system mounts: Bluefruit finds it mounted and leaves it alone;
+//  - the file system mounts and every directory and file's block list can be read: Bluefruit finds
+//    it mounted and leaves it alone (one that mounts but has a damaged block is taken as damaged, as
+//    littlefs would stop the card in an assert at its first write, storage.cpp);
 //  - the area is empty (all bytes 0xFF, a new card): it is formatted, nothing is lost;
 //  - anything else: it is left as it is, and a small file system in RAM is mounted in its place
 //    for Bluefruit's bond directories (the card does not bond). The card then works with the
@@ -32,9 +34,10 @@ bool safeForBluefruit();
 // the file system is damaged.
 void logStart();
 
-// 'storage format yes': erases the whole area and restarts the card. Refused (logged) while the
-// file system mounts. Does not return when it erases.
-void formatDamaged();
+// 'storage format yes': erases the whole area and restarts the card, whatever its state (a file
+// system can be damaged in a way no check finds); the pairing comes back from its copy
+// (pairing_copy.h). Does not return when it erases.
+void format();
 
 // 'p': "storage: ok, ..." or the damaged state and what to do.
 void logState();

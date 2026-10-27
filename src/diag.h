@@ -36,6 +36,11 @@ void poll();
 // area keeps its data, so it is not the empty area of a new card (storage.h): the damage of
 // 2026-10-24, for testing storage.h and pairing_copy.h on the card.
 void breakFileSystem();
+
+// Test builds only: 'diag storage break middle yes' erases one page of the file system that is not the
+// first (the one with the most blocks in use) and restarts: it still mounts, but a directory or a file's
+// block list is gone, as after a flash write cut off mid-page (storage.cpp).
+void breakFileSystemPage();
 #endif
 
 } // namespace diag

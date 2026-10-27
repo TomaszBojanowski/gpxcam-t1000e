@@ -87,11 +87,11 @@ QueueHandle_t dumpQueue = nullptr;
 volatile bool dumpActive = false; // BLE task reads it; loop task writes it
 uint32_t dumpDeadlineMs = 0;      // loop task only
 constexpr size_t DUMP_SEEN_MAX = 16;
-// A Panasonic advert's bytes go in a second line, indented under its header. Both fit in a log line, whose
-// text is at most logger::LINE_MAX less "\r\n" and the terminator (log.cpp, format()), so nothing is cut.
+// A Panasonic advert's bytes go in a second line, indented under its header. Both fit in a log line
+// (logger::TEXT_MAX), so nothing is cut.
 constexpr char DUMP_PREFIX[] = "diag scan: ";
 constexpr char DUMP_BYTES_PREFIX[] = "diag scan:   ";
-static_assert(sizeof(DUMP_BYTES_PREFIX) - 1 + scan_dump::BODY_MAX <= logger::LINE_MAX - 3,
+static_assert(sizeof(DUMP_BYTES_PREFIX) - 1 + scan_dump::BODY_MAX <= logger::TEXT_MAX,
               "a 'diag scan' line would be cut");
 uint8_t dumpSeen[DUMP_SEEN_MAX][scan_dump::ADDRESS_LENGTH + 1]; // address + the scan-response flag
 size_t dumpSeenCount = 0;                                       // loop task only
@@ -153,6 +153,21 @@ void logScanLine(bluetooth::Lines lines, const char *text)
         logger::line("%s", text);
     else
         logger::transient("%s", text);
+}
+
+// "<first>, <rest>" in one line when it fits the card's line (logger::TEXT_MAX), else <first> and then
+// "<restPrefix><rest>" in a line of its own, so that nothing is cut.
+void logInParts(bluetooth::Lines lines, const char *first, const char *restPrefix, const char *rest)
+{
+    char text[logger::LINE_MAX];
+    if (strlen(first) + 2 + strlen(rest) <= logger::TEXT_MAX) {
+        snprintf(text, sizeof(text), "%s, %s", first, rest);
+        logScanLine(lines, text);
+        return;
+    }
+    logScanLine(lines, first);
+    snprintf(text, sizeof(text), "%s%s", restPrefix, rest);
+    logScanLine(lines, text);
 }
 
 Counts countsNow()
@@ -269,9 +284,15 @@ void logCamera(const char *what, const camera_list::Report &report)
     char address[3 * camera_list::ADDRESS_LENGTH];
     lumix::formatSerial(report.camera.serial, serial, sizeof(serial));
     camera_list::formatAddress(report.address, address, sizeof(address));
-    logger::line("scan: camera %s %s: %s (%02x), %s %s, %d dBm, %s", serial, what,
-                 lumix::stateName(report.camera.state), report.camera.state, address,
-                 camera_list::addressTypeName(report.addressType), report.rssi, advert_kind::name(report.kind));
+    char first[logger::LINE_MAX];
+    char prefix[32];
+    char rest[64];
+    snprintf(first, sizeof(first), "scan: camera %s %s: %s (%02x)", serial, what,
+             lumix::stateName(report.camera.state), report.camera.state);
+    snprintf(prefix, sizeof(prefix), "scan: camera %s: ", serial);
+    snprintf(rest, sizeof(rest), "%s %s, %d dBm, %s", address, camera_list::addressTypeName(report.addressType),
+             report.rssi, advert_kind::name(report.kind));
+    logInParts(bluetooth::Lines::Kept, first, prefix, rest); // two lines only for the longest state names
 }
 
 void logLost(const camera_list::Entry &entry)
@@ -284,12 +305,12 @@ void logLost(const camera_list::Entry &entry)
 void logStatus(uint32_t nowMs)
 {
     const Counts counts = sinceScanStart();
-    logger::transient("scan: on %lu s, %lu reports, %lu camera, %lu other Panasonic, %lu dropped, %lu untracked, "
-                      "%lu resume failed, %lu restarts",
+    // Two lines, each within logger::TEXT_MAX with every count at its largest.
+    logger::transient("scan: on %lu s, %lu reports, %lu camera, %lu other Panasonic",
                       (unsigned long)((nowMs - scanStartMs) / 1000), (unsigned long)counts.reports,
-                      (unsigned long)cameraReports, (unsigned long)counts.otherPanasonic,
-                      (unsigned long)counts.dropped, (unsigned long)untracked, (unsigned long)counts.resumeFailures,
-                      (unsigned long)restarts);
+                      (unsigned long)cameraReports, (unsigned long)counts.otherPanasonic);
+    logger::transient("scan: %lu dropped, %lu untracked, %lu resume failed, %lu restarts", (unsigned long)counts.dropped,
+                      (unsigned long)untracked, (unsigned long)counts.resumeFailures, (unsigned long)restarts);
     for (size_t i = 0; i < camera_list::MAX_CAMERAS; i++) {
         const camera_list::Entry *entry = cameras.at(i);
         if (entry == nullptr)
@@ -297,12 +318,12 @@ void logStatus(uint32_t nowMs)
         char serial[2 * lumix::SERIAL_LENGTH + 1];
         lumix::formatSerial(entry->last.camera.serial, serial, sizeof(serial));
         const uint32_t agoDs = (nowMs - entry->lastSeenMs) / MS_PER_DECISECOND;
-        logger::transient("scan: camera %s %s (%02x), %d dBm, %lu advert (%lu connectable) + %lu scan response, "
-                          "last %lu.%lu s ago",
-                          serial, lumix::stateName(entry->last.camera.state), entry->last.camera.state,
-                          entry->last.rssi, (unsigned long)entry->advertCount, (unsigned long)entry->connectableCount,
-                          (unsigned long)entry->scanResponseCount, (unsigned long)(agoDs / 10),
-                          (unsigned long)(agoDs % 10));
+        logger::transient("scan: camera %s %s (%02x), %d dBm, last %lu.%lu s ago", serial,
+                          lumix::stateName(entry->last.camera.state), entry->last.camera.state, entry->last.rssi,
+                          (unsigned long)(agoDs / 10), (unsigned long)(agoDs % 10));
+        logger::transient("scan: camera %s: %lu advert (%lu connectable) + %lu scan response", serial,
+                          (unsigned long)entry->advertCount, (unsigned long)entry->connectableCount,
+                          (unsigned long)entry->scanResponseCount);
     }
 }
 
@@ -409,13 +430,14 @@ void scanOff(Lines lines)
     // Stopping also works while the scan is paused after a report (ble_gap.h).
     const bool stopped = Bluefruit.Scanner.stop();
     const Counts counts = sinceScanStart();
-    char text[logger::LINE_MAX];
-    snprintf(text, sizeof(text),
-             "scan: off after %lu s%s, %lu reports, %lu camera, %lu other Panasonic, %lu dropped, %lu untracked",
+    char first[logger::LINE_MAX];
+    char rest[logger::LINE_MAX];
+    snprintf(first, sizeof(first), "scan: off after %lu s%s, %lu reports, %lu camera",
              (unsigned long)((millis() - scanStartMs) / 1000), stopped ? "" : " (stop error)",
-             (unsigned long)counts.reports, (unsigned long)cameraReports, (unsigned long)counts.otherPanasonic,
+             (unsigned long)counts.reports, (unsigned long)cameraReports);
+    snprintf(rest, sizeof(rest), "%lu other Panasonic, %lu dropped, %lu untracked", (unsigned long)counts.otherPanasonic,
              (unsigned long)counts.dropped, (unsigned long)untracked);
-    logScanLine(lines, text);
+    logInParts(lines, first, "scan: ", rest); // one line but with very large counts
 }
 
 bool scanning()

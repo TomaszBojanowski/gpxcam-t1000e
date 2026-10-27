@@ -2,7 +2,9 @@
 
 #include <Arduino.h>
 #ifdef GPXCAM_TEST_COMMANDS
+#include <InternalFileSystem.h>
 #include <flash/flash_nrf5x.h>
+#include <string.h>
 #endif
 #include <nrf_clock.h>
 #include <nrf_sdm.h>
@@ -11,6 +13,9 @@
 
 #include "battery.h"
 #include "log.h"
+#ifdef GPXCAM_TEST_COMMANDS
+#include "storage.h"
+#endif
 #include "watchdog.h"
 
 namespace {
@@ -147,6 +152,62 @@ void breakFileSystem()
         }
     }
     flash_nrf5x_flush();
+    delay(100); // lets the log line leave
+    NVIC_SystemReset();
+}
+
+namespace {
+
+// The blocks the mounted file system uses, one bit each (lfs_traverse()).
+constexpr uint32_t FILE_SYSTEM_START = 0xED000; // LFS_FLASH_ADDR, as above
+constexpr size_t MAX_BLOCKS = 7 * FLASH_NRF52_PAGE_SIZE / 128; // the core's area and block size
+uint8_t usedBlocks[MAX_BLOCKS / 8];
+
+int markUsed(void *, lfs_block_t block)
+{
+    if (block < MAX_BLOCKS)
+        usedBlocks[block / 8] |= (uint8_t)(1u << (block % 8));
+    return 0;
+}
+
+} // namespace
+
+void breakFileSystemPage()
+{
+    // A cut-off flash write as storage.cpp describes it: a page of the file system erased, not the first
+    // (the superblock stays, so it still mounts) - the one with the most blocks in use.
+    if (!storage::ready()) {
+        logger::line("diag: the file system is not mounted - nothing broken");
+        return;
+    }
+    lfs_t *lfs = InternalFS._getFS();
+    const uint32_t blockSize = lfs->cfg->block_size;
+    const uint32_t blocksPerPage = FLASH_NRF52_PAGE_SIZE / blockSize;
+    memset(usedBlocks, 0, sizeof(usedBlocks));
+    lfs_traverse(lfs, markUsed, nullptr);
+    uint32_t bestPage = 0;
+    uint32_t bestCount = 0;
+    const uint32_t blocks = lfs->cfg->block_count < MAX_BLOCKS ? lfs->cfg->block_count : MAX_BLOCKS;
+    for (uint32_t page = 1; page * blocksPerPage < blocks; page++) {
+        uint32_t count = 0;
+        for (uint32_t block = page * blocksPerPage; block < (page + 1) * blocksPerPage && block < blocks; block++)
+            count += (usedBlocks[block / 8] >> (block % 8)) & 1;
+        if (count > bestCount) {
+            bestCount = count;
+            bestPage = page;
+        }
+    }
+    if (bestCount == 0) {
+        logger::line("diag: every block in use is in the first page - nothing broken (save a setting a few times)");
+        return;
+    }
+    const uint32_t address = FILE_SYSTEM_START + bestPage * FLASH_NRF52_PAGE_SIZE;
+    logger::line("diag: TEST - erasing the file system page 0x%05lX (%lu blocks in use) and restarting",
+                 (unsigned long)address, (unsigned long)bestCount);
+    if (!flash_nrf5x_erase(address)) {
+        logger::line("diag: erasing 0x%05lX failed", (unsigned long)address);
+        return;
+    }
     delay(100); // lets the log line leave
     NVIC_SystemReset();
 }

@@ -17,6 +17,7 @@ void tearDown()
 {
     if (Unity.CurrentTestFailed)
         fake::printLog();
+    TEST_ASSERT_EQUAL_MESSAGE(0, fake::longLines(), "a log line longer than the card's 125 characters");
 }
 
 int main(int, char **)

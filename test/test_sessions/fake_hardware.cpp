@@ -32,7 +32,7 @@ struct LogLine {
 };
 std::vector<LogLine> logLines;
 int tooLong = 0;
-constexpr size_t CARD_TEXT_MAX = logger::LINE_MAX - 3; // log.cpp: without "\r\n" and the terminator
+constexpr size_t CARD_TEXT_MAX = logger::TEXT_MAX;
 
 // The test camera as the scan sees it.
 camera_list::Entry seen = {};

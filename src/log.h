@@ -10,6 +10,8 @@ namespace logger {
 // Must stay below the 256-byte USB CDC TX FIFO (CFG_TUD_CDC_TX_BUFSIZE in
 // Adafruit_TinyUSB_Arduino src/arduino/ports/nrf/tusb_config_nrf.h).
 constexpr uint32_t LINE_MAX = 128;
+// The longest text of a line: LINE_MAX less "\r\n" and the terminator (log.cpp, format()).
+constexpr uint32_t TEXT_MAX = LINE_MAX - 3;
 
 // Lines kept in RAM (about 8 KB, static) and shown by dumpHistory(): enough for the events
 // of a walk with the card without USB (link, pairing, power), read later with 'log', and for
@@ -19,7 +21,8 @@ constexpr uint32_t HISTORY_LINES = 64;
 
 // Formats one line (printf syntax, no newline needed), keeps it in the history
 // and sends it. If no terminal is open, or the TX buffer stays full for
-// LOG_WAIT_MS, sending is skipped and counted instead of waiting.
+// LOG_WAIT_MS, sending is skipped and counted instead of waiting; after that the next lines do
+// not wait at all until the buffer has room again (log.cpp).
 // Not reentrant: call only from the Arduino loop task.
 void line(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 

@@ -261,7 +261,15 @@ void pause(const char *why, bool closedByCamera = false)
         camera_link::disconnect(); // the Disconnected event is dropped by the next connect
     failuresInARow++;
     pauseLength = link_policy::pauseMs(failuresInARow);
-    logger::line("link: looking again in %lu s - %s", (unsigned long)(pauseLength / 1000), why);
+    char text[logger::LINE_MAX];
+    const int length = snprintf(text, sizeof(text), "link: looking again in %lu s - %s",
+                                (unsigned long)(pauseLength / 1000), why);
+    if (length > 0 && (uint32_t)length <= logger::TEXT_MAX) {
+        logger::line("%s", text);
+    } else { // a long reason in a line of its own, so that nothing is cut
+        logger::line("link: %s", why);
+        logger::line("link: looking again in %lu s", (unsigned long)(pauseLength / 1000));
+    }
     enter(Phase::Pausing);
 }
 

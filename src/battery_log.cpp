@@ -58,12 +58,14 @@ bool writeBatch()
         }
     }
     batch.clear();
-    if (!written) {
-        entriesInFile = countEntriesInFile(); // a part may have been written
-        logger::line("bat log: could not write %u entries to %s - they are lost", (unsigned)count, PATH);
+    // File::close() reports no errors: the file's size shows what was saved, also a part.
+    const uint32_t expected = entriesInFile + count;
+    entriesInFile = countEntriesInFile();
+    if (!written || entriesInFile != expected) {
+        logger::line("bat log: could not write %u entries to %s - %lu in the file", (unsigned)count, PATH,
+                     (unsigned long)entriesInFile);
         return false;
     }
-    entriesInFile += count;
     logger::line("bat log: %u entries saved (%lu in the file)", (unsigned)count, (unsigned long)entriesInFile);
     return true;
 }

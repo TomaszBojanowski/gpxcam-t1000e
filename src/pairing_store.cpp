@@ -1,24 +1,19 @@
 #include "pairing_store.h"
 
 #include <Arduino.h>
-#include <InternalFileSystem.h>
 #include <nrf_soc.h>
 #include <string.h>
 
 #include "log.h"
 #include "pairing_copy.h"
+#include "record_file.h"
 #include "storage.h"
-
-// Sources: InternalFileSytem and Adafruit_LittleFS in the core (littlefs 1.7). littlefs
-// commits a file only when it is closed, and rename is atomic, also on power loss, and
-// replaces an existing file (littlefs README, lfs.h lfs_rename()).
-
-using namespace Adafruit_LittleFS_Namespace;
 
 namespace {
 
-constexpr const char *DIRECTORY = "/gpxcam";
+// Written through a temporary file and read back (record_file.h), as the time zone and the settings.
 constexpr const char *PATH = "/gpxcam/pairing.bin";
+static_assert(pairing_record::SIZE <= record_file::MAX_SIZE, "the record fits a record file");
 constexpr const char *TEMP_PATH = "/gpxcam/pairing.tmp";
 
 constexpr uint32_t RANDOM_WAIT_MS = 100; // the SoftDevice fills its pool within milliseconds
@@ -35,35 +30,19 @@ bool sameRecord(const pairing_record::Record &a, const pairing_record::Record &b
 // False if the file is missing; otherwise *status says whether *record was read.
 bool readFile(pairing_record::Record *record, pairing_record::Status *status)
 {
-    File file(InternalFS);
-    if (!file.open(PATH, FILE_O_READ))
-        return false;
     uint8_t data[pairing_record::SIZE + 1]; // one byte more, to notice a longer file
-    const int length = file.read(data, sizeof(data));
-    file.close();
-    *status = pairing_record::decode(data, length < 0 ? 0 : (size_t)length, record);
+    size_t length = 0;
+    if (!record_file::read(PATH, data, sizeof(data), &length))
+        return false;
+    *status = pairing_record::decode(data, length, record);
     return true;
 }
 
-// Writes a temporary file and renames it over the record, then reads it back.
 bool writeFile(const pairing_record::Record &record)
 {
     uint8_t data[pairing_record::SIZE];
     pairing_record::encode(record, data);
-    if (!InternalFS.exists(DIRECTORY) && !InternalFS.mkdir(DIRECTORY))
-        return false;
-    if (InternalFS.exists(TEMP_PATH) && !InternalFS.remove(TEMP_PATH)) // left by a power loss
-        return false;
-    File file(InternalFS);
-    if (!file.open(TEMP_PATH, FILE_O_WRITE))
-        return false;
-    const size_t written = file.write(data, sizeof(data));
-    file.close(); // reports no errors, hence the read-back below
-    if (written != sizeof(data) || !InternalFS.rename(TEMP_PATH, PATH))
-        return false;
-    pairing_record::Record check;
-    pairing_record::Status status;
-    return readFile(&check, &status) && status == pairing_record::Status::Ok && sameRecord(check, record);
+    return record_file::write(PATH, TEMP_PATH, data, sizeof(data));
 }
 
 // Hardware random numbers through the SoftDevice, which owns the RNG while it runs.

@@ -392,7 +392,7 @@ pio device monitor
 | `diag snd N` | all sounds at N % PWM duty (1–50), whatever the setting, to choose the volume by ear |
 | `diag hang` | test of the watchdog: holds the main loop; the card restarts after 30 s |
 | `diag clk` / `diag clk S` | how much of 1 s the 64 MHz crystal runs, now or in S seconds (kept for `log`, so it can be measured on the battery) |
-| `storage format yes` | erase a damaged file system and restart, see [If the card forgot its settings](#if-the-card-forgot-its-settings); refused while the file system is fine |
+| `storage format yes` | erase the file system and restart, for a damaged one, see [If the card forgot its settings](#if-the-card-forgot-its-settings); the pairing comes back from its copy, the other settings and the battery log are lost |
 
 **Privacy:** the log shows the camera's serial number and Bluetooth address and the card's id –
 do not publish it. GPS positions are never logged.
