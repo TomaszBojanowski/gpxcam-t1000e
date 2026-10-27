@@ -2027,13 +2027,15 @@ function gpsTile(state) {
   return ["warn", "No fix yet", `${satellites}; outdoors 1\u20133 min`];
 }
 
-// On USB the battery reads higher than it is, so the percent is only about.
+// On USB the battery reads higher than it is, so the percent is only about. When the charger
+// reports the charge complete, the battery is full whatever the voltage gives (about 98 % at
+// 4.18 V): the tile says 100 %. The card's own percent ('status' battery_pct) does not change.
 function batteryTile(state) {
   const volts = `${(state.batteryMv / 1000).toFixed(2)} V`;
   const percent = `${state.batteryPercent} %`;
   switch (state.charger) {
     case "charging": return ["good", "Charging", `about ${percent} \u00b7 ${volts}`];
-    case "charged": return ["good", "Charged", `about ${percent} \u00b7 ${volts}`];
+    case "charged": return ["good", "Charged", `100 % \u00b7 ${volts}`];
     case "not_charging": return ["idle", "On USB", `not charging, about ${percent} \u00b7 ${volts}`];
     default:
       if (state.batteryPercent < BATTERY_VERY_LOW_PERCENT) return ["bad", "Very low", `${percent} \u00b7 ${volts}`];

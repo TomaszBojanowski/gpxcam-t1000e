@@ -555,8 +555,8 @@ test("the state is shown as tiles, each state in a word, not only by the colour 
   assert.deepEqual(tile(page.gpsTile, { gpsFix: false, gpsSatellites: 1 }),
     ["warn", "No fix yet", "1 satellite; outdoors 1\u20133 min"]);
   assert.deepEqual(tile(page.batteryTile), ["good", "Charging", "about 89 % \u00b7 4.10 V"]);
-  assert.deepEqual(tile(page.batteryTile, { charger: "charged", batteryMv: 4180, batteryPercent: 100 }),
-    ["good", "Charged", "about 100 % \u00b7 4.18 V"]); // every battery tile has its percent
+  assert.deepEqual(tile(page.batteryTile, { charger: "charged", batteryMv: 4180, batteryPercent: 98 }),
+    ["good", "Charged", "100 % \u00b7 4.18 V"]); // charged is full, whatever the voltage gives
   assert.deepEqual(tile(page.batteryTile, { charger: "not_charging" }),
     ["idle", "On USB", "not charging, about 89 % \u00b7 4.10 V"]);
   assert.deepEqual(tile(page.batteryTile, { charger: "no_usb" }), ["good", "Good", "89 % \u00b7 4.10 V"]);
