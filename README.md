@@ -22,8 +22,8 @@ LUMIX S5II. The latest version, and what changed in each, is on the
   (see [Back to Meshtastic](#back-to-meshtastic)).
 - **Panasonic LUMIX S5II** (DC-S5M2) – the only camera tested so far. Other newer LUMIX models
   (the ones that pair with LUMIX Lab) may work the same way, but nobody has tried them yet. Older
-  models need [the desktop app](#the-desktop-app) for pairing, and their support is experimental. If
-  you test one, please open an issue.
+  models (the LUMIX Sync generation) need [the desktop app](#the-desktop-app) for pairing, and their
+  support is experimental. If you test one, please open an issue.
 
 ## Known limitations
 
@@ -100,8 +100,8 @@ version numbers and releases: tags `app-vX.Y.Z`, named "gpxcam card" in
 [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases).
 [app/README.md](app/README.md#install) says how to install it, how to open it the first time and
 which gpxcam versions it works with. On Windows 11 the `.msi` has been tried with a card; the
-`-setup.exe` and the macOS version not yet. The app can also pair *older* LUMIX cameras (the ones
-that pair with the older Panasonic phone app), which need one extra step over the camera's own Wi-Fi; see
+`-setup.exe` and the macOS version not yet. The app can also pair *older* LUMIX cameras (the LUMIX
+Sync generation), which need one extra step over the camera's own Wi-Fi; see
 [app/README.md](app/README.md#pairing-an-older-camera).
 
 ![The app's card section: connected to the card, with tiles for the camera (Connected), the GPS (Fix, 11 satellites), the battery (Charged, 100 %) and the time zone (Europe/Warsaw, clock on)](docs/images/app-state.png)
@@ -113,9 +113,19 @@ that pair with the older Panasonic phone app), which need one extra step over th
 *The app's state after Connect, pairing, and the Wi-Fi step of an older camera. More in
 [app/README.md](app/README.md#what-it-looks-like); made with `tools/screenshots.mjs` and a simulated card.*
 
-Support for older cameras is experimental and not yet confirmed on a camera of the S5 generation: see
-[app/README.md](app/README.md#pairing-an-older-camera), and if you can test one,
-[issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2).
+> [!WARNING]
+> **Older cameras (LUMIX Sync generation): experimental.** The card speaks their older Bluetooth protocol, but
+> it is not yet confirmed on any camera of that generation. If you own one and can spend an hour testing, please
+> say so in [issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2).
+>
+> | Camera | How it pairs | Status |
+> |---|---|---|
+> | LUMIX S5II | *Pair* on the card page or in the app | tested |
+> | Other current bodies: S5IIX, S9, GH7, G9II, S1II, S1RII, S1IIE, L10 | *Pair* on the card page or in the app | same protocol as the S5II, expected to work, not tested yet |
+> | LUMIX S5II in its older protocol | *Pair an older camera* in the app, with the Wi-Fi step | tested by the author: pairing, locations with Normal and Frequent |
+> | LUMIX Sync generation: S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H, BGH1 | *Pair* in the desktop app, with a one-time step over the camera's Wi-Fi | not confirmed; the one field test so far, a LUMIX S5, has not connected |
+>
+> How to pair them: [app/README.md](app/README.md#pairing-an-older-camera).
 
 ## Set the time zone
 
@@ -266,7 +276,7 @@ Coming back to gpxcam 1.4.0 later:
 A short press cancels pairing. The card only connects to a camera that is in pairing mode, and
 it pairs with one camera at a time: a new pairing replaces the old one.
 
-An older camera (one that pairs with the older Panasonic phone app) needs one more step over its
+An older camera (of the LUMIX Sync generation) needs one more step over its
 Wi-Fi at the first pairing: pair it from [the desktop app](#the-desktop-app), which does that step,
 see [app/README.md](app/README.md#pairing-an-older-camera).
 

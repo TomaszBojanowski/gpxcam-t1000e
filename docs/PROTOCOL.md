@@ -11,10 +11,10 @@ document is the public description of the protocol.
 - Manufacturer specific data: `3a 00 <state> <5-byte serial number>`.
 - `<state>`: `00` camera on, `03` pairing mode ("Add New Device"), `06` switched off with the switch
   (standby). **Never connect in state `06` – a connection wakes the camera.**
-- The older Panasonic phone app knows more states: `01` asleep, `02` waking up, `04` off, `05` on but asleep, `07` on
-  but asleep with a quick wake, `08`–`0A` the same with automatic transfer. It registers a new camera only in
-  `03`; a camera it already knows it also connects to in `05` and `07`. Seen so far: `00`, `03`, `06` on the
-  S5II (both dialects); `07` on an S5 (1st generation) that showed its pairing screen (2026-10-25).
+- The phone app of the LUMIX Sync generation knows more states: `01` asleep, `02` waking up, `04` off, `05` on but
+  asleep, `07` on but asleep with a quick wake, `08`–`0A` the same with automatic transfer. It registers a new
+  camera only in `03`; a camera it already knows it also connects to in `05` and `07`. Seen so far: `00`, `03`, `06`
+  on the S5II (both dialects); `07` on an S5 (1st generation) that showed its pairing screen (2026-10-25).
 - Advertised service: `054AC620-3214-11E6-AC0D-0002A5D5C51B`.
 - On: a resolvable private address (RPA). Standby: the public address. Legacy ADV_IND, connectable.
 - Connect only when the state and the serial number are known and the number matches the paired one.
@@ -194,7 +194,7 @@ Advertisement (made-up serial number `12 34 56 78 9a`, tests in `test/test_lumix
 
 ## Older dialect: the card's identity
 
-Cameras that the older Panasonic phone app pairs with (the S5II among them) also speak an older dialect, with other
+Cameras of the LUMIX Sync generation, and the S5II too, speak an older dialect, with other
 characteristics. At the first pairing the camera takes a device only when the identity it presents over Bluetooth
 is the one registered over the camera's Wi-Fi; after that the device connects over Bluetooth alone.
 
@@ -221,10 +221,10 @@ acceptance (up to 300 s).
 
 - The camera is at `192.168.54.1` on its access point (HTTP, no TLS; a UPnP description on port 60606, the
   registration on port 80).
-- Before the registration the app, like the older phone app, only nudges the camera awake: it reads the UPnP
-  description (TCP to port 60606, `GET /Lumix/Server0/ddd`) twice, 2 s apart, with one SSDP search (a UDP multicast
-  `M-SEARCH` for `urn:schemas-upnp-org:device:MediaServer:1` to 239.255.255.250:1900) in between, and ignores the
-  answers and any error.
+- Before the registration the app, like the phone app of the LUMIX Sync generation, only nudges the camera awake: it
+  reads the UPnP description (TCP to port 60606, `GET /Lumix/Server0/ddd`) twice, 2 s apart, with one SSDP search (a
+  UDP multicast `M-SEARCH` for `urn:schemas-upnp-org:device:MediaServer:1` to 239.255.255.250:1900) in between, and
+  ignores the answers and any error.
 - On one keep-alive connection: `GET /cam.cgi?mode=accctrl&type=req_acc_g` returns `ok,<token>` with a 4-byte
   session token (hex); then `GET /cam.cgi?mode=accctrl&type=req_acc_e&value=<identity>&value2=<name>`.
 - **Wi-Fi encoding** of a text: pad its ASCII bytes with `0xFF` to a multiple of four, then for each 4-byte word

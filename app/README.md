@@ -71,10 +71,10 @@ If something does not work there, please open an issue on GitHub.
 ## Pairing an older camera
 
 > [!WARNING]
-> **Older cameras: experimental.** Pairing and everyday use with an older camera are tested by the author with an S5II, which speaks the older protocol too, but not yet confirmed on a camera of the S5 generation: the one field test so far, with a LUMIX S5, has not connected. If you own an S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H or BGH1 and are willing to spend an hour testing, please say so in [issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2).
+> **Older cameras (LUMIX Sync generation): experimental.** Pairing and everyday use with an older camera are tested by the author with an S5II, which speaks the older protocol too, but not yet confirmed on a camera of the S5 generation: the one field test so far, with a LUMIX S5, has not connected. If you own an S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H or BGH1 and are willing to spend an hour testing, please say so in [issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2).
 
 Most newer LUMIX cameras (S5II and the like) pair straight from the card page or this app with
-*Pair*. **Older** cameras — the ones that pair with the older Panasonic phone app, not LUMIX Lab —
+*Pair*. **Older** cameras — the LUMIX Sync generation —
 need one extra step over the camera's own Wi-Fi, which only the app can do (a web page cannot reach
 the camera that way). In the app, *Pair* recognises such a camera and goes on with that step by
 itself. *Pair an older camera*, lower in the window, does the same from the start, for an older
