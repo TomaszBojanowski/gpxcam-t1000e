@@ -245,7 +245,8 @@ The card's order (`src/older_session.cpp`), each step after the answer to the pr
    connection, where a camera that knows the card sends it right after the device name;
 3. write the time, in the newer dialect's format; in a lasting connection twice, as in the newer dialect (the
    camera takes the zone from the packet before), and not at all with the clock setting off;
-4. pairing ends here; a lasting connection sends a location every 5 s.
+4. pairing ends here; in a lasting connection the card then sends the locations as to a newer camera (Normal or
+   Frequent, `link_policy.h`).
 
 - **The time when pairing:** the camera sends its `01`, and the card writes the time, up to 300 s after the card
   introduced itself, while the user joins the camera's Wi-Fi network on a computer, often indoors, where the GPS

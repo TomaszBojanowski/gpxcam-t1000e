@@ -198,12 +198,42 @@ void test_link_stop_closes_the_connection()
     TEST_ASSERT_FALSE(fake::gpsOn);
 }
 
-void test_older_link_sends_locations()
+// The older dialect sends the locations as the newer: by the chosen timing, with the rate guard, and
+// without a fix says so once.
+void test_older_link_sends_locations_by_the_normal_timing()
 {
     connectOlderLink();
-    fake::loop(6000);
-    TEST_ASSERT_TRUE(fake::askedCount("write 0050") >= 2); // a location every 5 s
     TEST_ASSERT_EQUAL(2, fake::askedCount("write 004c")); // the time twice, as in the newer dialect
+    fake::loop(30000);
+    TEST_ASSERT_EQUAL(2, fake::askedCount("write 0050")); // at once and after 25 s
+}
+
+void test_older_link_sends_locations_by_the_frequent_timing()
+{
+    fake::updates = link_policy::Updates::Frequent;
+    connectOlderLink();
+    fake::loop(11000);
+    TEST_ASSERT_EQUAL(3, fake::askedCount("write 0050")); // at once, after 5 s and after 10 s
+}
+
+void test_older_link_slows_down_when_the_camera_answers_late()
+{
+    fake::updates = link_policy::Updates::Frequent;
+    connectOlderLink();
+    fake::answerMs = link_policy::LATE_ANSWER_MS + 100;
+    fake::loop(30000);
+    TEST_ASSERT_TRUE(fake::logged("normal timing until the end of this connection"));
+    TEST_ASSERT_EQUAL(link_policy::Updates::Normal, link_control::updatesNow());
+}
+
+void test_older_link_without_a_fix_says_so_once()
+{
+    connectOlderLink();
+    fake::loop(100);
+    fake::gpsFix = false;
+    fake::loop(30000);
+    TEST_ASSERT_EQUAL(1, fake::loggedCount("no GPS fix - locations paused"));
+    TEST_ASSERT_TRUE(linkConnected());
 }
 
 // The link sounds every connection and its end, in both dialects.
@@ -344,7 +374,10 @@ void runLinkTests()
     RUN_TEST(test_link_stops_when_the_camera_refuses_the_time);
     RUN_TEST(test_link_scans_rarely_when_the_camera_is_away);
     RUN_TEST(test_link_stop_closes_the_connection);
-    RUN_TEST(test_older_link_sends_locations);
+    RUN_TEST(test_older_link_sends_locations_by_the_normal_timing);
+    RUN_TEST(test_older_link_sends_locations_by_the_frequent_timing);
+    RUN_TEST(test_older_link_slows_down_when_the_camera_answers_late);
+    RUN_TEST(test_older_link_without_a_fix_says_so_once);
     RUN_TEST(test_link_sounds_each_connection_and_its_end_in_both_dialects);
     RUN_TEST(test_older_link_pauses_5_s_after_every_switch_off);
     RUN_TEST(test_older_link_pauses_longer_after_each_lost_connection);

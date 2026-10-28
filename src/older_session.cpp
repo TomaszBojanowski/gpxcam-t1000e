@@ -28,8 +28,6 @@ constexpr uint32_t STEP_MS = 5000; // every discovery answer, read and write
 // connection: the camera that already knows the card sends 01 right after the device name.
 constexpr uint32_t KNOWN_WAIT_PAIR_MS = 300000;
 constexpr uint32_t KNOWN_WAIT_CONNECT_MS = 15000;
-constexpr uint32_t LOCATION_PERIOD_MS = 5000;   // a location every 5 s (the lasting connection)
-constexpr uint32_t LOCATION_SUMMARY_EVERY = 12; // a log line about once a minute
 constexpr uint32_t NO_LIMIT = 0;
 // A camera that waits for the Wi-Fi step takes its time up to KNOWN_WAIT_PAIR_MS after the card introduced
 // itself, when the user may have carried the card indoors to the computer and the GPS lost its fix. The
@@ -45,34 +43,26 @@ constexpr uint16_t LAST_HANDLE = 0xFFFF;
 constexpr const char *DEVICE_NAME = "T1000-E";
 
 enum class Step { Idle, Connecting, Mtu, Characteristics, Key, DeviceId, DeviceName, CameraName, CameraText,
-                  WaitKnown, Time, TimeAgain, Sending, Done };
+                  WaitKnown, Time, TimeAgain, Done };
 
 Step step = Step::Idle;
 uint32_t stepStart = 0;
 uint32_t stepLimit = NO_LIMIT;
-bool keepOpen = false; // true: send locations after the camera accepts; false: end at Accepted
-bool accepted = false;
-bool justAccepted = false; // Accepted returned once
-bool rejected = false;     // the camera refused a write of the introduction or the time
+bool keepOpen = false; // true: the connection goes to the caller once the camera accepts (the link)
+bool rejected = false; // the camera refused a write of the introduction or the time
 bool notKnown = false;     // the camera sent no 01 in time
 camera_link::LinkFailure linkFailed = camera_link::LinkFailure::None; // the session got no link at all
-uint16_t endReason = 0; // the HCI reason of the disconnect that ended the session, 0 otherwise
 uint8_t cardUuid[lumix::UUID_LENGTH];
 uint16_t handles[camera_link::OLDER_CHARACTERISTIC_COUNT];
 uint8_t key[lumix::KEY_LENGTH];
 bool knownByLocationNotify = false;
 bool knownByTimeNotify = false;
-bool writePending = false;
 bool timeFromFixLogged = false; // "the time of the fix ... ago" said once per session
-uint32_t lastLocationMs = 0;
-uint32_t locationsWrittenCount = 0;
-uint32_t locationsRefused = 0;
 char failureText[80] = "";
 
 // The data of the write in progress; the SoftDevice may read it until WriteDone.
 uint8_t txData[device_identity::FIELD_LENGTH];
-static_assert(lumix::TIME_LENGTH <= sizeof(txData) && lumix::LOCATION_LENGTH <= sizeof(txData),
-              "every write fits txData");
+static_assert(lumix::TIME_LENGTH <= sizeof(txData), "every write fits txData");
 
 const char *const CHARACTERISTIC_NAMES[camera_link::OLDER_CHARACTERISTIC_COUNT] = {
     "key", "identifier", "device name", "camera name", "camera text", "time", "time notify", "location",
@@ -105,8 +95,6 @@ const char *stepName(Step s)
         return "time";
     case Step::TimeAgain:
         return "time again";
-    case Step::Sending:
-        return "sending locations";
     case Step::Done:
         return "accepted";
     }
@@ -195,22 +183,12 @@ bool makeTimePacket()
     return true;
 }
 
-void startSending()
-{
-    logger::line("older: the camera took the card - a location every %lu s", (unsigned long)(LOCATION_PERIOD_MS / 1000));
-    enter(Step::Sending, NO_LIMIT);
-    lastLocationMs = millis() - LOCATION_PERIOD_MS; // the first one at once
-}
-
-// The camera took the card: report it once, then either keep sending or end (pairing).
+// The camera took the card. The connection stays open: pairing cancels after Accepted, and a lasting
+// connection goes to the caller (poll()).
 void accept()
 {
-    accepted = true;
-    justAccepted = true;
-    if (keepOpen)
-        startSending();
-    else
-        enter(Step::Done, NO_LIMIT); // the connection stays open; the caller cancels after Accepted
+    logger::line("older: the camera took the card");
+    enter(Step::Done, NO_LIMIT);
 }
 
 void writeTime(Step next)
@@ -382,42 +360,6 @@ void onCameraRead(const camera_link::Event &event, camera_link::OlderCharacteris
         logger::line("older: %s not read (GATT 0x%04x) - going on", CHARACTERISTIC_NAMES[which], event.status);
 }
 
-void sendLocation(uint32_t now)
-{
-    lastLocationMs = now;
-    int64_t utcNow = 0;
-    int32_t latitudeE7 = 0;
-    int32_t longitudeE7 = 0;
-    int32_t altitudeDm = 0;
-    if (!gps::utcNow(&utcNow) || !gps::position(&latitudeE7, &longitudeE7, &altitudeDm)) {
-        logger::transient("older: no GPS fix - location skipped");
-        return;
-    }
-    lumix::locationData(utcNow, latitudeE7, longitudeE7, altitudeDm, txData);
-    if (!camera_link::write(handles[camera_link::OLDER_LOCATION], txData, lumix::LOCATION_LENGTH)) {
-        fail("location: write refused by the SoftDevice");
-        return;
-    }
-    writePending = true;
-    stepStart = now;
-    stepLimit = STEP_MS;
-}
-
-void onLocationWritten(const camera_link::Event &event)
-{
-    writePending = false;
-    stepLimit = NO_LIMIT;
-    if (event.status != BLE_GATT_STATUS_SUCCESS) {
-        locationsRefused++;
-        logger::line("older: location refused (GATT 0x%04x)", event.status);
-        return;
-    }
-    locationsWrittenCount++;
-    if (locationsWrittenCount == 1 || locationsWrittenCount % LOCATION_SUMMARY_EVERY == 0)
-        logger::line("older: %lu locations written, %lu refused", (unsigned long)locationsWrittenCount,
-                     (unsigned long)locationsRefused);
-}
-
 // A notification: its handle and up to 8 bytes. 01 on either notify characteristic means the
 // camera knows the card.
 void onNotified(const camera_link::Event &event)
@@ -472,7 +414,6 @@ bool handleCommonEvent(const camera_link::Event &event)
     case EventType::Disconnected:
         if (step == Step::Done)
             return true; // already accepted; the caller cancels
-        endReason = event.status;
         if (event.status == BLE_HCI_CONN_FAILED_TO_BE_ESTABLISHED)
             linkFailed = camera_link::LinkFailure::NotEstablished;
         fail("the camera disconnected (HCI 0x%02x)", event.status);
@@ -546,10 +487,6 @@ void handleEvent(const camera_link::Event &event)
         if (event.type == EventType::WriteDone && writeAccepted(event, camera_link::OLDER_TIME))
             accept();
         break;
-    case Step::Sending:
-        if (event.type == EventType::WriteDone && writePending)
-            onLocationWritten(event);
-        break;
     case Step::Idle:
     case Step::WaitKnown:
     case Step::Done:
@@ -590,16 +527,10 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     }
     memcpy(cardUuid, uuid, sizeof(cardUuid));
     keepOpen = keepConnection;
-    accepted = false;
-    justAccepted = false;
     rejected = false;
     notKnown = false;
     linkFailed = camera_link::LinkFailure::None;
-    endReason = 0;
-    writePending = false;
     timeFromFixLogged = false;
-    locationsWrittenCount = 0;
-    locationsRefused = 0;
     knownByLocationNotify = false;
     knownByTimeNotify = false;
     memset(handles, 0, sizeof(handles));
@@ -617,18 +548,17 @@ Result poll()
     if (step == Step::Idle)
         return Result::Failed;
     // A connection gone without its Disconnected event (camera_link's queue was full): read before the
-    // events, so that a Disconnected queued meanwhile is handled as usual. While sending without a GPS
-    // fix no time limit would end the session.
+    // events, so that a Disconnected queued meanwhile is handled as usual. While waiting for the
+    // Wi-Fi step only the 300 s limit would end the session.
     const bool gone = step != Step::Connecting && !camera_link::connected();
     camera_link::Event event;
-    while (step != Step::Idle && camera_link::nextEvent(&event))
+    while (step != Step::Idle && step != Step::Done && camera_link::nextEvent(&event))
         handleEvent(event);
-    if (justAccepted) {
-        justAccepted = false;
-        return Result::Accepted;
+    if (step == Step::Done) {
+        if (keepOpen)
+            step = Step::Idle; // the connection is the caller's now; its events too
+        return Result::Accepted; // pairing: again at every poll until the caller cancels
     }
-    if (step == Step::Done)
-        return Result::Accepted; // pairing: accepted, the connection stays until the caller cancels
     if (step == Step::Idle)
         return rejected ? Result::Rejected : Result::Failed;
     if (gone) {
@@ -639,8 +569,6 @@ Result poll()
         handleTimeout();
         if (step == Step::Idle)
             return rejected ? Result::Rejected : Result::Failed;
-    } else if (step == Step::Sending && !writePending && millis() - lastLocationMs >= LOCATION_PERIOD_MS) {
-        sendLocation(millis());
     }
     return Result::Running;
 }
@@ -655,19 +583,19 @@ camera_link::LinkFailure linkFailure()
     return linkFailed;
 }
 
-uint16_t disconnectReason()
-{
-    return endReason;
-}
-
 bool cardNotTaken()
 {
     return rejected || notKnown;
 }
 
-uint32_t locationsWritten()
+uint16_t locationHandle()
 {
-    return locationsWrittenCount;
+    return handles[camera_link::OLDER_LOCATION];
+}
+
+uint16_t locationNotifyHandle()
+{
+    return handles[camera_link::OLDER_LOCATION_NOTIFY];
 }
 
 void cancel()
@@ -683,12 +611,7 @@ void cancel()
 
 void logState()
 {
-    if (step == Step::Idle)
-        logger::transient("older: idle (last session: %lu locations written, %lu refused)",
-                          (unsigned long)locationsWrittenCount, (unsigned long)locationsRefused);
-    else
-        logger::transient("older: %s, %lu locations written, %lu refused", stepName(step),
-                          (unsigned long)locationsWrittenCount, (unsigned long)locationsRefused);
+    logger::transient("older: %s", step == Step::Idle ? "idle" : stepName(step));
 }
 
 } // namespace older_session

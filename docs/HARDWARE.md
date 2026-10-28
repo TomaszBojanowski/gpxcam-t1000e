@@ -497,7 +497,10 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   take the card (a refused write of the introduction or the time, or no `01` within 15 s) counts, and the third in a
   row stops the link as a refusal does (`link: 3 connections in a row ended without camera … taking the card`); a
   location the camera takes starts the count again. Up to 1.5.0-beta.5 the first one stopped it. The link also plays
-  the connected sound when an older camera takes the card (up to 1.5.0-beta.5 only the sound of the end). Host tests:
+  the connected sound when an older camera takes the card (up to 1.5.0-beta.5 only the sound of the end). Since
+  1.5.1 the link sends the locations of both dialects: `older_session` ends once the camera took the card, and
+  Normal or Frequent, the rate guard and the line without a fix (once) apply to older cameras too (up to 1.5.0 a
+  location every 5 s whatever the setting, and a line every 5 s without a fix). Host tests:
   `pio test -e native_sessions`.
 
 ## Energy (M6)
