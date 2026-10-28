@@ -1,15 +1,9 @@
-// Normal work with the paired camera, 'link on' / 'link off'. Looks for the camera
-// in one of the search modes of link_policy.h (normal, rare, standby, long standby: scan
-// timing and GPS); connects only to the paired serial number in state 00 and only once the
-// GPS has UTC time (the introduction ends with it). Then it switches the camera's GPS mode
-// on, listens for its notifications and sends the location at once and then by the timing of
-// 'updates' (link_policy.h: every 25 s or 5 s, earlier after moving or when the camera asks) -
-// only with a GPS fix; without one the connection stays. No scanning while connected. After
-// a failure it pauses (5 s, 15 s, 60 s) and looks again; a camera that closes the connection
-// itself (switched off) gives a 5 s pause; a connection that was not established is tried
-// again after 1 s, once. If the camera refuses the card, it stops until 'link on' or a new
-// pairing.
-// (Not named "link": that is a C library function.) Loop task only.
+// Normal work with the paired camera, 'link on' / 'link off': looks for it in the search modes of
+// link_policy.h, connects once the GPS has UTC time, introduces the card in the camera's dialect
+// (camera_session, older_session) and sends the locations by the timing of 'updates' (link_policy.h);
+// pauses after a failure and stops when the camera refuses the card, until 'link on' or a new pairing.
+// In detail: docs/HARDWARE.md, "Normal work". (Not named "link": that is a C library function.)
+// Loop task only.
 #pragma once
 
 #include <stdint.h>

@@ -151,8 +151,7 @@ bool findService();
 bool findCharacteristics(uint16_t startHandle, uint16_t endHandle);
 // Like findCharacteristics, but the CharacteristicsFound events match the older dialect into
 // Event::characteristics::olderList instead. For the older-dialect session, which has no service
-// to search within and so reads across the whole handle range. A newer-dialect connection never
-// calls this, so its discovery is unchanged. Reset by connect().
+// to search within and so reads across the whole handle range. Reset by connect().
 bool findOlderCharacteristics(uint16_t startHandle, uint16_t endHandle);
 bool findDescriptors(uint16_t startHandle, uint16_t endHandle);
 bool read(uint16_t handle);
