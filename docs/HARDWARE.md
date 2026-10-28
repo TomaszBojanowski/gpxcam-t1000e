@@ -689,8 +689,9 @@ Host tests: `pio test -e native_sessions` (the state machines against fakes and 
 
 ## Location updates (1.4.0)
 
-- **Normal:** every 25 s, sooner after 20 m, at most every 5 s (as up to 1.3). **Frequent:** every 5 s, sooner after
-  5 m, at most every 2 s (`link_policy.h`). Stored in byte 6 of `settings.bin`, which 1.3 kept reserved: 1.3 reads the
+- **Normal** (the timing up to 1.3) and **Frequent:** `NORMAL_TIMING` and `FREQUENT_TIMING` in `link_policy.h`,
+  described for users in README.md, "Normal use"; a test of the card page checks that both, the page and the
+  console's help give the same numbers. Stored in byte 6 of `settings.bin`, which 1.3 kept reserved: 1.3 reads the
   file and writes the byte back as 0 (Normal) when it saves.
 - **Guard:** the camera answers a location write in 1–2 connection events (about 50–100 ms); an answer later than 1 s
   counts as late, and after two in one connection the card uses Normal to its end. A connection that did not end by the
