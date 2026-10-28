@@ -522,19 +522,14 @@ void sendLocationIfDue(uint32_t now)
     pendingReason = due;
 }
 
-// The connection is gone but its Disconnected event was lost (camera_link's queue was full; 'p' counts
-// it). Without a GPS fix nothing is written, so no time limit would end the phase. Read before the
-// phase's events, so that a Disconnected queued meanwhile is handled as usual.
-bool linkGone()
-{
-    return !camera_link::connected();
-}
-
 constexpr const char *LOST_WITHOUT_EVENT = "the connection ended without its event";
 
 void connected(uint32_t now)
 {
-    const bool gone = linkGone();
+    // A connection gone with its Disconnected event lost (camera_link's queue was full; 'p' counts it):
+    // without a GPS fix nothing is written, so no time limit would end the phase. Read before the
+    // phase's events, so that a Disconnected queued meanwhile is handled as usual.
+    const bool gone = !camera_link::connected();
     camera_link::Event event;
     while (phase == Phase::Connected && camera_link::nextEvent(&event)) {
         if (handleConnectionEvent(event))
@@ -561,7 +556,7 @@ void connected(uint32_t now)
 // than a time read before the events.
 void settingUp()
 {
-    const bool gone = linkGone();
+    const bool gone = !camera_link::connected(); // as in connected()
     camera_link::Event event;
     const Phase current = phase;
     while (phase == current && camera_link::nextEvent(&event)) {

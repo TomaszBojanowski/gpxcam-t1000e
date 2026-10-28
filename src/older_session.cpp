@@ -259,13 +259,6 @@ void readCameraName()
         readCameraText();
 }
 
-// The card's seed: the last bytes of its own pairing UUID. The computer registers the same seed
-// over Wi-Fi, so the Bluetooth and Wi-Fi identities match.
-void seedFromUuid(uint8_t seed[device_identity::SEED_LENGTH])
-{
-    device_identity::cardSeed(cardUuid, seed);
-}
-
 void writeDeviceName()
 {
     if (!device_identity::nameField(DEVICE_NAME, key, txData)) {
@@ -277,8 +270,8 @@ void writeDeviceName()
 
 void writeDeviceId()
 {
-    uint8_t seed[device_identity::SEED_LENGTH];
-    seedFromUuid(seed);
+    uint8_t seed[device_identity::SEED_LENGTH]; // the same as the computer registers over Wi-Fi
+    device_identity::cardSeed(cardUuid, seed);
     uint8_t identity[device_identity::IDENTITY_LENGTH];
     device_identity::identityBytes(seed, identity);
     device_identity::identityField(identity, key, txData);
