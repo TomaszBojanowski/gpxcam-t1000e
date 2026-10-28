@@ -1577,11 +1577,10 @@ const OLDER_START_TIMEOUT_MS = 270000;
 const PAIR_ATTEMPTS = 3;
 const PAIR_FIX_WAIT_TEXT = "2 minutes";
 const PAIR_SEARCH_TEXT = "2 minutes";
-const TZ_TIMEOUT_MS = 6000; // saving writes flash: about 1 s, more the first time
-const CLOCK_TIMEOUT_MS = 6000; // the clock setting is saved in the same file as the time zone
-const SOUND_TIMEOUT_MS = 6000; // saving writes flash, like the time zone
+// The commands that save a setting (time zone, clock, sound, location updates; 'tz' alone too): saving
+// writes flash, about 1 s, more the first time.
+const SAVE_TIMEOUT_MS = 6000;
 const SOUND_SETTINGS = ["loud", "quiet", "off"]; // src/sound_rules.cpp settingName()
-const UPDATES_TIMEOUT_MS = 6000; // saved in the same file as the sound
 const UPDATES_SETTINGS = ["normal", "frequent"]; // src/link_policy.cpp updatesName()
 const ANSWER_QUIET_MS = 400; // an answer is complete after this long without another of its lines
 const LOG_TIMEOUT_MS = 3000; // 'log' shows the card's last 64 lines at once (src/log.cpp dumpHistory())
@@ -2378,21 +2377,21 @@ class Card {
   }
 
   clock(on) {
-    return this.ask(on ? "clock on" : "clock off", isClockAnswer, CLOCK_TIMEOUT_MS);
+    return this.ask(on ? "clock on" : "clock off", isClockAnswer, SAVE_TIMEOUT_MS);
   }
 
   sound(setting) {
-    return this.ask(`sound ${setting}`, isSoundAnswer, SOUND_TIMEOUT_MS);
+    return this.ask(`sound ${setting}`, isSoundAnswer, SAVE_TIMEOUT_MS);
   }
 
   updates(setting) {
-    return this.ask(`updates ${setting}`, isUpdatesAnswer, UPDATES_TIMEOUT_MS);
+    return this.ask(`updates ${setting}`, isUpdatesAnswer, SAVE_TIMEOUT_MS);
   }
 
   timeZone(name) {
     const command = name ? tzCommand(name) : "tz";
     if (!command) return Promise.reject(new Error(`unknown time zone: ${name}`));
-    return this.ask(command, isTzAnswer, TZ_TIMEOUT_MS);
+    return this.ask(command, isTzAnswer, SAVE_TIMEOUT_MS);
   }
 
   async close() {
@@ -3008,12 +3007,7 @@ function startPage() {
     setStatus(ui.saveStatus, `Saving ${name}...`, "busy");
     ui.saveNote.classList.add("hidden");
     ui.saveLines.textContent = "";
-    let lines = [];
-    try {
-      lines = await card.timeZone(name);
-    } catch (error) {
-      lines = [];
-    }
+    const lines = await card.timeZone(name).catch(() => []);
     const messages = {
       saved: [`Saved: ${name}.`, "good"],
       unchanged: [`${name} was already set on the card.`, "good"],

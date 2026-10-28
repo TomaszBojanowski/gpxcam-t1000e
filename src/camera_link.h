@@ -131,6 +131,14 @@ bool nextEvent(Event *event);
 // and pairing tries again at once on the camera's next advertisement.
 constexpr uint32_t CONNECT_TIMEOUT_MS = 5000;
 
+// How long the sessions and the link wait for an answer: to the MTU exchange, and to every other
+// request of a connection (a discovery, a read, a write).
+constexpr uint32_t MTU_TIMEOUT_MS = 3000;
+constexpr uint32_t REQUEST_TIMEOUT_MS = 5000;
+
+// The log line for a SecurityRequest event, in any session or the link.
+constexpr const char *SECURITY_REQUEST_LINE = "camera: asked for encryption - not answered (as the gpxcam app)";
+
 // Why a session got no link at all, for pairing's quick retries: no answer within
 // CONNECT_TIMEOUT_MS, or the connection not established (HCI 0x3e: the camera sent nothing in
 // its first connection events). None: a link was made, or the session ended some other way.
@@ -140,9 +148,10 @@ enum class LinkFailure : uint8_t { None, NoAnswer, NotEstablished };
 // connection parameters (camera_link.cpp), the radio listening all the time until it connects.
 // Scanning must be off. False if the SoftDevice refused.
 bool connect(const camera_list::Report &camera);
-// Gives up connecting. A connection that comes up all the same is closed at once (camera_link.cpp).
-void cancelConnect();
 bool connected();
+// Gives the connection up, whatever its state: one being made is cancelled (if it comes up all the same
+// it is closed at once, camera_link.cpp), an open one is closed. True if a Disconnected event follows.
+bool close();
 
 // The requests below need a connection; false if the SoftDevice refused.
 bool exchangeMtu(uint16_t mtu);
@@ -150,16 +159,12 @@ bool findService();
 bool findCharacteristics(uint16_t startHandle, uint16_t endHandle);
 // Like findCharacteristics, but the CharacteristicsFound events match the older dialect into
 // Event::characteristics::olderList instead. For the older-dialect session, which has no service
-// to search within and so reads across the whole handle range. A newer-dialect connection never
-// calls this, so its discovery is unchanged. Reset by connect().
+// to search within and so reads across the whole handle range. Reset by connect().
 bool findOlderCharacteristics(uint16_t startHandle, uint16_t endHandle);
 bool findDescriptors(uint16_t startHandle, uint16_t endHandle);
 bool read(uint16_t handle);
 // Write with response. The data must stay unchanged until WriteDone.
 bool write(uint16_t handle, const uint8_t *data, uint16_t length);
-// Closes the connection; one still coming up is closed when it does. False if the SoftDevice refused
-// (no connection yet).
-bool disconnect();
 
 // Events lost because the queue was full, since start.
 uint32_t lostEvents();

@@ -23,8 +23,7 @@ QueueHandle_t eventQueue = nullptr;
 volatile uint16_t connHandle = BLE_CONN_HANDLE_INVALID; // written by the BLE task
 volatile uint32_t lost = 0;
 
-// Whether a connection is wanted: set by connect(), cleared by cancelConnect() and disconnect() (loop
-// task). A connection can come up just as the loop task gives it up: sd_ble_gap_connect_cancel() then
+// Whether a connection is wanted: set by connect(), cleared by close() (loop task). A connection can come up just as the loop task gives it up: sd_ble_gap_connect_cancel() then
 // fails ("connection completed occurred", ble_gap.h) and the Connected event is still on its way, so a
 // session that ends sees no connection and closes none. The BLE task closes such a connection at once
 // instead of handing it to nobody (it would stay open, the camera showing a connection without locations).
@@ -353,12 +352,6 @@ bool connect(const camera_list::Report &camera)
     return false;
 }
 
-void cancelConnect()
-{
-    connectionWanted = false; // first: a connection that completes now is closed by onBleEvent()
-    sd_ble_gap_connect_cancel(); // NRF_ERROR_INVALID_STATE when no connection is being made
-}
-
 bool connected()
 {
     return connHandle != BLE_CONN_HANDLE_INVALID;
@@ -410,9 +403,12 @@ bool write(uint16_t handle, const uint8_t *data, uint16_t length)
     return sd_ble_gattc_write(connHandle, &params) == NRF_SUCCESS;
 }
 
-bool disconnect()
+bool close()
 {
-    connectionWanted = false; // also one that has not come up yet (onBleEvent())
+    connectionWanted = false;    // first: a connection that completes now is closed by onBleEvent()
+    sd_ble_gap_connect_cancel(); // NRF_ERROR_INVALID_STATE when no connection is being made
+    if (!connected())
+        return false;
     return sd_ble_gap_disconnect(connHandle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION) == NRF_SUCCESS;
 }
 

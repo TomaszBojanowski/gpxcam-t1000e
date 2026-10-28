@@ -71,7 +71,7 @@ If something does not work there, please open an issue on GitHub.
 ## Pairing an older camera
 
 > [!WARNING]
-> **Older cameras (LUMIX Sync generation): experimental.** Pairing and everyday use with an older camera are tested by the author with an S5II, which speaks the older protocol too, but not yet confirmed on a camera of the S5 generation: the one field test so far, with a LUMIX S5, has not connected. If you own an S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H or BGH1 and are willing to spend an hour testing, please say so in [issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2).
+> **Older cameras: experimental.** Pairing and everyday use with an older camera are tested by the author with an S5II, which speaks the older protocol too, but not yet confirmed on a camera of the S5 generation: the one field test so far, with a LUMIX S5, has not connected. If you own an S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H or BGH1 and are willing to spend an hour testing, please say so in [issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2).
 
 Most newer LUMIX cameras (S5II and the like) pair straight from the card page or this app with
 *Pair*. **Older** cameras — the ones that pair with the older Panasonic phone app, not LUMIX Lab —
@@ -95,15 +95,13 @@ camera the moment it starts advertising, and the card will not get in.
 3. **Only when the app says *Now start Bluetooth pairing on the camera*** do it (the camera's
    Bluetooth menu → Pairing). The order matters: the camera stays in pairing mode only about 30
    seconds, so the card must already be looking for it (for up to 2 minutes). The card introduces
-   itself over Bluetooth; the camera then shows a Wi-Fi network and a password on its screen.
-4. Join that Wi-Fi network on this computer, by hand. The app registers the card over the camera's
-   own address (192.168.54.1) — never the internet — and tells you how it went.
-
-Join the camera's Wi-Fi network shown on its screen. On the S5 and similar it has **no password by
-default**, so just pick it from the list. If the camera asks for one, the password is on the camera's
-screen or in its Wi-Fi setup: **[Setup] → [Wi-Fi] → [Wi-Fi Setup] → [Wi-Fi Password]** (see the
-[S5 manual](https://eww.pavc.panasonic.co.jp/dscoi/DC-S5/GA_GW_GC_GH_GN_GT_GD/DC-S5_DVQP2213ZD_full_eng.pdf),
-pages 424–426).
+   itself over Bluetooth; the camera then shows its Wi-Fi network on its screen.
+4. Join that Wi-Fi network on this computer, by hand. On the S5 and similar it has **no password by
+   default**, so just pick it from the list; if the camera asks for one, it is on the camera's screen
+   or in its Wi-Fi setup: **[Setup] → [Wi-Fi] → [Wi-Fi Setup] → [Wi-Fi Password]** (see the
+   [S5 manual](https://eww.pavc.panasonic.co.jp/dscoi/DC-S5/GA_GW_GC_GH_GN_GT_GD/DC-S5_DVQP2213ZD_full_eng.pdf),
+   pages 424–426). The app registers the card over the camera's own address (192.168.54.1) — never
+   the internet — and tells you how it went.
 
 If the card does not find the camera, click *Pair* (or *Start*) again: the card keeps its GPS on for
 10 minutes after a pairing that did not succeed, so it starts looking for the camera at once.

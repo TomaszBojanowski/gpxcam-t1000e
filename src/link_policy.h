@@ -60,8 +60,7 @@ struct LocationTiming {
 // As the gpxcam app: every 25 s, after 20 m, at most every 5 s.
 constexpr LocationTiming NORMAL_TIMING = {25000, 5000, 20};
 // Every 5 s, after 5 m (GPS noise is 2-5 m), at most every 2 s (the GPS gives a fix every
-// second; 2 s halves the writes a car would cause). Endurance test with the S5II on
-// 2026-10-24: 8 h in one connection, about 5950 locations, answers 58-244 ms.
+// second; 2 s halves the writes a car would cause).
 constexpr LocationTiming FREQUENT_TIMING = {5000, 2000, 5};
 
 // The 'updates' setting: the timing the card asks for. Stored as a byte in the settings file:

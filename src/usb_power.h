@@ -1,5 +1,5 @@
-// A guard around TinyUSB's handler of the USB power events (detected, ready, removed), against
-// the hang of 2026-10-24.
+// A guard around TinyUSB's handler of the USB power events (detected, ready, removed), against a
+// hang when the cable bounces.
 //
 // tusb_hal_nrf_power_event() (Adafruit_TinyUSB_Arduino 3.1.3, src/portable/nordic/nrf5x/
 // dcd_nrf5x.c) waits without a limit, on the READY event, first for the USBD peripheral to be

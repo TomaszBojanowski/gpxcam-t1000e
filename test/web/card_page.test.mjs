@@ -973,13 +973,14 @@ test("the page offers every location updates setting of the firmware, each with 
   assert.match(html, /<fieldset id="updates" class="segmented">/);
 });
 
-// The timings in the page's words are the firmware's (src/link_policy.h).
+// The timings in the page's words, the card's help ('help', src/main.cpp) and README.md (the one place in the
+// documentation that gives them) are the firmware's (src/link_policy.h).
 test("the location updates are explained with the firmware's timings", () => {
   const source = readFileSync(new URL("../../src/link_policy.h", import.meta.url), "utf8");
   const timing = (name) => {
     const match = new RegExp(`${name} = \\{(\\d+), (\\d+), (\\d+)\\}`).exec(source);
     assert.ok(match, name);
-    return { seconds: Number(match[1]) / 1000, metres: Number(match[3]) };
+    return { seconds: Number(match[1]) / 1000, minGapSeconds: Number(match[2]) / 1000, metres: Number(match[3]) };
   };
   const normal = timing("NORMAL_TIMING");
   const frequent = timing("FREQUENT_TIMING");
@@ -994,6 +995,12 @@ test("the location updates are explained with the firmware's timings", () => {
   assert.match(page.updatesNoteText(), /^The camera keeps the last position it got/);
   assert.match(page.updatesNowText({ ...STATE, updates: "frequent", updatesNow: "normal" }),
     new RegExp(`^For now every ${normal.seconds} seconds: the camera answers slowly\\.`));
+  const help = readFileSync(new URL("../../src/main.cpp", import.meta.url), "utf8");
+  assert.ok(help.includes(`locations every ${normal.seconds} s or every ${frequent.seconds} s`));
+  const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8").replace(/\s+/g, " ");
+  assert.ok(readme.includes(`with **Normal** location updates, every ${normal.seconds} s – earlier when it moves ` +
+    `more than ${normal.metres} m; with **Frequent** (1.4.0) every ${frequent.seconds} s – earlier when it moves ` +
+    `more than ${frequent.metres} m, at most every ${frequent.minGapSeconds} s.`));
 });
 
 test("the answers to 'updates normal|frequent' are told apart and explained", async () => {
@@ -1175,6 +1182,9 @@ test("the pairing stages and results are explained", () => {
   assert.equal(page.classifyUnpairAnswer(["pair: not available"]), "failed");
   assert.equal(page.classifyUnpairAnswer(
     ["pair: not possible - the file system is damaged ('storage format yes' first)"]), "storage-damaged");
+  // The card's line (src/pairing_store.h NOT_WRITABLE_LINE) must stay the one the page knows.
+  const store = readFileSync(new URL("../../src/pairing_store.h", import.meta.url), "utf8");
+  assert.ok(store.includes("\"pair: not possible - the file system is damaged ('storage format yes' first)\""));
   assert.match(page.unpairAnswerText("storage-damaged")[0], /^The card cannot change the pairing while/);
   assert.equal(page.unpairAnswerText("storage-damaged")[1], "bad");
   assert.equal(page.classifyUnpairAnswer([]), "none");

@@ -321,18 +321,18 @@ bool ready()
     return true;
 }
 
-void scanOn(Lines lines)
+void scanOn(LogTo logTo)
 {
-    if (lines == Lines::Kept)
+    if (logTo == LogTo::History)
         fake::keptScanLines++;
     fake::scanning = true;
     fake::scanForDump = false;
     fake::seen.used = false; // as bluetooth::scanOn(): the camera list starts empty
 }
 
-void scanOff(Lines lines)
+void scanOff(LogTo logTo)
 {
-    if (fake::scanning && lines == Lines::Kept)
+    if (fake::scanning && logTo == LogTo::History)
         fake::keptScanLines++;
     fake::scanning = false;
 }

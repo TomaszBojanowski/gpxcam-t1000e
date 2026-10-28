@@ -50,22 +50,9 @@ constexpr uint32_t MS_PER_DECISECOND = 100;
 //    see the camera again in that mode.
 constexpr uint32_t SCAN_SILENCE_MS = 5000;
 
-// Transmit power +8 dBm, the most the nRF52840 has (ble_gap.h, sd_ble_gap_tx_power_set(): the
-// accepted values go up to +8 dBm), instead of the SoftDevice's default 0 dBm: on the walk of
-// 2026-10-24 the connection to the camera was lost when the card was only a few metres away,
-// carried by another person. It helps the card -> camera direction only.
-//  - Set once for the scanner and initiator role: "the initiator will have the same transmit
-//    power as the scanner" and "when a connection is created it will inherit the transmit power
-//    from the initiator" (ble_gap.h), so the connection gets it too. Bluefruit.setTxPower() sets
-//    only the advertiser's power, which the card does not use (BLEAdvertising.cpp).
-//  - Cost (estimate, not measured): without DC/DC, as on this card (docs/HARDWARE.md), the radio
-//    draws 32.7 mA instead of 10.6 mA while it transmits (nRF52840 PS v1.1 6.20.15.2), for about
-//    0.1-0.2 ms of every 48.75 ms connection event: about 0.05-0.1 mA more, about 1 % of the
-//    7-8 mA of a connection.
-//  - EU: 2400-2483.5 MHz wideband data transmission allows 100 mW (20 dBm) e.i.r.p., and 10 mW/MHz
-//    (10 dBm/MHz) for modulations other than frequency hopping (ERC/REC 70-03 annex 3, ETSI
-//    EN 300 328). +8 dBm from the chip stays within both while the antenna gain is at most
-//    2 dBi; Seeed does not state the gain of the card's antenna.
+// Transmit power +8 dBm, the most of the nRF52840 (ble_gap.h), for a steadier connection a few metres away.
+// Set for the scanner and initiator role, whose power a connection inherits (ble_gap.h); Bluefruit.setTxPower()
+// sets only the advertiser's (BLEAdvertising.cpp). Cost and EU limits: docs/HARDWARE.md, "Transmit power".
 constexpr int8_t TX_POWER_DBM = 8;
 bool txPowerSet = false;
 
@@ -147,9 +134,9 @@ uint32_t resumeFailuresSeen = 0; // the watchdog's last look at resumeFailuresTo
 bool resumeRestartLogged = false; // a restart after a failed resume: one line per scan, then counted only
 bool startFailureLogged = false;  // "could not start" once until a scan starts again
 
-void logScanLine(bluetooth::Lines lines, const char *text)
+void logScanLine(bluetooth::LogTo logTo, const char *text)
 {
-    if (lines == bluetooth::Lines::Kept)
+    if (logTo == bluetooth::LogTo::History)
         logger::line("%s", text);
     else
         logger::transient("%s", text);
@@ -157,17 +144,17 @@ void logScanLine(bluetooth::Lines lines, const char *text)
 
 // "<first>, <rest>" in one line when it fits the card's line (logger::TEXT_MAX), else <first> and then
 // "<restPrefix><rest>" in a line of its own, so that nothing is cut.
-void logInParts(bluetooth::Lines lines, const char *first, const char *restPrefix, const char *rest)
+void logInParts(bluetooth::LogTo logTo, const char *first, const char *restPrefix, const char *rest)
 {
     char text[logger::LINE_MAX];
     if (strlen(first) + 2 + strlen(rest) <= logger::TEXT_MAX) {
         snprintf(text, sizeof(text), "%s, %s", first, rest);
-        logScanLine(lines, text);
+        logScanLine(logTo, text);
         return;
     }
-    logScanLine(lines, first);
+    logScanLine(logTo, first);
     snprintf(text, sizeof(text), "%s%s", restPrefix, rest);
-    logScanLine(lines, text);
+    logScanLine(logTo, text);
 }
 
 Counts countsNow()
@@ -292,7 +279,7 @@ void logCamera(const char *what, const camera_list::Report &report)
     snprintf(prefix, sizeof(prefix), "scan: camera %s: ", serial);
     snprintf(rest, sizeof(rest), "%s %s, %d dBm, %s", address, camera_list::addressTypeName(report.addressType),
              report.rssi, advert_kind::name(report.kind));
-    logInParts(bluetooth::Lines::Kept, first, prefix, rest); // two lines only for the longest state names
+    logInParts(bluetooth::LogTo::History, first, prefix, rest); // two lines only for the longest state names
 }
 
 void logLost(const camera_list::Entry &entry)
@@ -357,7 +344,7 @@ bool begin()
     return true;
 }
 
-void scanOn(Lines lines)
+void scanOn(LogTo logTo)
 {
     if (!started) {
         logger::line("scan: not possible, the SoftDevice did not start");
@@ -391,7 +378,7 @@ void scanOn(Lines lines)
     char text[logger::LINE_MAX];
     snprintf(text, sizeof(text), "scan: on - active, radio %u ms of every %u ms, logging LUMIX cameras only",
              scanWindowMs, scanIntervalMs);
-    logScanLine(lines, text);
+    logScanLine(logTo, text);
 }
 
 bool setScanTiming(uint16_t intervalMs, uint16_t windowMs)
@@ -422,7 +409,7 @@ void setNormalScanTiming()
     setScanTiming(SCAN_INTERVAL_MS, SCAN_WINDOW_MS);
 }
 
-void scanOff(Lines lines)
+void scanOff(LogTo logTo)
 {
     if (!scanActive)
         return;
@@ -437,7 +424,7 @@ void scanOff(Lines lines)
              (unsigned long)counts.reports, (unsigned long)cameraReports);
     snprintf(rest, sizeof(rest), "%lu other Panasonic, %lu dropped, %lu untracked", (unsigned long)counts.otherPanasonic,
              (unsigned long)counts.dropped, (unsigned long)untracked);
-    logInParts(lines, first, "scan: ", rest); // one line but with very large counts
+    logInParts(logTo, first, "scan: ", rest); // one line but with very large counts
 }
 
 bool scanning()

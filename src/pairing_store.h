@@ -19,6 +19,10 @@ bool ready();
 
 // The pairing can be changed: ready and the file system works (not a pairing from the copy alone).
 bool writable();
+// The log line when a change of the pairing is refused because it is not writable(). The card page
+// knows it (docs/index.html, test/web/card_page.test.mjs): keep it as it is.
+constexpr const char *NOT_WRITABLE_LINE =
+    "pair: not possible - the file system is damaged ('storage format yes' first)";
 
 const pairing_record::Record &record();
 

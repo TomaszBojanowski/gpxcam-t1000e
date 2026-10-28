@@ -43,8 +43,8 @@ private:
 };
 
 // USB counts as plugged in, ending a run on the battery and writing the batch, only after
-// USB_STABLE_MS without a break. A magnetic cable that bounces gives short pulses of USB power;
-// on 2026-10-24 a batch write started on one of them was cut off by the hang that followed.
+// USB_STABLE_MS without a break. A magnetic cable that bounces gives short pulses of USB power, and
+// a batch write started on one of them can be cut off by a hang (usb_power.h).
 constexpr uint32_t USB_STABLE_MS = 10000;
 
 class StableUsb {

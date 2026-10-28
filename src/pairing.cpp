@@ -26,8 +26,7 @@ constexpr uint32_t FIX_WAIT_MS = 120000;
 constexpr uint32_t SEARCH_MS = 120000;
 // The GPS stays on for a pairing to come, so that it skips the wait for GPS time: after a session that
 // did not pair (another try), and after 'pair prepare' (the card page sends it on connecting).
-constexpr uint32_t RETRY_GPS_HOLD_MS = 600000;
-constexpr uint32_t PREPARE_GPS_HOLD_MS = 600000;
+constexpr uint32_t GPS_HOLD_MS = 600000;
 constexpr int MAX_ATTEMPTS = 3;
 constexpr uint32_t PAUSE_MS[MAX_ATTEMPTS - 1] = {10000, 30000}; // after attempts 1 and 2
 // A connection that never came up (camera_link::LinkFailure) is tried again at once, at the camera's next
@@ -87,11 +86,6 @@ void releaseGpsHold(uint32_t now)
     gps::off(); // about 2 s: Backup mode for the next hot start
 }
 
-void formatSerial(const uint8_t serial[lumix::SERIAL_LENGTH], char (&out)[2 * lumix::SERIAL_LENGTH + 1])
-{
-    lumix::formatSerial(serial, out, sizeof(out));
-}
-
 // Ends the session. The link starts again if it was on or a camera was just paired: it takes
 // GPS and scanning over as they are. Otherwise they go back to how they were, but a GPS switched
 // on for the session stays on for another try (not before System OFF: resumeLink false).
@@ -113,7 +107,7 @@ void finish(bool resumeLink = true)
     if (gpsWasOn)
         return;
     if (resumeLink)
-        holdGps(RETRY_GPS_HOLD_MS, "for another try");
+        holdGps(GPS_HOLD_MS, "for another try");
     else
         gps::off(); // about 2 s: Backup mode for the next hot start
 }
@@ -129,7 +123,7 @@ void giveUp(Result result, const char *reason)
 void succeed()
 {
     char serial[2 * lumix::SERIAL_LENGTH + 1];
-    formatSerial(cameraSerial, serial);
+    lumix::formatSerial(cameraSerial, serial, sizeof(serial));
     if (pairing_store::saveCamera(cameraSerial,
                                  olderMode ? pairing_record::DIALECT_OLDER : pairing_record::DIALECT_NEWER)) {
         logger::line("pair: paired with camera %s", serial);
@@ -191,7 +185,7 @@ void introduce(const camera_list::Entry &camera)
     memcpy(cameraSerial, camera.last.camera.serial, sizeof(cameraSerial));
     lastCamera = camera.last; // kept in case 'pair' must switch to the older dialect
     char serial[2 * lumix::SERIAL_LENGTH + 1];
-    formatSerial(cameraSerial, serial);
+    lumix::formatSerial(cameraSerial, serial, sizeof(serial));
     logger::line("pair: attempt %d/%d - camera %s in pairing mode, %d dBm, connecting", attempt, MAX_ATTEMPTS, serial,
                  camera.last.rssi);
     const bool ok = olderMode ? older_session::start(camera.last, pairing_store::record().uuid, false)
@@ -231,7 +225,7 @@ void logNotInPairingMode(const camera_list::Entry &camera)
         return;
     otherStateLogged = true;
     char serial[2 * lumix::SERIAL_LENGTH + 1];
-    formatSerial(camera.last.camera.serial, serial);
+    lumix::formatSerial(camera.last.camera.serial, serial, sizeof(serial));
     logger::line("pair: camera %s is %s (%02x), not in pairing mode - choose pairing on the camera", serial,
                  lumix::stateName(camera.last.camera.state), camera.last.camera.state);
 }
@@ -264,7 +258,7 @@ void search(uint32_t now)
 void switchToOlder()
 {
     char serial[2 * lumix::SERIAL_LENGTH + 1];
-    formatSerial(cameraSerial, serial);
+    lumix::formatSerial(cameraSerial, serial, sizeof(serial));
     logger::line("pair: camera %s has no newer-dialect service - switching to the older dialect", serial);
     olderMode = true;
     autoDialect = false;
@@ -330,11 +324,7 @@ const char *phaseText()
     return "?";
 }
 
-} // namespace
-
-namespace pairing {
-
-static void startSession(bool older)
+void startSession(bool older)
 {
     if (phase != Phase::Idle) {
         logger::line("pair: already running");
@@ -347,7 +337,7 @@ static void startSession(bool older)
         return;
     }
     if (!pairing_store::writable()) { // a pairing from its copy alone: it could not be saved
-        logger::line("pair: not possible - the file system is damaged ('storage format yes' first)");
+        logger::line("%s", pairing_store::NOT_WRITABLE_LINE);
         sound::playRefuse(sound::Kind::HoldAnswer);
         lastResult = Result::NotPossible;
         return;
@@ -375,6 +365,10 @@ static void startSession(bool older)
     enter(Phase::WaitingForFix);
 }
 
+} // namespace
+
+namespace pairing {
+
 void start()
 {
     startSession(false);
@@ -395,7 +389,7 @@ void prepare()
         logger::line("pair: the link runs the GPS - nothing to prepare");
         return;
     }
-    holdGps(PREPARE_GPS_HOLD_MS, "ready for pairing");
+    holdGps(GPS_HOLD_MS, "ready for pairing");
 }
 
 uint32_t gpsHoldSeconds()

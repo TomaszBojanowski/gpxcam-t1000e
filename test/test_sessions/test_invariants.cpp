@@ -42,28 +42,10 @@ const StepCase OLDER_STEPS[] = {
     {Request::Write, fake::OLDER_TIME, "time"},
 };
 
-camera_list::Report cameraOn()
-{
-    camera_list::Report report = {};
-    memcpy(report.camera.serial, fake::SERIAL, sizeof(report.camera.serial));
-    report.camera.state = lumix::STATE_ON;
-    report.rssi = -50;
-    report.kind = advert_kind::Kind::Connectable;
-    return report;
-}
-
 void withGps()
 {
     fake::gpsOn = true;
     fake::gpsFix = true;
-}
-
-template <class Poll> void pollFor(uint32_t ms, Poll poll)
-{
-    for (uint32_t done = 0; done < ms; done += fake::LOOP_STEP_MS) {
-        fake::advance(fake::LOOP_STEP_MS);
-        poll();
-    }
 }
 
 // 'link on' with the camera on and a fix; true once the link is in the connection (or still connecting).
@@ -84,18 +66,19 @@ void test_camera_session_cancel_closes_the_connection_in_every_step()
         fake::reset();
         fake::camera.silent = {step.request, step.handle};
         withGps();
-        TEST_ASSERT_TRUE(camera_session::start(cameraOn(), fake::record.uuid, true));
-        pollFor(50, [] { camera_session::poll(); });
+        TEST_ASSERT_TRUE(camera_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
+        fake::pollFor(50, [] { camera_session::poll(); });
         TEST_ASSERT_TRUE_MESSAGE(fake::linkUp(), step.name);
         camera_session::cancel();
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), step.name);
+        TEST_ASSERT_FALSE_MESSAGE(fake::connectionWanted(), step.name);
     }
-    fake::reset(); // and while connecting
+    fake::reset(); // and while connecting: a connection that comes up now is closed at once
     fake::camera.answer = fake::Answer::NoAnswer;
     withGps();
-    TEST_ASSERT_TRUE(camera_session::start(cameraOn(), fake::record.uuid, true));
+    TEST_ASSERT_TRUE(camera_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
     camera_session::cancel();
-    TEST_ASSERT_EQUAL(1, fake::askedCount("cancel connect"));
+    TEST_ASSERT_FALSE(fake::connectionWanted());
 }
 
 void test_older_session_cancel_closes_the_connection_in_every_step()
@@ -105,21 +88,31 @@ void test_older_session_cancel_closes_the_connection_in_every_step()
         fake::camera.dialect = fake::Dialect::Older;
         fake::camera.silent = {step.request, step.handle};
         withGps();
-        TEST_ASSERT_TRUE(older_session::start(cameraOn(), fake::record.uuid, true));
-        pollFor(50, [] { older_session::poll(); });
+        TEST_ASSERT_TRUE(older_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
+        fake::pollFor(50, [] { older_session::poll(); });
         TEST_ASSERT_TRUE_MESSAGE(fake::linkUp(), step.name);
         older_session::cancel();
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), step.name);
+        TEST_ASSERT_FALSE_MESSAGE(fake::connectionWanted(), step.name);
     }
     fake::reset(); // and while it waits for 01
     fake::camera.dialect = fake::Dialect::Older;
     fake::camera.knowsCard = false;
     withGps();
-    TEST_ASSERT_TRUE(older_session::start(cameraOn(), fake::record.uuid, false));
-    pollFor(1000, [] { older_session::poll(); });
+    TEST_ASSERT_TRUE(older_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, false));
+    fake::pollFor(1000, [] { older_session::poll(); });
     TEST_ASSERT_TRUE(fake::linkUp());
     older_session::cancel();
     TEST_ASSERT_FALSE(fake::linkUp());
+    TEST_ASSERT_FALSE(fake::connectionWanted());
+
+    fake::reset(); // and while connecting
+    fake::camera.dialect = fake::Dialect::Older;
+    fake::camera.answer = fake::Answer::NoAnswer;
+    withGps();
+    TEST_ASSERT_TRUE(older_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
+    older_session::cancel();
+    TEST_ASSERT_FALSE(fake::connectionWanted());
 }
 
 void test_link_off_closes_the_connection_in_every_phase()
@@ -136,7 +129,7 @@ void test_link_off_closes_the_connection_in_every_phase()
         {pairing_record::DIALECT_NEWER, fake::Descriptors::Cccd, {Request::Write, 0x001F, "notifications"}},
         {pairing_record::DIALECT_NEWER, fake::Descriptors::NoCccd, {Request::None, 0, "connected"}},
         {pairing_record::DIALECT_OLDER, fake::Descriptors::NoCccd, {Request::Write, fake::OLDER_TIME, "older"}},
-        {pairing_record::DIALECT_OLDER, fake::Descriptors::NoCccd, {Request::None, 0, "older, sending"}},
+        {pairing_record::DIALECT_OLDER, fake::Descriptors::NoCccd, {Request::None, 0, "older, connected"}},
     };
     for (const PhaseCase &phase : PHASES) {
         fake::reset();
@@ -148,6 +141,17 @@ void test_link_off_closes_the_connection_in_every_phase()
         TEST_ASSERT_TRUE_MESSAGE(fake::linkUp(), phase.silentAt.name);
         link_control::stop(false);
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), phase.silentAt.name);
+        TEST_ASSERT_FALSE_MESSAGE(fake::connectionWanted(), phase.silentAt.name);
+    }
+    for (const uint8_t dialect : {pairing_record::DIALECT_NEWER, pairing_record::DIALECT_OLDER}) {
+        fake::reset(); // while connecting
+        if (dialect == pairing_record::DIALECT_OLDER)
+            fake::camera.dialect = fake::Dialect::Older;
+        fake::camera.answer = fake::Answer::NoAnswer;
+        startLink(dialect);
+        TEST_ASSERT_EQUAL(1, fake::askedCount("connect"));
+        link_control::stop(false);
+        TEST_ASSERT_FALSE(fake::connectionWanted());
     }
 }
 
@@ -161,6 +165,7 @@ void test_pairing_closes_the_connection_when_cancelled_or_done()
     TEST_ASSERT_TRUE(fake::linkUp());
     pairing::stop();
     TEST_ASSERT_FALSE(fake::linkUp());
+    TEST_ASSERT_FALSE(fake::connectionWanted());
 
     fake::reset(); // older dialect, while it waits for the Wi-Fi step
     fake::camera.dialect = fake::Dialect::Older;
@@ -172,6 +177,7 @@ void test_pairing_closes_the_connection_when_cancelled_or_done()
     TEST_ASSERT_TRUE(fake::linkUp());
     pairing::stop();
     TEST_ASSERT_FALSE(fake::linkUp());
+    TEST_ASSERT_FALSE(fake::connectionWanted());
 
     fake::reset(); // older dialect, accepted: pairing closes the connection the session kept open
     fake::camera.dialect = fake::Dialect::Older;
@@ -182,6 +188,7 @@ void test_pairing_closes_the_connection_when_cancelled_or_done()
     TEST_ASSERT_FALSE(pairing::active());
     TEST_ASSERT_TRUE(fake::record.paired);
     TEST_ASSERT_FALSE(fake::linkUp());
+    TEST_ASSERT_FALSE(fake::connectionWanted());
 }
 
 void runInvariantTests()

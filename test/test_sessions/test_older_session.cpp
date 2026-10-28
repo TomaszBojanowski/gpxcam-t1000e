@@ -9,30 +9,14 @@ using older_session::Result;
 
 namespace {
 
-camera_list::Report cameraOn()
-{
-    camera_list::Report report = {};
-    memcpy(report.camera.serial, fake::SERIAL, sizeof(report.camera.serial));
-    report.camera.state = lumix::STATE_ON;
-    report.rssi = -50;
-    report.kind = advert_kind::Kind::Connectable;
-    return report;
-}
-
 // A lasting connection (the link's): polled on the test clock until it is not Running (at most 60 s).
 Result runLasting()
 {
     fake::gpsOn = true;
     fake::gpsFix = true;
     fake::camera.dialect = fake::Dialect::Older;
-    TEST_ASSERT_TRUE(older_session::start(cameraOn(), fake::record.uuid, true));
-    const uint32_t start = fake::now();
-    Result result = Result::Running;
-    while (result == Result::Running && fake::now() - start < 60000) {
-        fake::advance(fake::LOOP_STEP_MS);
-        result = older_session::poll();
-    }
-    return result;
+    TEST_ASSERT_TRUE(older_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
+    return fake::runSession(older_session::poll);
 }
 
 } // namespace
@@ -74,14 +58,18 @@ void test_older_session_refused_identifier_is_rejected()
     TEST_ASSERT_FALSE(fake::linkUp());
 }
 
-void test_older_session_switch_off_gives_its_reason()
+// A lasting connection: once the camera takes the card, the open connection is the caller's (link_control
+// sends the locations); the session sends none and its cancel() no longer closes it.
+void test_older_session_hands_a_lasting_connection_over()
 {
     TEST_ASSERT_EQUAL(Result::Accepted, runLasting());
-    fake::endConnection(0x13);
-    fake::advance(fake::LOOP_STEP_MS);
-    TEST_ASSERT_EQUAL(Result::Failed, older_session::poll());
-    TEST_ASSERT_EQUAL_HEX16(0x13, older_session::disconnectReason());
-    TEST_ASSERT_FALSE(older_session::cardNotTaken());
+    TEST_ASSERT_EQUAL_HEX16(fake::OLDER_LOCATION, older_session::locationHandle());
+    TEST_ASSERT_EQUAL_HEX16(fake::OLDER_LOCATION_NOTIFY, older_session::locationNotifyHandle());
+    fake::advance(30000);
+    TEST_ASSERT_EQUAL(Result::Failed, older_session::poll()); // idle
+    TEST_ASSERT_EQUAL(0, fake::askedCount("write 0050"));
+    older_session::cancel();
+    TEST_ASSERT_TRUE(fake::linkUp());
 }
 
 void runOlderSessionTests()
@@ -91,5 +79,5 @@ void runOlderSessionTests()
     RUN_TEST(test_older_session_takes_01_on_the_time_notify);
     RUN_TEST(test_older_session_without_01_is_a_card_not_taken_after_15_s);
     RUN_TEST(test_older_session_refused_identifier_is_rejected);
-    RUN_TEST(test_older_session_switch_off_gives_its_reason);
+    RUN_TEST(test_older_session_hands_a_lasting_connection_over);
 }

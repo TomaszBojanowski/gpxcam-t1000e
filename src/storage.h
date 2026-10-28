@@ -3,9 +3,9 @@
 // without a command when it holds data.
 //
 // Bluefruit.begin() calls InternalFS.begin() (bond_init(), bonding.cpp), which erases and formats
-// the whole area when it cannot mount it (InternalFileSystem.cpp). On 2026-10-24 a flash write cut
-// off by a hang left it unmountable, and that format erased the pairing, the time zone and the
-// settings at the next start. So begin() runs before Bluefruit.begin():
+// the whole area when it cannot mount it (InternalFileSystem.cpp): after a flash write cut off by a
+// hang, that format would erase the pairing, the time zone and the settings. So begin() runs before
+// Bluefruit.begin():
 //  - the file system mounts and every directory and file's block list can be read: Bluefruit finds
 //    it mounted and leaves it alone (one that mounts but has a damaged block is taken as damaged, as
 //    littlefs would stop the card in an assert at its first write, storage.cpp);

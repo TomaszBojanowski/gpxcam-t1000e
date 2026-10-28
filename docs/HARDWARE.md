@@ -497,7 +497,10 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
   take the card (a refused write of the introduction or the time, or no `01` within 15 s) counts, and the third in a
   row stops the link as a refusal does (`link: 3 connections in a row ended without camera … taking the card`); a
   location the camera takes starts the count again. Up to 1.5.0-beta.5 the first one stopped it. The link also plays
-  the connected sound when an older camera takes the card (up to 1.5.0-beta.5 only the sound of the end). Host tests:
+  the connected sound when an older camera takes the card (up to 1.5.0-beta.5 only the sound of the end). Since
+  1.5.1 the link sends the locations of both dialects: `older_session` ends once the camera took the card, and
+  Normal or Frequent, the rate guard and the line without a fix (once) apply to older cameras too (up to 1.5.0 a
+  location every 5 s whatever the setting, and a line every 5 s without a fix). Host tests:
   `pio test -e native_sessions`.
 
 ## Energy (M6)
@@ -686,8 +689,9 @@ Host tests: `pio test -e native_sessions` (the state machines against fakes and 
 
 ## Location updates (1.4.0)
 
-- **Normal:** every 25 s, sooner after 20 m, at most every 5 s (as up to 1.3). **Frequent:** every 5 s, sooner after
-  5 m, at most every 2 s (`link_policy.h`). Stored in byte 6 of `settings.bin`, which 1.3 kept reserved: 1.3 reads the
+- **Normal** (the timing up to 1.3) and **Frequent:** `NORMAL_TIMING` and `FREQUENT_TIMING` in `link_policy.h`,
+  described for users in README.md, "Normal use"; a test of the card page checks that both, the page and the
+  console's help give the same numbers. Stored in byte 6 of `settings.bin`, which 1.3 kept reserved: 1.3 reads the
   file and writes the byte back as 0 (Normal) when it saves.
 - **Guard:** the camera answers a location write in 1–2 connection events (about 50–100 ms); an answer later than 1 s
   counts as late, and after two in one connection the card uses Normal to its end. A connection that did not end by the

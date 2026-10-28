@@ -20,18 +20,19 @@ namespace bluetooth {
 // Returns false if the SoftDevice did not start; the card then works without BLE.
 bool begin();
 
-// Whether the line of a scan's start and its summary go into the log history (Kept) or are only sent
-// (Sent): the link's scans between connection attempts would push the history's events out.
-enum class Lines : uint8_t { Kept, Sent };
+// Where the line of a scan's start and its summary go: into the log history and to USB (logger::line),
+// or to USB only (logger::transient): the link's scans between connection attempts would push the
+// history's events out.
+enum class LogTo : uint8_t { History, SerialOnly };
 
 // Starts an active scan for LUMIX cameras (radio on 50 ms of every 100 ms unless
 // setScanTiming() said otherwise) until scanOff(). Only cameras are logged: when first
 // seen, when their state or address changes and when not seen for 30 s; a status line
 // follows every 10 s. A scan that cannot start is logged once until one starts again.
-void scanOn(Lines lines = Lines::Kept);
+void scanOn(LogTo logTo = LogTo::History);
 
 // Stops scanning and logs a summary. Does nothing if not scanning (also before begin()).
-void scanOff(Lines lines = Lines::Kept);
+void scanOff(LogTo logTo = LogTo::History);
 
 // Radio on windowMs of every intervalMs (slower when the camera is away or in
 // standby); applied at once if scanning, kept for the next scanOn(). During a 'diag scan'

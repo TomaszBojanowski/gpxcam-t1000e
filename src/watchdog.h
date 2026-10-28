@@ -1,7 +1,5 @@
-// The nRF52840 watchdog (PS v1.1 6.36): restarts the card when the main loop stops running.
-// On 2026-10-24 the card hung after a bouncing USB cable: a busy wait in TinyUSB's USB power
-// event (dcd_nrf5x.c) kept the Bluefruit SOC task, of a higher priority, running, so the loop
-// never ran again (no LED, no button) until a pin reset.
+// The nRF52840 watchdog (PS v1.1 6.36): restarts the card when the main loop stops running, for
+// example when a busy wait in a task of a higher priority keeps it from running (usb_power.h).
 //
 // Facts it relies on:
 //  - Once started it cannot be stopped; only a watchdog, pin, brownout or power-on reset stops
