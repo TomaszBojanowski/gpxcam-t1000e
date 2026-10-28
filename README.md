@@ -10,33 +10,8 @@ that sends the phone's position to the camera; the gpxcam app and its repository
 *SenseCAP T1000-E next to a LUMIX S5II. The card is the camera's only GPS source, no phone involved.*
 
 Status: pairing, everyday use with the camera and power saving all work and are tested with a
-LUMIX S5II. The latest version is on the
+LUMIX S5II. The latest version, and what changed in each, is on the
 [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases) page.
-
-## What's new in 1.5.0
-
-- **Older LUMIX cameras, experimental.** The card can now also pair with cameras that use the older
-  Panasonic phone app, not LUMIX Lab (S5, S1, S1R, S1H, GH5, GH6, G9, G100 and others), still with
-  no phone. Such a camera needs one extra step at the first pairing, over its own Wi-Fi, which
-  [the desktop app](#the-desktop-app) does; after that the card connects by itself over Bluetooth.
-  *Pair* finds out by itself which kind of camera it is pairing with. See the note in
-  [The desktop app](#the-desktop-app) on how far this is tested.
-- **Pairing in the right order.** Start pairing on the card first, and on the camera only when the
-  card page or the app says *Now start Bluetooth pairing on the camera*: some cameras stay in
-  pairing mode only about 30 seconds. The card now looks for the camera for 2 minutes instead of 1,
-  tries a connection that does not come up again at once (up to 5 times), and keeps its GPS on for
-  10 minutes after a pairing that did not succeed, so another try starts at once. The card page and
-  the app switch the GPS on as soon as they connect to a card that is not paired yet.
-- **Connecting:** while it connects, the card listens all the time (before: half of the time), for
-  at most 5 seconds. A Bluetooth scan that stops working is started again.
-- **Diagnostics** on the card page and in the app: *Copy log* (the last 64 lines of the card's log)
-  and *Scan for cameras* (30 seconds), ready to paste into a message, with the camera's serial
-  number, the Bluetooth addresses and the card's identity hidden.
-- **Reliability:** the card checks its whole file system at start and works with the defaults when
-  it is damaged (`storage format yes` repairs it in any state); a stored setting is read back before
-  it replaces the old one; the log no longer waits for a computer that does not read it.
-
-What changed in earlier versions: the [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases) page.
 
 ## What you need
 
@@ -126,7 +101,7 @@ version numbers and releases: tags `app-vX.Y.Z`, named "gpxcam card" in
 [app/README.md](app/README.md#install) says how to install it, how to open it the first time and
 which gpxcam versions it works with. On Windows 11 the `.msi` has been tried with a card; the
 `-setup.exe` and the macOS version not yet. The app can also pair *older* LUMIX cameras (the ones
-that use the older Panasonic app), which need one extra step over the camera's own Wi-Fi; see
+that pair with the older Panasonic phone app), which need one extra step over the camera's own Wi-Fi; see
 [app/README.md](app/README.md#pairing-an-older-camera).
 
 ![The app's card section: connected to the card, with tiles for the camera (Connected), the GPS (Fix, 11 satellites), the battery (Charged, 100 %) and the time zone (Europe/Warsaw, clock on)](docs/images/app-state.png)
@@ -138,8 +113,9 @@ that use the older Panasonic app), which need one extra step over the camera's o
 *The app's state after Connect, pairing, and the Wi-Fi step of an older camera. More in
 [app/README.md](app/README.md#what-it-looks-like); made with `tools/screenshots.mjs` and a simulated card.*
 
-> [!WARNING]
-> **Older cameras (LUMIX Sync generation): experimental.** Pairing and everyday use with an older camera are tested by the author with an S5II, which speaks the older protocol too, but not yet confirmed on a camera of the S5 generation: the one field test so far, with a LUMIX S5, has not connected. If you own an S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H or BGH1 and are willing to spend an hour testing, please say so in [issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2).
+Older cameras are experimental: tested with an S5II only, not yet with a camera of the S5 generation
+(see [app/README.md](app/README.md#pairing-an-older-camera); testers welcome in
+[issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2)).
 
 ## Set the time zone
 

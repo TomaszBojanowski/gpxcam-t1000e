@@ -11,7 +11,7 @@ document is the public description of the protocol.
 - Manufacturer specific data: `3a 00 <state> <5-byte serial number>`.
 - `<state>`: `00` camera on, `03` pairing mode ("Add New Device"), `06` switched off with the switch
   (standby). **Never connect in state `06` – a connection wakes the camera.**
-- The older Panasonic app knows more states: `01` asleep, `02` waking up, `04` off, `05` on but asleep, `07` on
+- The older Panasonic phone app knows more states: `01` asleep, `02` waking up, `04` off, `05` on but asleep, `07` on
   but asleep with a quick wake, `08`–`0A` the same with automatic transfer. It registers a new camera only in
   `03`; a camera it already knows it also connects to in `05` and `07`. Seen so far: `00`, `03`, `06` on the
   S5II (both dialects); `07` on an S5 (1st generation) that showed its pairing screen (2026-10-25).
@@ -194,7 +194,7 @@ Advertisement (made-up serial number `12 34 56 78 9a`, tests in `test/test_lumix
 
 ## Older dialect: the card's identity
 
-Cameras that the older Panasonic app pairs with (the S5II among them) also speak an older dialect, with other
+Cameras that the older Panasonic phone app pairs with (the S5II among them) also speak an older dialect, with other
 characteristics. At the first pairing the camera takes a device only when the identity it presents over Bluetooth
 is the one registered over the camera's Wi-Fi; after that the device connects over Bluetooth alone.
 
