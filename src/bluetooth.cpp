@@ -50,22 +50,9 @@ constexpr uint32_t MS_PER_DECISECOND = 100;
 //    see the camera again in that mode.
 constexpr uint32_t SCAN_SILENCE_MS = 5000;
 
-// Transmit power +8 dBm, the most the nRF52840 has (ble_gap.h, sd_ble_gap_tx_power_set(): the
-// accepted values go up to +8 dBm), instead of the SoftDevice's default 0 dBm: on the walk of
-// 2026-10-24 the connection to the camera was lost when the card was only a few metres away,
-// carried by another person. It helps the card -> camera direction only.
-//  - Set once for the scanner and initiator role: "the initiator will have the same transmit
-//    power as the scanner" and "when a connection is created it will inherit the transmit power
-//    from the initiator" (ble_gap.h), so the connection gets it too. Bluefruit.setTxPower() sets
-//    only the advertiser's power, which the card does not use (BLEAdvertising.cpp).
-//  - Cost (estimate, not measured): without DC/DC, as on this card (docs/HARDWARE.md), the radio
-//    draws 32.7 mA instead of 10.6 mA while it transmits (nRF52840 PS v1.1 6.20.15.2), for about
-//    0.1-0.2 ms of every 48.75 ms connection event: about 0.05-0.1 mA more, about 1 % of the
-//    7-8 mA of a connection.
-//  - EU: 2400-2483.5 MHz wideband data transmission allows 100 mW (20 dBm) e.i.r.p., and 10 mW/MHz
-//    (10 dBm/MHz) for modulations other than frequency hopping (ERC/REC 70-03 annex 3, ETSI
-//    EN 300 328). +8 dBm from the chip stays within both while the antenna gain is at most
-//    2 dBi; Seeed does not state the gain of the card's antenna.
+// Transmit power +8 dBm, the most of the nRF52840 (ble_gap.h), for a steadier connection a few metres away.
+// Set for the scanner and initiator role, whose power a connection inherits (ble_gap.h); Bluefruit.setTxPower()
+// sets only the advertiser's (BLEAdvertising.cpp). Cost and EU limits: docs/HARDWARE.md, "Transmit power".
 constexpr int8_t TX_POWER_DBM = 8;
 bool txPowerSet = false;
 
