@@ -113,9 +113,9 @@ that pair with the older Panasonic phone app), which need one extra step over th
 *The app's state after Connect, pairing, and the Wi-Fi step of an older camera. More in
 [app/README.md](app/README.md#what-it-looks-like); made with `tools/screenshots.mjs` and a simulated card.*
 
-Older cameras are experimental: tested with an S5II only, not yet with a camera of the S5 generation
-(see [app/README.md](app/README.md#pairing-an-older-camera); testers welcome in
-[issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2)).
+Support for older cameras is experimental and not yet confirmed on a camera of the S5 generation: see
+[app/README.md](app/README.md#pairing-an-older-camera), and if you can test one,
+[issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2).
 
 ## Set the time zone
 
