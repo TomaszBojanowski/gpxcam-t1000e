@@ -33,7 +33,7 @@ constexpr size_t PAGES = 2;
 //                does not need it, so the page may be written; Meshtastic drops our pages as
 //                corrupt and rebuilds its cache (ringReadHeader(), load());
 //   Foreign    - anything else: data of something else, never erased or written.
-enum class Kind { Empty, Copy, Broken, Meshtastic, Foreign };
+enum class Kind : uint8_t { Empty, Copy, Broken, Meshtastic, Foreign };
 
 struct Page {
     Kind kind;

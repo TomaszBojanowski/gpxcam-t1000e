@@ -38,7 +38,7 @@ namespace {
 constexpr uint32_t LED_PERIOD_MS = 1000;      // heartbeat: one short flash per second
 constexpr uint32_t LED_ON_MS = 100;
 constexpr uint32_t COUNTDOWN_LED_PERIOD_MS = 200; // fast blinking while 'off' counts down
-// Link (M5 decision): looking for the camera - two short flashes every 2 s; connected -
+// Link: looking for the camera - two short flashes every 2 s; connected -
 // one short flash every 4 s.
 constexpr uint32_t LINK_FLASH_MS = 50;
 constexpr uint32_t SEARCH_LED_PERIOD_MS = 2000;
@@ -108,7 +108,7 @@ bool ledLit(uint32_t now) // not ledOn(): the core has one
     return now % LED_PERIOD_MS < LED_ON_MS;
 }
 
-// At start and every 60 s the reading also goes to the low-battery check (M6); the one of
+// At start and every 60 s the reading also goes to the low-battery check; the one of
 // 'p' does not, so it cannot add to the count of low readings.
 enum class BatteryCheck { None, AtStart, Periodic };
 
@@ -143,6 +143,7 @@ void logStatus()
     state.gpsOn = gps::isOn();
     state.gpsFix = gps::hasFix();
     state.gpsSatellites = (uint8_t)max(0, gps::satellites());
+    state.gpsHoldSeconds = pairing::gpsHoldSeconds();
     state.paired = pairing_store::ready() && pairing_store::record().paired;
     state.link = link_control::state();
     state.pairing = pairing::progress();
@@ -154,10 +155,22 @@ void logStatus()
     status_text::format(state, [](const char *line) { logger::transient("%s", line); });
 }
 
+// The RAM left, for 'p' (Adafruit core utility/debug.cpp): the heap is malloc's, from the end of
+// .bss to the main stack, and the FreeRTOS task stacks come from it; the loop task's stack never
+// used is its high water mark (FreeRTOS, INCLUDE_uxTaskGetStackHighWaterMark); the main stack is
+// the interrupts', painted with a pattern at start-up (gcc_startup_nrf52840.S).
+void logMemory()
+{
+    logger::transient("memory: heap %d B free of %d B, loop stack %lu B never used, main stack %d B used of %d B",
+                      dbgHeapTotal() - dbgHeapUsed(), dbgHeapTotal(),
+                      (unsigned long)(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)), dbgStackUsed(),
+                      dbgStackTotal());
+}
+
 void logHelp()
 {
     logger::transient("commands: v = version and reset reason,");
-    logger::transient("          p = state of GPS, BLE, pairing, time zone, settings, link and battery,");
+    logger::transient("          p = state of GPS, BLE, pairing, time zone, settings, link, battery and memory,");
     logger::transient("          status = the same in short key=value lines, for the card page,");
     logger::transient("          dfu = UF2 bootloader (for flashing),");
     logger::transient("          off = System OFF after a 15 s countdown (refused with USB connected),");
@@ -165,10 +178,12 @@ void logHelp()
                       (unsigned long)logger::HISTORY_LINES);
     logger::transient("          link on / link off = work with the paired camera (on after start when paired),");
     logger::transient("          pair = pair with a camera in pairing mode (or click + hold 3 s), pair off = cancel,");
+    logger::transient("          pair older = pair an older LUMIX camera (the app does a one-time Wi-Fi step),");
+    logger::transient("          pair prepare = GPS on for 10 min, so that pairing finds the time ready,");
     logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera),");
     logger::transient("          tz = time zone of the camera's clock: tz NAME (e.g. tz America/New_York),");
     logger::transient("          tz POSIX-RULE (e.g. tz <+0545>-5:45), tz alone shows it");
-    logger::transient("          clock on / clock off = the card sets the camera's clock or not (on: as up to 1.2),");
+    logger::transient("          clock on / clock off = the card sets the camera's clock or not,");
     logger::transient("          clock alone shows it");
     logger::transient("          sound loud / sound quiet / sound off = how loud the card is (off: it only answers");
     logger::transient("          a held button, quietly), sound alone shows it");
@@ -176,12 +191,14 @@ void logHelp()
     logger::transient("          for photos on the move), updates alone shows it");
     logger::transient("          bat log on / bat log off = battery log in flash every 10 min on the battery,");
     logger::transient("          bat log = show it, bat log clear = delete it");
-    logger::transient("          storage format yes = erase a damaged file system ('p' says when; the settings are");
-    logger::transient("          lost, the pairing comes back from its copy; the card restarts)");
+    logger::transient("          storage format yes = erase the file system, for a damaged one ('p' says when; the");
+    logger::transient("          settings are lost, the pairing comes back from its copy; the card restarts)");
     logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty),");
     logger::transient("             diag hang (test of the watchdog: the card restarts after %lu s),",
                       (unsigned long)watchdog::TIMEOUT_S);
     logger::transient("             diag clk [S] (64 MHz crystal running, now or in S s, kept for 'log')");
+    logger::transient("             diag scan (30 s dump of nearby advertisements, to see a camera's dialect;");
+    logger::transient("                       it has the camera's serial number, so send the log privately)");
 }
 
 void rebootToUf2Bootloader()
@@ -239,6 +256,7 @@ void forgetCamera()
         return;
     }
     link_control::stop(false); // it would go on with the forgotten camera
+    pairing::keepLinkOff();    // and a pairing that runs would start it again
     if (pairing_store::forgetCamera())
         logger::line("pair: camera forgotten (the card id stays)");
     else
@@ -257,7 +275,7 @@ bool isTimeZoneCommand(const char *cmd, const char **argument)
     return true;
 }
 
-// The camera gets the time zone with the time when the card connects to it (camera_session).
+// The camera gets the time zone with the time when the card connects to it (camera_session, older_session).
 void setTimeZone(const char *argument)
 {
     if (argument[0] != '\0') {
@@ -433,6 +451,7 @@ void runCommand(char *cmd)
         watchdog::logState();
         usb_power::logState();
         logBattery(BatteryCheck::None);
+        logMemory();
     } else if (strcmp(cmd, "status") == 0) {
         logStatus();
     } else if (strcmp(cmd, "dfu") == 0) {
@@ -446,10 +465,16 @@ void runCommand(char *cmd)
     } else if (strcmp(cmd, "link off") == 0) {
         if (link_control::active())
             link_control::stop(false);
+        else if (pairing::keepLinkOff())
+            logger::line("link: off - it stays off after the pairing");
         else
             logger::line("link: already off");
     } else if (strcmp(cmd, "pair") == 0) {
         pairing::start();
+    } else if (strcmp(cmd, "pair older") == 0) {
+        pairing::startOlder();
+    } else if (strcmp(cmd, "pair prepare") == 0) {
+        pairing::prepare();
     } else if (strcmp(cmd, "pair off") == 0) {
         if (pairing::active())
             pairing::stop();
@@ -480,11 +505,20 @@ void runCommand(char *cmd)
 #ifdef GPXCAM_TEST_COMMANDS
     } else if (strcmp(cmd, "diag storage break yes") == 0) {
         diag::breakFileSystem();
+    } else if (strcmp(cmd, "diag storage break middle yes") == 0) {
+        diag::breakFileSystemPage();
+    } else if (strcmp(cmd, "diag scan stall") == 0) {
+        bluetooth::stallScan();
+    } else if (strcmp(cmd, "diag gps stale") == 0) {
+        gps::setStaleForTest(true);
+    } else if (strcmp(cmd, "diag gps fresh") == 0) {
+        gps::setStaleForTest(false);
 #endif
     } else if (strcmp(cmd, "storage format yes") == 0) {
-        storage::formatDamaged();
+        storage::format();
     } else if (strcmp(cmd, "storage format") == 0) {
-        logger::line("storage: 'storage format yes' erases the file system (only when it is damaged)");
+        logger::line("storage: 'storage format yes' erases the file system and restarts (the pairing comes back "
+                     "from its copy)");
     } else if (strcmp(cmd, "bat log clear") == 0) {
         battery_log::clear();
     } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
@@ -495,6 +529,8 @@ void runCommand(char *cmd)
         diag::hang();
     } else if (strcmp(cmd, "diag clk") == 0) {
         diag::checkClock(0);
+    } else if (strcmp(cmd, "diag scan") == 0) {
+        bluetooth::startScanDump();
     } else if (strncmp(cmd, CLOCK_CHECK_COMMAND, strlen(CLOCK_CHECK_COMMAND)) == 0) {
         runClockCheck(cmd + strlen(CLOCK_CHECK_COMMAND));
     } else if (cmd[0] != '\0') {

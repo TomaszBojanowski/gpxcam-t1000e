@@ -5,7 +5,7 @@
 //
 //   status: format=1 fw=1.3.0 git=1234567
 //   status: battery_mv=4100 battery_pct=89 charger=charging
-//   status: gps=on gps_fix=1 gps_sat=11
+//   status: gps=on gps_fix=1 gps_sat=11 gps_hold=0
 //   status: paired=1 link=connected
 //   status: pair=idle pair_attempt=0 pair_result=none
 //   status: clock=on tz=Europe/Warsaw
@@ -40,13 +40,14 @@ struct State {
     const char *version; // "1.3.0"
     const char *git;     // short commit hash
     bool watchdogRestart; // the last start was a watchdog reset: the card had hung
-    const char *storage;  // storage::stateName(): "ok", or "damaged" (defaults, no pairing)
+    const char *storage;  // storage::stateName(): "ok", or "damaged" (defaults, the pairing from its copy, if any)
     uint32_t batteryMillivolts;
     uint8_t batteryPercent; // battery_rules::percentFromMillivolts()
     battery::Charger charger;
     bool gpsOn;
     bool gpsFix;
     uint8_t gpsSatellites; // 0 when not known
+    uint32_t gpsHoldSeconds; // the GPS kept on for a pairing to come, 0 without (pairing::gpsHoldSeconds())
     bool paired;
     link_control::State link;
     pairing::Progress pairing;

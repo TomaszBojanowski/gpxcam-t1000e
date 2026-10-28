@@ -22,6 +22,10 @@ int64_t toUnixSeconds(const DateTime &t);
 
 DateTime fromUnixSeconds(int64_t seconds);
 
+// The Unix seconds msLater after a moment given in Unix milliseconds (unixMs >= 0): the time of a GPS fix
+// and the millis() since it came (gps.cpp).
+int64_t secondsAfter(int64_t unixMs, uint32_t msLater);
+
 // Days since 1970-01-01 for a valid date (proleptic Gregorian calendar).
 int64_t daysFromCivil(int year, int month, int day);
 

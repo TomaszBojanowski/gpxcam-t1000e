@@ -48,6 +48,16 @@ void test_round_trip_and_rollover()
     assertDateTime(at(1969, 12, 31, 23, 59, 59), utc::fromUnixSeconds(-1));
 }
 
+// A GPS time in milliseconds plus the millis() since it came, in whole seconds.
+void test_seconds_after_a_fix()
+{
+    TEST_ASSERT_EQUAL_INT64(1791930629, utc::secondsAfter(1791930629000LL, 0));
+    TEST_ASSERT_EQUAL_INT64(1791930629, utc::secondsAfter(1791930629400LL, 599)); // not yet the next second
+    TEST_ASSERT_EQUAL_INT64(1791930630, utc::secondsAfter(1791930629400LL, 600));
+    TEST_ASSERT_EQUAL_INT64(1791931229, utc::secondsAfter(1791930629000LL, 600000)); // 10 min later
+    TEST_ASSERT_EQUAL_INT64(1791930629LL + 4294967, utc::secondsAfter(1791930629000LL, UINT32_MAX));
+}
+
 void test_valid_dates()
 {
     TEST_ASSERT_TRUE(utc::isValid(at(2024, 2, 29, 0, 0, 0)));  // leap year
@@ -70,5 +80,6 @@ int main(int, char **)
     RUN_TEST(test_unix_seconds);
     RUN_TEST(test_round_trip_and_rollover);
     RUN_TEST(test_valid_dates);
+    RUN_TEST(test_seconds_after_a_fix);
     return UNITY_END();
 }

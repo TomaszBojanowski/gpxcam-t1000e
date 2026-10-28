@@ -1,4 +1,4 @@
-// Rules of the normal work with the paired camera (M5): when to connect, how long to wait
+// Rules of the normal work with the paired camera: when to connect, how long to wait
 // after a disconnect and when to send a location. No hardware dependencies (tested on the PC).
 #pragma once
 
@@ -14,7 +14,7 @@ constexpr uint32_t MS_PER_MINUTE = 60000;
 // Connect only on a report this recent, so its state is current.
 constexpr uint32_t REPORT_FRESH_MS = 1000;
 
-// Weaker reports are not worth a connection attempt (M6 decision; at -90 dBm one failed).
+// Weaker reports are not worth a connection attempt (at -90 dBm one failed).
 constexpr int8_t MIN_RSSI_DBM = -85;
 
 // True only for the paired camera (the same serial number), switched on (state 00), with
@@ -22,16 +22,16 @@ constexpr int8_t MIN_RSSI_DBM = -85;
 // (06) or pairing (03), never to another camera.
 bool shouldConnect(const pairing_record::Record &pairing, const camera_list::Entry &camera, uint32_t nowMs);
 
-// How the card looks for the camera while not connected (M6 decisions). In both standby
+// How the card looks for the camera while not connected. In both standby
 // modes the camera's last report says standby (06) and the card only waits for state 00.
 //   Normal      - scan 50 ms of every 100 ms, GPS on;
 //   Rare        - the camera not seen for RARE_AFTER_MS: scan 100 ms every 2 s, GPS in Backup;
 //   Standby     - the first LONG_STANDBY_AFTER_MS of standby (a break between photos):
 //                 scan 100 ms every 1 s, the GPS stays on, so the location is there at once;
 //   LongStandby - after that: scan 100 ms every 10 s, GPS in Backup.
-enum class SearchMode { Normal, Rare, Standby, LongStandby };
+enum class SearchMode : uint8_t { Normal, Rare, Standby, LongStandby };
 constexpr uint32_t RARE_AFTER_MS = 5 * MS_PER_MINUTE;
-constexpr uint32_t LONG_STANDBY_AFTER_MS = 20 * MS_PER_MINUTE; // a break between photos (10 min in M6)
+constexpr uint32_t LONG_STANDBY_AFTER_MS = 20 * MS_PER_MINUTE; // a break between photos
 
 // cameraSeen: a report of the paired camera since the link started; msSinceSeen and
 // lastState: of its last report; msSearching: since the search started; msInStandby:
@@ -43,7 +43,7 @@ SearchMode searchMode(bool cameraSeen, uint32_t msSinceSeen, uint8_t lastState, 
 bool gpsNeeded(SearchMode mode);
 
 // Pause before looking for the camera again after a disconnect or a failed connection
-// (M5 decision): 5 s, 15 s, then 60 s for every further one. failuresInARow starts at 1.
+// 5 s, 15 s, then 60 s for every further one. failuresInARow starts at 1.
 uint32_t pauseMs(uint32_t failuresInARow);
 
 // A connection that lasted this long starts the pause sequence again.
@@ -57,7 +57,7 @@ struct LocationTiming {
     uint32_t moveMetres;
 };
 
-// M5 decisions, as the gpxcam app: every 25 s, after 20 m, at most every 5 s.
+// As the gpxcam app: every 25 s, after 20 m, at most every 5 s.
 constexpr LocationTiming NORMAL_TIMING = {25000, 5000, 20};
 // Every 5 s, after 5 m (GPS noise is 2-5 m), at most every 2 s (the GPS gives a fix every
 // second; 2 s halves the writes a car would cause). Endurance test with the S5II on
@@ -78,7 +78,7 @@ inline const LocationTiming &timingOf(Updates updates)
     return updates == Updates::Frequent ? FREQUENT_TIMING : NORMAL_TIMING;
 }
 
-enum class Send { No, First, Periodic, Moved, Asked };
+enum class Send : uint8_t { No, First, Periodic, Moved, Asked };
 
 // What to do now. sentBefore: a location was sent in this connection; msSinceLast: since
 // that one; metresMoved: from the position sent then; cameraAsked: a notification came.
@@ -117,18 +117,18 @@ private:
 };
 
 // The writes of the introduction (camera_session) and the first ones of the link, in order.
-enum class IntroductionWrite { Identifier, AppName, DeviceName, Time, GpsMode, FirstLocation };
+enum class IntroductionWrite : uint8_t { Identifier, AppName, DeviceName, Time, GpsMode, FirstLocation };
 
 // Whether a GATT refusal of this write means that the camera does not know the card (never
 // paired, or forgotten), so that the card stops connecting instead of trying again: after a
 // few refused connections the S5II stops advertising. The S5II takes the identifier, app name
-// and device name of an unknown device and refuses the time (gpxcam notes, 2026-10-14);
+// and device name of an unknown device and refuses the time (docs/PROTOCOL.md);
 // without the time write ('clock off', timeWritten false) nothing shows it so clearly, so any
 // refusal in the introduction counts.
 bool refusalMeansUnknownCard(IntroductionWrite write, bool timeWritten);
 
 // Without the time written, a camera that does not know the card may also just end the
-// connection: the S5II ends it itself after refusing the time (gpxcam notes). So this many
+// connection: the S5II ends it itself after refusing the time (docs/PROTOCOL.md). So this many
 // connections in a row that ended after they were made but before the camera took a location
 // count as a refusal.
 constexpr uint8_t EARLY_ENDS_FOR_UNKNOWN_CARD = 3;
@@ -137,6 +137,12 @@ constexpr uint8_t EARLY_ENDS_FOR_UNKNOWN_CARD = 3;
 // a location) and says whether the card should stop as after a refusal. With the time written
 // its refusal shows an unknown card, so early ends do not count and the count goes back to 0.
 bool earlyEndMeansUnknownCard(bool timeWritten, uint8_t *earlyEndsInARow);
+
+// The older dialect (link_control): a connection in which the camera did not take the card - it refused a
+// write of the introduction or the time, or sent no 01 in time - counts in *refusalsInARow (link_control
+// sets it to 0 when the camera takes a location), and the EARLY_ENDS_FOR_UNKNOWN_CARD-th in a row stops the
+// card as a refusal does. One alone may be a slow or busy camera.
+bool olderRefusalMeansUnknownCard(uint8_t *refusalsInARow);
 
 // Distance in metres between two positions in degrees * 10^7 (equirectangular
 // approximation; good to well under 1 % for the short distances it is used for).

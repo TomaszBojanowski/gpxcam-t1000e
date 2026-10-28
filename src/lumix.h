@@ -26,7 +26,7 @@ struct Camera {
     uint8_t serial[SERIAL_LENGTH];
 };
 
-enum class Advert {
+enum class Advert : uint8_t {
     None,           // no Panasonic manufacturer data, or malformed advertising data
     Camera,         // a LUMIX camera: state and serial number read
     OtherPanasonic, // Panasonic manufacturer data in another layout
@@ -120,5 +120,44 @@ constexpr uint8_t LOCATION_UUID[UUID_LENGTH] = {0x56, 0x5b, 0x42, 0x53, 0x8b, 0x
                                                 0x8c, 0x5d, 0xec, 0x6f, 0x94, 0xfc, 0x87, 0x14};
 
 constexpr uint8_t GPS_MODE_ON = 0x01;
+
+// ---- Older dialect: the characteristics of cameras the older Panasonic app pairs with -----------
+// Same byte formats as above, different characteristics (docs/PROTOCOL.md, worked out from a capture
+// of the older app on the S5II). The card registers these too, so one build can speak either dialect
+// (the SoftDevice's vendor-UUID count is raised in bluetooth::begin). There is no service UUID here:
+// the older dialect is found by reading the characteristics across the whole handle range.
+constexpr size_t OLDER_CHARACTERISTIC_COUNT = 9;
+
+// Values on the older dialect's notify characteristics.
+constexpr uint8_t OLDER_KNOWN = 0x01;         // the camera knows the card
+constexpr uint8_t OLDER_SWITCHING_OFF = 0x02; // on the location notify, about 2 s before power-off
+
+// 03E23A31-A54C-40FA-A668-DE9ACDC910BB: key, read, 4 bytes
+constexpr uint8_t OLDER_KEY_UUID[UUID_LENGTH] = {0x03, 0xe2, 0x3a, 0x31, 0xa5, 0x4c, 0x40, 0xfa,
+                                                 0xa6, 0x68, 0xde, 0x9a, 0xcd, 0xc9, 0x10, 0xbb};
+// BB5D2A8C-5D3B-43AD-BFC3-470CAD55C1CA: device identifier, write 20 bytes
+constexpr uint8_t OLDER_DEVICE_ID_UUID[UUID_LENGTH] = {0xbb, 0x5d, 0x2a, 0x8c, 0x5d, 0x3b, 0x43, 0xad,
+                                                       0xbf, 0xc3, 0x47, 0x0c, 0xad, 0x55, 0xc1, 0xca};
+// 7B61774F-EFB4-44C6-A66D-C69E3B384C4A: device name, write 20 bytes
+constexpr uint8_t OLDER_DEVICE_NAME_UUID[UUID_LENGTH] = {0x7b, 0x61, 0x77, 0x4f, 0xef, 0xb4, 0x44, 0xc6,
+                                                         0xa6, 0x6d, 0xc6, 0x9e, 0x3b, 0x38, 0x4c, 0x4a};
+// E206A5C0-3214-11E6-AFE4-0002A5D5C51B: read, the camera's name (its Wi-Fi network)
+constexpr uint8_t OLDER_CAMERA_NAME_UUID[UUID_LENGTH] = {0xe2, 0x06, 0xa5, 0xc0, 0x32, 0x14, 0x11, 0xe6,
+                                                         0xaf, 0xe4, 0x00, 0x02, 0xa5, 0xd5, 0xc5, 0x1b};
+// C97CF1A5-3C03-4290-8C1B-9E74B9500F54: read, a short text in the device-name format (never logged)
+constexpr uint8_t OLDER_CAMERA_TEXT_UUID[UUID_LENGTH] = {0xc9, 0x7c, 0xf1, 0xa5, 0x3c, 0x03, 0x42, 0x90,
+                                                         0x8c, 0x1b, 0x9e, 0x74, 0xb9, 0x50, 0x0f, 0x54};
+// DAFF1BC0-3216-11E6-91C8-0002A5D5C51B: location, write 16 bytes
+constexpr uint8_t OLDER_LOCATION_UUID[UUID_LENGTH] = {0xda, 0xff, 0x1b, 0xc0, 0x32, 0x16, 0x11, 0xe6,
+                                                      0x91, 0xc8, 0x00, 0x02, 0xa5, 0xd5, 0xc5, 0x1b};
+// 37701B80-32A7-11E6-BB83-0002A5D5C51B: notifications next to the location (01, 02)
+constexpr uint8_t OLDER_LOCATION_NOTIFY_UUID[UUID_LENGTH] = {0x37, 0x70, 0x1b, 0x80, 0x32, 0xa7, 0x11, 0xe6,
+                                                             0xbb, 0x83, 0x00, 0x02, 0xa5, 0xd5, 0xc5, 0x1b};
+// EAD55E60-3216-11E6-A42E-0002A5D5C51B: date and time, write 10 bytes
+constexpr uint8_t OLDER_TIME_UUID[UUID_LENGTH] = {0xea, 0xd5, 0x5e, 0x60, 0x32, 0x16, 0x11, 0xe6,
+                                                  0xa4, 0x2e, 0x00, 0x02, 0xa5, 0xd5, 0xc5, 0x1b};
+// 4CF487C0-32A7-11E6-A50D-0002A5D5C51B: notifications next to the time (01)
+constexpr uint8_t OLDER_TIME_NOTIFY_UUID[UUID_LENGTH] = {0x4c, 0xf4, 0x87, 0xc0, 0x32, 0xa7, 0x11, 0xe6,
+                                                         0xa5, 0x0d, 0x00, 0x02, 0xa5, 0xd5, 0xc5, 0x1b};
 
 } // namespace lumix

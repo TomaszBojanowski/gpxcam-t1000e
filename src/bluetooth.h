@@ -1,10 +1,11 @@
-// BLE through the SoftDevice S140 7.3.0, started by the Bluefruit library (M3).
+// BLE through the SoftDevice S140 7.3.0, started by the Bluefruit library.
 // (Not named ble.h: that name belongs to the SoftDevice header the library includes.)
 // Central role only: the card looks for the camera and connects to it (camera_link.h); it
 // never advertises and never accepts connections.
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "camera_list.h"
 
@@ -19,24 +20,33 @@ namespace bluetooth {
 // Returns false if the SoftDevice did not start; the card then works without BLE.
 bool begin();
 
+// Whether the line of a scan's start and its summary go into the log history (Kept) or are only sent
+// (Sent): the link's scans between connection attempts would push the history's events out.
+enum class Lines : uint8_t { Kept, Sent };
+
 // Starts an active scan for LUMIX cameras (radio on 50 ms of every 100 ms unless
 // setScanTiming() said otherwise) until scanOff(). Only cameras are logged: when first
 // seen, when their state or address changes and when not seen for 30 s; a status line
-// follows every 10 s.
-void scanOn();
+// follows every 10 s. A scan that cannot start is logged once until one starts again.
+void scanOn(Lines lines = Lines::Kept);
 
 // Stops scanning and logs a summary. Does nothing if not scanning (also before begin()).
-void scanOff();
+void scanOff(Lines lines = Lines::Kept);
 
-// Radio on windowMs of every intervalMs (M6: slower when the camera is away or in
-// standby); applied at once if scanning, kept for the next scanOn(). False if out of the
-// SoftDevice's range (interval up to 10.24 s, window up to the interval).
+// Radio on windowMs of every intervalMs (slower when the camera is away or in
+// standby); applied at once if scanning, kept for the next scanOn(). During a 'diag scan'
+// run it is kept for when the run ends. False if out of the SoftDevice's range (interval up
+// to 10.24 s, window up to the interval).
 bool setScanTiming(uint16_t intervalMs, uint16_t windowMs);
 
-// Back to the M3 timing: 50 ms of every 100 ms.
+// Back to the normal timing: 50 ms of every 100 ms.
 void setNormalScanTiming();
 
 bool scanning();
+
+// The scan is on only for a 'diag scan' run, which switches it off when it ends: not a scan to put back
+// after pairing (pairing.cpp).
+bool scanForDumpOnly();
 
 // True after begin() succeeded.
 bool ready();
@@ -49,5 +59,18 @@ void logState();
 
 // Call from loop(): turns the camera reports into log lines.
 void poll();
+
+// 'diag scan': for about 30 s, logs the advertisements of every close device (not only cameras),
+// each shown once, with the full bytes only for Panasonic manufacturer data (scan_dump.h), then
+// how many reports came in all. It listens at the normal timing whatever the link's search mode,
+// and switches scanning on for the run if it was off (and off again at its end). For telling an
+// unknown camera's dialect from its advertisement.
+void startScanDump();
+
+#ifdef GPXCAM_TEST_COMMANDS
+// Test builds only (platformio.ini, env t1000e_test): 'diag scan stall' leaves out the resume after the
+// next report and counts it as failed, so the scan stays paused - for testing the scan watchdog.
+void stallScan();
+#endif
 
 } // namespace bluetooth

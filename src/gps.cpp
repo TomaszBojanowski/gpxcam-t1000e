@@ -75,6 +75,9 @@ bool fixValid = false;
 bool timeValid = false;
 int64_t timeUnixMs = 0;
 uint32_t timeReceivedMs = 0;
+#ifdef GPXCAM_TEST_COMMANDS
+bool staleForTest = false; // 'diag gps stale'
+#endif
 
 char sentence[NMEA_MAX + 1];
 size_t sentenceLength = 0;
@@ -94,6 +97,16 @@ void resetCounters()
     sentenceTooLong = false;
 }
 
+// The last RMC with a fix came at most TIME_MAX_AGE_MS ago, with the GPS on.
+bool timeFresh()
+{
+#ifdef GPXCAM_TEST_COMMANDS
+    if (staleForTest)
+        return false;
+#endif
+    return powered && timeValid && millis() - timeReceivedMs <= TIME_MAX_AGE_MS;
+}
+
 int satellitesInUse()
 {
     return haveGga ? lastGga.satellites : -1;
@@ -110,7 +123,7 @@ void rememberTime(const nmea::Rmc &rmc, bool fix)
     timeValid = true;
 }
 
-// GGA comes just before RMC of the same second on this module (M2 step 1 log).
+// GGA comes just before RMC of the same second on this module.
 void handleNavigation()
 {
     nmea::Gga gga;
@@ -338,18 +351,36 @@ bool isOn()
 
 bool utcNow(int64_t *unixSeconds)
 {
-    const uint32_t age = millis() - timeReceivedMs;
-    if (!powered || !timeValid || age > TIME_MAX_AGE_MS)
+    if (!timeFresh())
         return false;
-    *unixSeconds = (timeUnixMs + age) / 1000;
+    *unixSeconds = utc::secondsAfter(timeUnixMs, millis() - timeReceivedMs);
+    return true;
+}
+
+bool utcSinceFix(uint32_t maxAgeMs, int64_t *unixSeconds, uint32_t *ageMs)
+{
+    const uint32_t age = millis() - timeReceivedMs;
+    if (!timeValid || age > maxAgeMs)
+        return false;
+    *unixSeconds = utc::secondsAfter(timeUnixMs, age);
+    *ageMs = age;
     return true;
 }
 
 bool hasFix()
 {
     // timeValid is set only by an RMC with a fix, which also has the position.
-    return powered && timeValid && millis() - timeReceivedMs <= TIME_MAX_AGE_MS && fixValid;
+    return timeFresh() && fixValid;
 }
+
+#ifdef GPXCAM_TEST_COMMANDS
+void setStaleForTest(bool stale)
+{
+    staleForTest = stale;
+    logger::line("diag gps: %s", stale ? "time and position count as not fresh, the last fix stays"
+                                       : "time and position fresh again");
+}
+#endif
 
 int satellites()
 {

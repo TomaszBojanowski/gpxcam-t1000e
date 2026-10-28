@@ -13,46 +13,30 @@ Status: pairing, everyday use with the camera and power saving all work and are 
 LUMIX S5II. The latest version is on the
 [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases) page.
 
-> [!WARNING]
-> **Older cameras (LUMIX Sync generation): experimental, and not working yet for everyone.**
-> Pairing an older camera is built and works on my bench, but the one field test so far, a LUMIX S5, has not managed to connect to the card at all, for reasons still under investigation. If you own an S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H or BGH1 and are willing to spend an hour testing with me, please say so in [issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2). The more cameras and setups we see, the faster this gets fixed.
-> The older-camera support is in the 1.5.0 pre-releases: https://github.com/TomaszBojanowski/gpxcam-t1000e/releases.
+## What's new in 1.5.0
 
-## What's new in 1.4.0
+- **Older LUMIX cameras, experimental.** The card can now also pair with cameras that use the older
+  Panasonic phone app, not LUMIX Lab (S5, S1, S1R, S1H, GH5, GH6, G9, G100 and others), still with
+  no phone. Such a camera needs one extra step at the first pairing, over its own Wi-Fi, which
+  [the desktop app](#the-desktop-app) does; after that the card connects by itself over Bluetooth.
+  *Pair* finds out by itself which kind of camera it is pairing with. See the note in
+  [The desktop app](#the-desktop-app) on how far this is tested.
+- **Pairing in the right order.** Start pairing on the card first, and on the camera only when the
+  card page or the app says *Now start Bluetooth pairing on the camera*: some cameras stay in
+  pairing mode only about 30 seconds. The card now looks for the camera for 2 minutes instead of 1,
+  tries a connection that does not come up again at once (up to 5 times), and keeps its GPS on for
+  10 minutes after a pairing that did not succeed, so another try starts at once. The card page and
+  the app switch the GPS on as soon as they connect to a card that is not paired yet.
+- **Connecting:** while it connects, the card listens all the time (before: half of the time), for
+  at most 5 seconds. A Bluetooth scan that stops working is started again.
+- **Diagnostics** on the card page and in the app: *Copy log* (the last 64 lines of the card's log)
+  and *Scan for cameras* (30 seconds), ready to paste into a message, with the camera's serial
+  number, the Bluetooth addresses and the card's identity hidden.
+- **Reliability:** the card checks its whole file system at start and works with the defaults when
+  it is damaged (`storage format yes` repairs it in any state); a stored setting is read back before
+  it replaces the old one; the log no longer waits for a computer that does not read it.
 
-- **Location updates: Normal or Frequent.** Normal sends the position every 25 s, sooner after
-  20 m, as before. Frequent sends it every 5 s and after 5 m, for photos on the move. Choose it on
-  [the card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/) or send `updates frequent`.
-  If the camera answers slowly, the card goes back to every 25 s until the camera is switched off
-  and on, and the page says so. Tested with the S5II for 8 hours in one connection.
-- **The card protects its settings better.** A USB cable with a contact that kept breaking hung
-  the card once, and at the next start its stored settings and pairing were gone (details in
-  [docs/HARDWARE.md](docs/HARDWARE.md#reliability-140)). Now:
-  - a watchdog restarts the card when it hangs, after 30 s;
-  - the handling of USB plug-in, where the hang most likely started, has time limits. The hang
-    could not be reproduced, so this has not been tested with a bouncing cable;
-  - the battery log writes only when the cable has been in for 10 s;
-  - the card never erases its stored settings by itself: if it cannot read them, it works with
-    the defaults and says so, see [If the card forgot its settings](#if-the-card-forgot-its-settings);
-  - the pairing is also kept in a copy of its own, so the card stays paired with the camera even
-    then.
-- **Bluetooth transmit power +8 dBm** instead of 0 dBm, for a steadier connection when the camera
-  is a few metres away. How much further the connection reaches has not been measured yet.
-- **Battery log:** the entries are written six at a time (fewer flash writes), in
-  `/log/battery.bin`.
-
-## What's new in 1.3.0
-
-- **[The card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/)** (Chrome or Edge on a
-  computer, card on USB): the card's state – battery, GPS, camera – pairing step by step with the
-  reason when it fails, the time zone, and the settings below. It replaces the time zone page of
-  1.2, whose address now leads to it.
-- **Leave the camera's clock alone:** the card can send only the position and keep out of the
-  camera's time and time zone, see [below](#leave-the-cameras-clock-alone-130).
-- **Sound: Loud, Quiet or Off**, see [Sounds and LED](#sounds-and-led). Off keeps only quiet
-  answers to a held button, so you still know when to let go.
-- Pairing again with the same camera: delete "T1000-E" in the camera's Bluetooth menu first (the
-  camera does not pair a card it already lists).
+What changed in earlier versions: the [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases) page.
 
 ## What you need
 
@@ -61,9 +45,10 @@ LUMIX S5II. The latest version is on the
   nRF52840, Airoha AG3335 GPS, Semtech LR1110 radio (kept asleep), buzzer, button, green LED,
   700 mAh battery. gpxcam replaces Meshtastic on the card; you can go back at any time
   (see [Back to Meshtastic](#back-to-meshtastic)).
-- **Panasonic LUMIX S5II** (DC-S5M2) – the only camera tested so far. Other LUMIX models may work
-  if they use the same Bluetooth protocol, but nobody has tried them yet. If you test one, please
-  open an issue.
+- **Panasonic LUMIX S5II** (DC-S5M2) – the only camera tested so far. Other newer LUMIX models
+  (the ones that pair with LUMIX Lab) may work the same way, but nobody has tried them yet. Older
+  models need [the desktop app](#the-desktop-app) for pairing, and their support is experimental. If
+  you test one, please open an issue.
 
 ## Known limitations
 
@@ -110,16 +95,23 @@ computer without Chrome or Edge use [the desktop app](#the-desktop-app)):
   forget the paired camera;
 - it sets whether the card sets the camera's clock, and the time zone;
 - it sets how loud the card is (see [Sounds and LED](#sounds-and-led));
-- it sets how often the card sends the position, Normal or Frequent (see [Normal use](#normal-use)).
+- it sets how often the card sends the position, Normal or Frequent (see [Normal use](#normal-use));
+- when something does not work, it copies the card's log, or a 30-second scan of the Bluetooth
+  devices next to the card, ready to paste into a message (with the camera's serial number, the
+  Bluetooth addresses and the card's identity hidden).
 
 1. Plug the card into the computer with a USB cable. Close serial monitors that use it.
 2. Open [the card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/).
 3. Click **Connect** and choose **T1000-E gpxcam**.
 
 The page runs only in the browser and sends nothing over the internet. It sends the card only `v`,
-`status`, `pair`, `pair off`, `unpair`, `clock on`, `clock off`, `sound loud`, `sound quiet`,
-`sound off`, `updates normal`, `updates frequent`, `tz` and `tz` with a zone from its list. With
-gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or newer, the location updates 1.4.0.
+`status`, `pair`, `pair off`, `pair prepare`, `unpair`, `clock on`, `clock off`, `sound loud`,
+`sound quiet`, `sound off`, `updates normal`, `updates frequent`, `log`, `diag scan`, `tz` and `tz`
+with a zone from its list; the app also `pair older` and `p` (which only reads the card's id) for
+older cameras. With gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or
+newer, the location updates 1.4.0 and the diagnostics 1.5.0. On connecting to a card that is not
+paired yet, the page sends `pair prepare` (gpxcam 1.5.0): the card switches its GPS on for 10
+minutes, so that pairing finds the time ready.
 
 On Linux, if the page says "Reading from the card failed" after a serial monitor (for example
 `pio device monitor`) used the card: unplug the card and plug it in again. Such programs leave the
@@ -133,7 +125,12 @@ version numbers and releases: tags `app-vX.Y.Z`, named "gpxcam card" in
 [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases).
 [app/README.md](app/README.md#install) says how to install it, how to open it the first time and
 which gpxcam versions it works with. On Windows 11 the `.msi` has been tried with a card; the
-`-setup.exe` and the macOS version not yet.
+`-setup.exe` and the macOS version not yet. The app can also pair *older* LUMIX cameras (the ones
+that use the older Panasonic app), which need one extra step over the camera's own Wi-Fi; see
+[app/README.md](app/README.md#pairing-an-older-camera).
+
+> [!WARNING]
+> **Older cameras (LUMIX Sync generation): experimental.** Pairing and everyday use with an older camera are tested by the author with an S5II, which speaks the older protocol too, but not yet confirmed on a camera of the S5 generation: the one field test so far, with a LUMIX S5, has not connected. If you own an S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H or BGH1 and are willing to spend an hour testing, please say so in [issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2).
 
 ## Set the time zone
 
@@ -268,18 +265,25 @@ Coming back to gpxcam 1.4.0 later:
 
 1. Put the card where the GPS can get a fix (outdoors or near a window): the camera needs the
    time from the GPS.
-2. On the camera start pairing in its Bluetooth menu (the screen that waits for a new device).
-   If the camera lists "T1000-E" from an earlier pairing, delete it there first: the camera does not
-   pair a card it already knows.
-3. On the card: a short click, and within 0.5 s press again and hold for 3 s – two short high
-   beeps. Or click **Pair** on [the card page](#the-card-page): it shows each stage and, if
-   pairing fails, why.
-4. The card waits up to 120 s for GPS time and looks for the camera for up to 60 s. On success
-   the camera shows "Pairing completed" and lists "T1000-E"; the card plays a rising melody.
-   If it gives up: two clicks.
+2. If the camera lists "T1000-E" from an earlier pairing, delete it there first: the camera does
+   not pair a card it already knows.
+3. Start pairing on the card: click **Pair** on [the card page](#the-card-page), which shows each
+   stage and, if pairing fails, why. Or on the card: a short click, and within 0.5 s press again
+   and hold for 3 s – two short high beeps. Do not start pairing on the camera yet.
+4. The card waits up to 120 s for GPS time, then looks for the camera for up to 120 s. **Only
+   now** start pairing in the camera's Bluetooth menu (the screen that waits for a new device):
+   some cameras stay in pairing mode only about 30 seconds, so the card must already be looking.
+   The card page says when: *Now start Bluetooth pairing on the camera*. On success the camera
+   shows "Pairing completed" and lists "T1000-E"; the card plays a rising melody. If it gives up:
+   two clicks. The card then keeps its GPS on for 10 minutes, so that another try starts looking
+   for the camera at once.
 
 A short press cancels pairing. The card only connects to a camera that is in pairing mode, and
 it pairs with one camera at a time: a new pairing replaces the old one.
+
+An older camera (one that pairs with the older Panasonic phone app) needs one more step over its
+Wi-Fi at the first pairing: pair it from [the desktop app](#the-desktop-app), which does that step,
+see [app/README.md](app/README.md#pairing-an-older-camera).
 
 ### Normal use
 
@@ -297,7 +301,7 @@ position is sent until the fix is back.
 
 Charge the card with the magnetic cable on the bare card, not through a case, until the magnet
 clicks into place. A contact that keeps making and breaking once hung the card (see
-[What's new in 1.4.0](#whats-new-in-140)).
+[docs/HARDWARE.md](docs/HARDWARE.md#reliability-140)).
 
 When the camera is switched off, the card notices it (two falling beeps) and waits:
 - for the first 20 minutes it keeps the GPS ready and looks for the camera every second, so the
@@ -339,7 +343,7 @@ keeps the setting through restarts and firmware updates.
 ### If the card forgot its settings
 
 From 1.4.0 the card never erases its stored settings by itself. If it cannot read them – its
-file system is damaged, as after the hang described in [What's new in 1.4.0](#whats-new-in-140) –
+file system is damaged, as after the hang described in [docs/HARDWARE.md](docs/HARDWARE.md#reliability-140) –
 it:
 - works with the default settings: sound Loud, the clock on, Europe/Warsaw, location updates
   Normal;
@@ -365,10 +369,12 @@ pio device monitor
 | `v` | version (with the git commit) and the reason of the last reset |
 | `p` | state: file system, radio, GPS, Bluetooth (transmit power), pairing (card id, camera, the copy's two pages), time zone, sound, location updates, link, watchdog, USB, battery |
 | `status` | the same in short `key=value` lines without the card id and the camera, for the card page |
-| `log` | the last 32 events, also from times without USB |
+| `log` | the last 64 lines of the log, also from times without USB |
 | `off` | power off after a 15 s countdown (refused with USB; a short press cancels) |
 | `dfu` | restart into the UF2 bootloader for flashing |
-| `pair` / `pair off` | start / cancel pairing (as click + hold) |
+| `pair` / `pair off` | start / cancel pairing (as click + hold); the card finds out whether the camera is a newer or an older one |
+| `pair older` | pairing for an older camera that `pair` does not recognise; it waits up to 5 minutes for the Wi-Fi step of [the desktop app](#the-desktop-app) |
+| `pair prepare` | switch the GPS on for 10 minutes, so that pairing finds the time ready (the card page sends it on connecting to a card that is not paired) |
 | `unpair` | forget the paired camera (the card id stays: to pair with that camera again, delete "T1000-E" in its Bluetooth menu too) |
 | `tz` / `tz NAME` / `tz RULE` | show / set the time zone, see [Set the time zone](#set-the-time-zone) |
 | `clock` / `clock on` / `clock off` | show / set whether the card sets the camera's clock, see [Leave the camera's clock alone](#leave-the-cameras-clock-alone-130) |
@@ -380,8 +386,9 @@ pio device monitor
 | `diag bat` | battery voltage at different settling times of the divider (about 4 s) |
 | `diag snd N` | all sounds at N % PWM duty (1–50), whatever the setting, to choose the volume by ear |
 | `diag hang` | test of the watchdog: holds the main loop; the card restarts after 30 s |
+| `diag scan` | 30 s of the Bluetooth devices near the card (stronger than −65 dBm), with the full advertisement of Panasonic devices (*Scan for cameras* on the card page) |
 | `diag clk` / `diag clk S` | how much of 1 s the 64 MHz crystal runs, now or in S seconds (kept for `log`, so it can be measured on the battery) |
-| `storage format yes` | erase a damaged file system and restart, see [If the card forgot its settings](#if-the-card-forgot-its-settings); refused while the file system is fine |
+| `storage format yes` | erase the file system and restart, for a damaged one, see [If the card forgot its settings](#if-the-card-forgot-its-settings); the pairing comes back from its copy, the other settings and the battery log are lost |
 
 **Privacy:** the log shows the camera's serial number and Bluetooth address and the card's id –
 do not publish it. GPS positions are never logged.
@@ -392,6 +399,7 @@ Measuring the current with the battery log: `docs/HARDWARE.md`, section "Measuri
 
 ```
 pio test -e native
+pio test -e native_sessions
 node --test test/web/card_page.test.mjs
 ```
 
@@ -400,8 +408,10 @@ formats, location), camera list, UTC calendar, time zone table, POSIX time zone 
 full tz database at every change of 2026–2031), time zone file, pairing record and its copy,
 settings file, the camera handles kept between connections, link, battery and sound rules, the
 battery log's batches and the stable-USB rule, the lines of `status` – are
-tested with made-up data and the vectors from `docs/PROTOCOL.md`. The second command (Node.js,
-tested with version 22) tests the card page with a simulated card.
+tested with made-up data and the vectors from `docs/PROTOCOL.md`. The second command runs the
+state machines – the introduction in both dialects, pairing and the link – against fakes of the
+hardware and a test camera that can disconnect, stay silent or refuse at any step. The third
+(Node.js, tested with version 22) tests the card page with a simulated card.
 
 ## Documentation
 

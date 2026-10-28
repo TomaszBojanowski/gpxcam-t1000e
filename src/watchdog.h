@@ -17,12 +17,14 @@
 
 namespace watchdog {
 
-// Far above the longest wait in the loop (gps::off() up to about 6 s, 'diag bat' about 4 s),
-// short enough that a hung card comes back soon.
+// Far above the longest wait in the loop (gps::off() up to about 9.5 s with its sound and the module's
+// answers, gps.h; switching off with the button, the melody and gps::off() about 17 s; 'diag bat' about
+// 4 s), short enough that a hung card comes back soon.
 constexpr uint32_t TIMEOUT_S = 30;
 constexpr uint32_t TIMEOUT_MS = TIMEOUT_S * 1000;
 
-// Starts it; one already running (after a soft reset) is kept and fed. Call first in setup().
+// Starts it; one already running (after a soft reset) is kept and fed. Call in setup() right after
+// board::init().
 void begin();
 
 // Call on every pass of loop(), and only there: a loop that stops running stops the feeding.

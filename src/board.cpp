@@ -119,7 +119,7 @@ void init()
     driveLow(PIN_BUZZER);    // P0.25
 
     // GPS AG3335: main supply off, backup (RTC) supply on permanently, so the GPS keeps
-    // its data between uses (M2 decision, hot start). Other lines as in Seeed's SDK with
+    // its data between uses (hot start). Other lines as in Seeed's SDK with
     // the GPS off and the backup on (t1000_e/peripherals/src/ag3335.c: gnss_init(),
     // gnss_scan_stop()). UART pins released until the GPS is switched on (gps.cpp).
     driveLow(PIN_GPS_EN);                  // P1.11 main supply off

@@ -13,8 +13,8 @@ constexpr size_t VERSION_OFFSET = 4;
 constexpr size_t PAIRED_OFFSET = 5;
 constexpr size_t UUID_OFFSET = 6;
 constexpr size_t SERIAL_OFFSET = UUID_OFFSET + lumix::UUID_LENGTH;      // 22
-constexpr size_t RESERVED_OFFSET = SERIAL_OFFSET + lumix::SERIAL_LENGTH; // 27
-constexpr size_t CRC_OFFSET = RESERVED_OFFSET + 1;                       // 28
+constexpr size_t DIALECT_OFFSET = SERIAL_OFFSET + lumix::SERIAL_LENGTH; // 27
+constexpr size_t CRC_OFFSET = DIALECT_OFFSET + 1;                       // 28
 static_assert(CRC_OFFSET + 4 == SIZE, "record layout");
 
 constexpr uint32_t CRC_POLYNOMIAL = 0xEDB88320; // IEEE 802.3, reflected
@@ -47,6 +47,7 @@ void encode(const Record &record, uint8_t out[SIZE])
     memcpy(&out[UUID_OFFSET], record.uuid, lumix::UUID_LENGTH);
     if (record.paired)
         memcpy(&out[SERIAL_OFFSET], record.serial, lumix::SERIAL_LENGTH);
+    out[DIALECT_OFFSET] = record.dialect;
     putU32(&out[CRC_OFFSET], crc32(out, CRC_OFFSET));
 }
 
@@ -65,7 +66,13 @@ Status decode(const uint8_t *data, size_t length, Record *record)
     record->paired = data[PAIRED_OFFSET] == 1;
     memcpy(record->uuid, &data[UUID_OFFSET], lumix::UUID_LENGTH);
     memcpy(record->serial, &data[SERIAL_OFFSET], lumix::SERIAL_LENGTH);
+    record->dialect = data[DIALECT_OFFSET];
     return Status::Ok;
+}
+
+bool isOlderDialect(const Record &record)
+{
+    return record.dialect == DIALECT_OLDER;
 }
 
 const char *statusText(Status status)

@@ -1,5 +1,5 @@
 // Keeps the pairing record (pairing_record.h) in the internal file system as
-// /gpxcam/pairing.bin (M4). Loop task only.
+// /gpxcam/pairing.bin. Loop task only.
 #pragma once
 
 #include "pairing_record.h"
@@ -22,9 +22,10 @@ bool writable();
 
 const pairing_record::Record &record();
 
-// Stores the camera that accepted the card (replacing an earlier one), in the file and then in
+// Stores the camera that accepted the card and its dialect (pairing_record DIALECT_NEWER or
+// DIALECT_OLDER), replacing an earlier one, in the file and then in
 // its copy. False if not writable or the file was not written.
-bool saveCamera(const uint8_t serial[lumix::SERIAL_LENGTH]);
+bool saveCamera(const uint8_t serial[lumix::SERIAL_LENGTH], uint8_t dialect);
 
 // Removes the paired camera, keeps the card UUID; the file, then its copy. False if not writable or
 // the file was not written.

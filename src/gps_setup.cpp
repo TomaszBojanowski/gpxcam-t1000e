@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "gps.h"
 #include "log.h"
@@ -40,7 +41,7 @@ const char *const TYPE_NAMES[NMEA_TYPES] = {"GGA", "GLL", "GSA", "GSV", "RMC", "
 constexpr long WANTED_RATE[NMEA_TYPES] = {1, 0, 0, 0, 1, 0, 0, 0, 0, 0}; // GGA and RMC every fix
 constexpr long MAX_RATE = 20;
 
-// GPS, GLONASS, Galileo, BeiDou (M2 decision). QZSS (field 5) is not compared.
+// GPS, GLONASS, Galileo, BeiDou. QZSS (field 5) is not compared.
 constexpr int COMPARED_SYSTEMS = 4;
 constexpr const char *SET_MODE = "PAIR066,1,1,1,1,0,0"; // spec example, also used by Meshtastic
 
@@ -97,7 +98,7 @@ int nextRateToSet(int from)
 
 void sendRate()
 {
-    char body[24];
+    char body[40]; // the longest a %d and a %ld can be, though the values are single digits
     snprintf(body, sizeof(body), "PAIR062,%d,%ld", rateType, WANTED_RATE[rateType]);
     send(Step::SetRate, body);
 }
@@ -117,10 +118,16 @@ void setRate(int type)
 
 void logRates()
 {
-    char text[96];
-    size_t used = snprintf(text, sizeof(text), "gps: NMEA rates");
-    for (int t = 0; t < NMEA_TYPES && used < sizeof(text); t++)
-        used += snprintf(text + used, sizeof(text) - used, " %s%ld", TYPE_NAMES[t], rates[t]);
+    char text[logger::LINE_MAX] = "gps: NMEA rates";
+    size_t used = strlen(text);
+    for (int t = 0; t < NMEA_TYPES; t++) {
+        char part[32]; // " GGA" and a rate
+        const int length = snprintf(part, sizeof(part), " %s%ld", TYPE_NAMES[t], rates[t]);
+        if (length <= 0 || used + (size_t)length >= sizeof(text))
+            break;
+        memcpy(text + used, part, (size_t)length + 1);
+        used += (size_t)length;
+    }
     logger::transient("%s", text);
 }
 

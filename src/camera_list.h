@@ -1,16 +1,17 @@
-// LUMIX cameras seen while scanning (M3): which reports are worth a log line, which
+// LUMIX cameras seen while scanning: which reports are worth a log line, which
 // cameras have gone. No hardware dependencies (tested on the PC).
 #pragma once
 
 #include <stddef.h>
 #include <stdint.h>
 
+#include "advert_kind.h"
 #include "lumix.h"
 
 namespace camera_list {
 
-constexpr size_t MAX_CAMERAS = 4;      // M3 decision
-constexpr uint32_t LOST_AFTER_MS = 30000; // M3 decision: "not seen" after 30 s
+constexpr size_t MAX_CAMERAS = 4;
+constexpr uint32_t LOST_AFTER_MS = 30000; // "not seen" after 30 s
 
 constexpr size_t ADDRESS_LENGTH = 6;
 
@@ -26,19 +27,21 @@ struct Report {
     lumix::Camera camera;
     uint8_t address[ADDRESS_LENGTH]; // as the SoftDevice gives it: least significant byte first
     uint8_t addressType;
-    int8_t rssi;       // dBm
-    bool scanResponse; // false: from an advertisement
+    int8_t rssi; // dBm
+    advert_kind::Kind kind;
+    uint32_t receivedMs; // millis() when the BLE task got it (bluetooth.cpp), not when the loop reads it
 };
 
 struct Entry {
     bool used;
     Report last;
     uint32_t lastSeenMs;
-    uint32_t advertCount;
+    uint32_t advertCount;      // advertisements of any kind
+    uint32_t connectableCount; // ... of them connectable
     uint32_t scanResponseCount;
 };
 
-enum class Change {
+enum class Change : uint8_t {
     None,      // a known camera with the same state and address
     New,       // first report of this serial number
     Changed,   // state, address or address type differ from the last report
@@ -47,8 +50,9 @@ enum class Change {
 
 class CameraList {
 public:
-    // Stores the report (unless TableFull) and says what is new about it.
-    Change add(const Report &report, uint32_t nowMs);
+    // Stores the report (unless TableFull) and says what is new about it. seenMs: when the report came
+    // (Report::receivedMs), so that a report the loop reads late is not taken for a fresh one.
+    Change add(const Report &report, uint32_t seenMs);
 
     // Removes one camera not seen for LOST_AFTER_MS and copies it to *lost; false if none.
     // Call until false. Works across the 49-day wrap of millis().

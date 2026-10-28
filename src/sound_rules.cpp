@@ -38,7 +38,7 @@ const char *settingName(Setting setting)
 
 bool settingFromName(const char *name, Setting *setting)
 {
-    for (Setting candidate : SETTINGS) {
+    for (const Setting candidate : SETTINGS) {
         if (strcmp(name, settingName(candidate)) == 0) {
             *setting = candidate;
             return true;

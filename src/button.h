@@ -15,10 +15,10 @@ struct Event {
 // Debounce time: OneButton's default (_debounce_ms = 50), the library Meshtastic uses.
 constexpr uint32_t DEBOUNCE_MS = 50;
 
-// Long press threshold (milestone M1 decision: hold 3 s to power off).
+// Long press threshold: hold 3 s to power off.
 constexpr uint32_t LONG_PRESS_MS = 3000;
 
-// Click + hold (M4 decision: pairing): a press that begins at most this long after a
+// Click + hold (pairing): a press that begins at most this long after a
 // short press ended and is held for LONG_PRESS_MS.
 constexpr uint32_t CLICK_HOLD_GAP_MS = 500;
 

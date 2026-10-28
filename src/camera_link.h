@@ -1,4 +1,4 @@
-// The BLE connection to the camera (M4): GATT client requests made directly with the
+// The BLE connection to the camera: GATT client requests made directly with the
 // SoftDevice API. Bluefruit's blocking helpers are not used: they wait only 100 ms
 // (BLE_GENERIC_TIMEOUT) and create a semaphore on the heap for every call.
 // Requests return at once; their results come back as events through a static queue.
@@ -15,7 +15,7 @@
 namespace camera_link {
 
 // The characteristics the card uses (lumix.h, docs/PROTOCOL.md). The first five are needed
-// to introduce the card (pairing), the others for the normal work (M5).
+// to introduce the card (pairing), the others for the normal work.
 enum Characteristic : uint8_t {
     KEY,
     DEVICE_ID,
@@ -28,6 +28,22 @@ enum Characteristic : uint8_t {
     CHARACTERISTIC_COUNT
 };
 constexpr uint8_t INTRODUCTION_CHARACTERISTICS = TIME + 1;
+
+// The older dialect's characteristics, in the order camera_link registers them (lumix.h). Found
+// only on demand (findOlderCharacteristics), so a newer-dialect connection never looks for them.
+// The older dialect has no service UUID: these are found across the whole handle range.
+enum OlderCharacteristic : uint8_t {
+    OLDER_KEY,
+    OLDER_DEVICE_ID,
+    OLDER_DEVICE_NAME,
+    OLDER_CAMERA_NAME,
+    OLDER_CAMERA_TEXT,
+    OLDER_TIME,
+    OLDER_TIME_NOTIFY,
+    OLDER_LOCATION,
+    OLDER_LOCATION_NOTIFY,
+    OLDER_CHARACTERISTIC_COUNT
+};
 
 enum class EventType : uint8_t {
     Connected,
@@ -45,12 +61,18 @@ enum class EventType : uint8_t {
 
 constexpr size_t MAX_READ_LENGTH = 8;
 
-// ATT MTU of the camera link (M4 decision, as the gpxcam app asks for): the SoftDevice is
+// ATT MTU of the camera link (as the gpxcam app asks for): the SoftDevice is
 // configured for it in bluetooth::begin(), the session asks the camera for it.
 constexpr uint16_t MAX_MTU = 185;
 
 struct FoundCharacteristic {
     Characteristic which;
+    uint8_t properties; // PROPERTY_* bits
+    uint16_t valueHandle;
+};
+
+struct FoundOlderCharacteristic {
+    OlderCharacteristic which;
     uint8_t properties; // PROPERTY_* bits
     uint16_t valueHandle;
 };
@@ -72,6 +94,8 @@ struct Event {
     struct {
         uint8_t count; // ours among those in this response
         FoundCharacteristic list[CHARACTERISTIC_COUNT];
+        uint8_t olderCount; // older-dialect ones in this response (only after findOlderCharacteristics)
+        FoundOlderCharacteristic olderList[OLDER_CHARACTERISTIC_COUNT];
         uint16_t lastHandle; // the last value handle in this response
     } characteristics;
     struct {
@@ -86,9 +110,13 @@ struct Event {
     } read; // also the data of Notified
 };
 
-// Registers the service and characteristic UUIDs with the SoftDevice. Call once after
-// Bluefruit.begin().
+// Registers the service and characteristic UUIDs of both dialects with the SoftDevice. Call once
+// after Bluefruit.begin() (which must raise the vendor-UUID count first).
 bool begin();
+
+// How many 128-bit vendor UUIDs begin() registered: the newer dialect's service and 8
+// characteristics plus the older dialect's 9 characteristics, so 18 when all succeed.
+uint8_t registeredUuidCount();
 
 // For bluetooth.cpp, in Bluefruit's BLE task: turns the events of the camera connection
 // into Events. Never blocks; an event that does not fit in the queue is counted as lost.
@@ -98,10 +126,21 @@ void onBleEvent(const ble_evt_t *event);
 // by connect().
 bool nextEvent(Event *event);
 
+// How long the sessions wait for a connection to come up: with the
+// radio listening all the time (connect()) a camera that advertises is reached well within it,
+// and pairing tries again at once on the camera's next advertisement.
+constexpr uint32_t CONNECT_TIMEOUT_MS = 5000;
+
+// Why a session got no link at all, for pairing's quick retries: no answer within
+// CONNECT_TIMEOUT_MS, or the connection not established (HCI 0x3e: the camera sent nothing in
+// its first connection events). None: a link was made, or the session ended some other way.
+enum class LinkFailure : uint8_t { None, NoAnswer, NotEstablished };
+
 // Starts connecting to the camera of the report (its address and type), with the phone's
-// connection parameters (camera_link.cpp). Scanning must be off. False if the SoftDevice
-// refused.
+// connection parameters (camera_link.cpp), the radio listening all the time until it connects.
+// Scanning must be off. False if the SoftDevice refused.
 bool connect(const camera_list::Report &camera);
+// Gives up connecting. A connection that comes up all the same is closed at once (camera_link.cpp).
 void cancelConnect();
 bool connected();
 
@@ -109,17 +148,24 @@ bool connected();
 bool exchangeMtu(uint16_t mtu);
 bool findService();
 bool findCharacteristics(uint16_t startHandle, uint16_t endHandle);
+// Like findCharacteristics, but the CharacteristicsFound events match the older dialect into
+// Event::characteristics::olderList instead. For the older-dialect session, which has no service
+// to search within and so reads across the whole handle range. A newer-dialect connection never
+// calls this, so its discovery is unchanged. Reset by connect().
+bool findOlderCharacteristics(uint16_t startHandle, uint16_t endHandle);
 bool findDescriptors(uint16_t startHandle, uint16_t endHandle);
 bool read(uint16_t handle);
 // Write with response. The data must stay unchanged until WriteDone.
 bool write(uint16_t handle, const uint8_t *data, uint16_t length);
+// Closes the connection; one still coming up is closed when it does. False if the SoftDevice refused
+// (no connection yet).
 bool disconnect();
 
 // Events lost because the queue was full, since start.
 uint32_t lostEvents();
 
 // Call from loop(): logs the parameters of each connection (interval, latency, supervision
-// timeout) and every change of them.
+// timeout) and every change of them, and a connection that came up after it was given up.
 void poll();
 
 } // namespace camera_link

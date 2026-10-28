@@ -8,7 +8,7 @@
 //
 // Pins deliberately left in their reset state (input, buffer disconnected):
 //   P0.04  Meshtastic: T1000X_SENSOR_EN_PIN (output); Seeed: SENSE_ADC_VCC (analog
-//          input AIN2). Measured on the card (M1): about VDD/2 with P1.06 on, so it
+//          input AIN2). Measured on the card: about VDD/2 with P1.06 on, so it
 //          is an analog input as Seeed says. Never driven.
 //   P1.13  FLASH_POWER_EN of the external QSPI flash (Seeed SDK only). Neither
 //          Seeed's firmware nor Meshtastic drives it.

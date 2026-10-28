@@ -11,6 +11,10 @@ document is the public description of the protocol.
 - Manufacturer specific data: `3a 00 <state> <5-byte serial number>`.
 - `<state>`: `00` camera on, `03` pairing mode ("Add New Device"), `06` switched off with the switch
   (standby). **Never connect in state `06` – a connection wakes the camera.**
+- The older Panasonic app knows more states: `01` asleep, `02` waking up, `04` off, `05` on but asleep, `07` on
+  but asleep with a quick wake, `08`–`0A` the same with automatic transfer. It registers a new camera only in
+  `03`; a camera it already knows it also connects to in `05` and `07`. Seen so far: `00`, `03`, `06` on the
+  S5II (both dialects); `07` on an S5 (1st generation) that showed its pairing screen (2026-10-25).
 - Advertised service: `054AC620-3214-11E6-AC0D-0002A5D5C51B`.
 - On: a resolvable private address (RPA). Standby: the public address. Legacy ADV_IND, connectable.
 - Connect only when the state and the serial number are known and the number matches the paired one.
@@ -187,6 +191,67 @@ Advertisement (made-up serial number `12 34 56 78 9a`, tests in `test/test_lumix
 - `02 01 06 09 ff 3a 00 00 12 34 56 78 9a` → camera, state `00` (on), serial number `123456789a`
 - `09 ff 3a 00 06 12 34 56 78 9a` (a scan response alone) → camera, state `06` (standby)
 - `05 ff 3a 00 01 02` → Panasonic data in another layout, not a camera
+
+## Older dialect: the card's identity
+
+Cameras that the older Panasonic app pairs with (the S5II among them) also speak an older dialect, with other
+characteristics. At the first pairing the camera takes a device only when the identity it presents over Bluetooth
+is the one registered over the camera's Wi-Fi; after that the device connects over Bluetooth alone.
+
+- **Identity (16 B):** the fixed prefix `4d 45 49 30 01 00 10 00 80 01` (ASCII "MEI0" and six bytes), then a 6-byte
+  seed. The card's seed is the last 6 bytes of its UUID (the pairing file), so the identity stays as long as the
+  card keeps its pairing.
+- **Over Wi-Fi** it is registered as text, upper case: `4D454930-0100-1000-8001-` and the seed in hex.
+- **Over Bluetooth**, in the byte order and with the XOR of the newer dialect (key read from the camera):
+  - identity: `xor(wordSwap(10 + identity + ff ff ff), key)`, 20 bytes;
+  - device name: `xor(wordSwap([length] + name + 00… + ff ff ff), key)`, 20 bytes; printable ASCII, 1 to 16
+    characters, the same name as registered over Wi-Fi.
+
+Made-up vectors in `test/device_identity_vectors.txt`, checked in `test/test_device_identity`: seed
+`a1b2c3d4e5f6`, key `11 22 33 44` → identity field `58677e5401223274b023b344f4f6f0f6eeddccb2`; name `T1000-E` →
+`21136743540f03741122334411223344eeddcc44`.
+
+## Older dialect: the one-time Wi-Fi step
+
+At the first pairing the camera opens its own Wi-Fi access point and shows its network name and password on its
+screen. A computer joins that network by hand and registers the same identity and device name over the camera's
+local HTTP service; the camera then accepts the card over Bluetooth, and later connections need no Wi-Fi. The
+gpxcam card desktop app does this step (`app/src-tauri/src/older_wifi.rs`); the card only waits for the camera's
+acceptance (up to 300 s).
+
+- The camera is at `192.168.54.1` on its access point (HTTP, no TLS; a UPnP description on port 60606, the
+  registration on port 80).
+- On one keep-alive connection: `GET /cam.cgi?mode=accctrl&type=req_acc_g` returns `ok,<token>` with a 4-byte
+  session token (hex); then `GET /cam.cgi?mode=accctrl&type=req_acc_e&value=<identity>&value2=<name>`.
+- **Wi-Fi encoding** of a text: pad its ASCII bytes with `0xFF` to a multiple of four, then for each 4-byte word
+  emit `byteSwap(word XOR token)` as eight lower-case hex digits — the same XOR-and-byte-swap as the Bluetooth
+  identity above, over the text form, keyed by the session token.
+- The camera answers `ok_under_research…` or `err_user_refused…` until it accepts (the user allows the device on
+  the camera, and the identity and name must match); then `ok,…`, and it sends the card `01` over Bluetooth.
+
+Made-up example (token `1a2b3c4d`, the seed and name above): `value2` for `T1000-E` is `7d0c1a4eb279062a`; the app's
+test (`app/src-tauri/src/older_wifi.rs`) checks the full encoding against `test/device_identity_vectors.txt`.
+
+## Older dialect: the connection
+
+The card's order (`src/older_session.cpp`), each step after the answer to the previous one, at most 5 s each:
+1. read the key, write the identity, write the device name (both above), read the camera's name and text;
+2. wait for the camera's `01` (it knows the card) on one of the two notification characteristics, next to the
+   location or next to the time: up to 300 s when pairing, while a computer does the Wi-Fi step; 15 s in a lasting
+   connection, where a camera that knows the card sends it right after the device name;
+3. write the time, in the newer dialect's format; in a lasting connection twice, as in the newer dialect (the
+   camera takes the zone from the packet before), and not at all with the clock setting off;
+4. pairing ends here; a lasting connection sends a location every 5 s.
+
+- **The time when pairing:** the camera sends its `01`, and the card writes the time, up to 300 s after the card
+  introduced itself, while the user joins the camera's Wi-Fi network on a computer, often indoors, where the GPS
+  loses its fix. Without a fresh GPS time the
+  card then uses the time of the last fix plus the time since it came, for up to 10 min.
+- **After the connection ends** the card waits as in the newer dialect: 5 s when the camera closed a connection in
+  which it had taken the card (`HCI 0x13`, switched off); one more try after 1 s when the connection was not
+  established (`HCI 0x3e`); otherwise 5 s, 15 s, then 60 s. A connection in which the camera did not take the card
+  (it refused a write, or sent no `01` in time) counts, and the third in a row stops the card as a refusal does; a
+  location the camera takes starts the count again.
 
 ## Camera behaviour worth knowing
 

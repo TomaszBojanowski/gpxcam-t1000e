@@ -3,7 +3,7 @@
 // characteristics, key, identifier, app name, device name, time. Every step has a time
 // limit and starts only after the previous one succeeded; a refused time means the camera
 // does not know the card. For pairing the connection is closed at the end; for the normal
-// work (M5) the time goes once more (the camera takes the time zone from the packet before
+// work the time goes once more (the camera takes the time zone from the packet before
 // the last one) and the connection stays open. Loop task only.
 #pragma once
 
@@ -46,6 +46,14 @@ const Discovered &discovered();
 // True if the last session failed because the connection ended after it was made (not HCI
 // 0x3e, a connection that was never made).
 bool endedAfterConnecting();
+
+// Whether the last session got no link at all (no answer, or HCI 0x3e), for pairing's quick retries.
+camera_link::LinkFailure linkFailure();
+
+// True if the last session failed because the camera has no newer-dialect service (1FE71B85): its
+// search ended with "attribute not found" or found none. It speaks only the older dialect, so 'pair'
+// switches to it (pairing.cpp). Another error of that search is a failed attempt only.
+bool lacksNewerService();
 
 // Whether the last session wrote the time: always when pairing; in a connection that stays
 // open unless the clock is off ('clock off', tz_store). link_control judges refusals by it.

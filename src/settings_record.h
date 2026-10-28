@@ -32,7 +32,7 @@ struct Record {
 // What applies without a file.
 constexpr Record DEFAULTS = {sound_rules::Setting::Loud, link_policy::Updates::Normal};
 
-enum class Status { Ok, WrongSize, WrongMagic, WrongVersion, BadChecksum, BadSound };
+enum class Status : uint8_t { Ok, WrongSize, WrongMagic, WrongVersion, BadChecksum, BadSound };
 
 void encode(const Record &record, uint8_t out[SIZE]);
 

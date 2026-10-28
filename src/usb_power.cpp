@@ -23,8 +23,13 @@ constexpr uint32_t WAIT_STEP_US = 100;
 // A crystal already asked for by DETECTED (hfclk_enable()) runs within this time.
 constexpr uint32_t CLOCK_STARTING_US = 10000;
 
-// Written by the handler (Bluefruit SOC task, or an interrupt before the SoftDevice starts),
-// read by the loop.
+// Written by the handler, read by the loop. The handler runs in three places, never two at once
+// (Bluefruit's usb_softdevice_pre_enable() hands the events from the POWER interrupt over to the SoftDevice
+// before it starts): the POWER interrupt before the SoftDevice starts; the loop task inside
+// Bluefruit.begin() (usb_softdevice_post_enable(), bluefruit.cpp); and the SOC task after that. Its
+// waits there (up to about 210 ms) also hold the BLE and USB tasks, which have the same priority
+// without time slicing (FreeRTOSConfig.h): harmless, as the SoftDevice keeps a connection by itself
+// and the camera's ATT time limit is 30 s.
 volatile uint32_t skipped = 0;
 
 // The checks below follow the handler's own helpers (dcd_nrf5x.c is_sd_enabled(),

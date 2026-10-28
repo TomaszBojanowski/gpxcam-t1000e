@@ -21,8 +21,7 @@ namespace {
 
 using camera_link::Characteristic;
 
-// Time limits (M4 decisions).
-constexpr uint32_t CONNECT_MS = 10000;
+// Time limits (connecting: camera_link::CONNECT_TIMEOUT_MS).
 constexpr uint32_t MTU_MS = 3000;
 constexpr uint32_t STEP_MS = 5000; // service, characteristics, key and every write
 constexpr uint32_t DISCONNECT_MS = 5000;
@@ -32,7 +31,7 @@ constexpr uint16_t MTU_REQUEST = camera_link::MAX_MTU;
 constexpr uint16_t ATT_WRITE_HEADER = 3;
 constexpr uint16_t MTU_NEEDED = lumix::APP_NAME_LENGTH + ATT_WRITE_HEADER;
 
-// M4 decisions: names shown by the camera.
+// Names shown by the camera.
 constexpr const char *DEVICE_NAME = "T1000-E";
 constexpr const char *APP_NAME = "gpxcam T1000-E " FW_VERSION;
 
@@ -47,7 +46,9 @@ bool timeWritten = true; // set at the start: false only with the clock off in a
 bool accepted = false;
 bool rejected = false; // a refusal that means the camera does not know the card (link_policy)
 bool establishFailed = false; // HCI 0x3e: the connection was not established
+bool connectTimedOut = false; // no connection within camera_link::CONNECT_TIMEOUT_MS
 bool endedEarly = false;      // the connection ended after it was made, during the introduction
+bool newerServiceAbsent = false; // the newer-dialect service (1FE71B85) was not on the camera
 char failureText[80] = "";
 
 uint8_t cardUuid[lumix::UUID_LENGTH];
@@ -317,8 +318,8 @@ void onWritten(const camera_link::Event &event, void (*next)())
 // The camera knows the card. A connection that stays open writes the time once more: the
 // camera takes the time zone offset from the time packet before the last one (only the
 // summer-time flag from the last), so the second packet makes the zone of the first count
-// (tested on the S5II, docs/PROTOCOL.md). Pairing writes it once, as up to 1.1; the
-// connection after it writes it twice.
+// (tested on the S5II, docs/PROTOCOL.md). Pairing writes it once; the connection after it
+// writes it twice.
 void onTimeAccepted()
 {
     accepted = true;
@@ -365,7 +366,14 @@ void onMtu(const camera_link::Event &event)
 void onService(const camera_link::Event &event)
 {
     if (!event.service.found) {
-        setFailure("service: not on this camera (GATT 0x%04x)", event.status);
+        // The camera says it has no such service: "attribute not found", or an answer without one. 'pair'
+        // switches to the older dialect then (pairing.cpp); any other error is only a failed attempt.
+        newerServiceAbsent = event.status == BLE_GATT_STATUS_ATTERR_ATTRIBUTE_NOT_FOUND ||
+                             event.status == BLE_GATT_STATUS_SUCCESS;
+        if (newerServiceAbsent)
+            setFailure("service: the newer dialect is not on this camera (GATT 0x%04x)", event.status);
+        else
+            setFailure("service: not found (GATT 0x%04x)", event.status);
         fail();
         return;
     }
@@ -487,6 +495,7 @@ void handleTimeout()
         break;
     case Step::Connecting:
         camera_link::cancelConnect();
+        connectTimedOut = true;
         setFailure("connect: no answer in %lu s", (unsigned long)(stepLimit / 1000));
         fail(); // in case the connection came up just now
         break;
@@ -529,13 +538,15 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     accepted = false;
     rejected = false;
     establishFailed = false;
+    connectTimedOut = false;
     endedEarly = false;
+    newerServiceAbsent = false;
     failureText[0] = '\0';
     if (!camera_link::connect(camera)) {
         setFailure("connect: refused by the SoftDevice");
         return false;
     }
-    enter(Step::Connecting, CONNECT_MS);
+    enter(Step::Connecting, camera_link::CONNECT_TIMEOUT_MS);
     return true;
 }
 
@@ -569,6 +580,18 @@ bool notEstablished()
 bool endedAfterConnecting()
 {
     return endedEarly;
+}
+
+camera_link::LinkFailure linkFailure()
+{
+    if (establishFailed)
+        return camera_link::LinkFailure::NotEstablished;
+    return connectTimedOut ? camera_link::LinkFailure::NoAnswer : camera_link::LinkFailure::None;
+}
+
+bool lacksNewerService()
+{
+    return newerServiceAbsent;
 }
 
 bool writesTime()

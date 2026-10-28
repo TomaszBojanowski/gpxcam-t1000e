@@ -67,6 +67,25 @@ void logPages(bool keep)
         logger::transient("pair copy: %s, %s%s", first, second, note);
 }
 
+// Writes the copy at the start of the page and 0xFF over the rest of it, all through the core's flash layer, as
+// the file system does: its page cache is shared and the SoftDevice's flash events reach it. The whole page is
+// set in the cache and the flush erases and programs it once (flash_cache.c, flash_cache_flush()): one moment
+// with the page erased, not two as with an erase of its own before (flash_nrf5x_erase() bypasses the cache).
+bool writePage(uint32_t address, const uint8_t *data, size_t size)
+{
+    if (flash_nrf5x_write(address, data, size) != (int)size)
+        return false;
+    uint8_t erased[64];
+    memset(erased, 0xFF, sizeof(erased));
+    for (uint32_t offset = size; offset < FLASH_NRF52_PAGE_SIZE; offset += sizeof(erased)) {
+        const uint32_t length = min((uint32_t)sizeof(erased), FLASH_NRF52_PAGE_SIZE - offset);
+        if (flash_nrf5x_write(address + offset, erased, length) != (int)length)
+            return false;
+    }
+    flash_nrf5x_flush();
+    return true;
+}
+
 } // namespace
 
 namespace pairing_copy {
@@ -103,11 +122,7 @@ bool write(const pairing_record::Record &record)
     const uint32_t sequence = pairing_copy_record::nextSequence(pages);
     uint8_t data[pairing_copy_record::SIZE];
     pairing_copy_record::encode(record, sequence, data);
-    // Through the core's flash layer, as the file system: its page cache is shared and the
-    // SoftDevice's flash events reach it. Erased first, so the rest of the page is 0xFF.
-    const bool written = flash_nrf5x_erase(address) &&
-                         flash_nrf5x_write(address, data, sizeof(data)) == (int)sizeof(data);
-    flash_nrf5x_flush();
+    const bool written = writePage(address, data, sizeof(data));
     readPages();
     const bool checked = written && pages[index].kind == Kind::Copy && pages[index].sequence == sequence &&
                          memcmp(pageBytes(index), data, sizeof(data)) == 0;

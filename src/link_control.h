@@ -1,4 +1,4 @@
-// Normal work with the paired camera (M5, M6), 'link on' / 'link off'. Looks for the camera
+// Normal work with the paired camera, 'link on' / 'link off'. Looks for the camera
 // in one of the search modes of link_policy.h (normal, rare, standby, long standby: scan
 // timing and GPS); connects only to the paired serial number in state 00 and only once the
 // GPS has UTC time (the introduction ends with it). Then it switches the camera's GPS mode
@@ -37,8 +37,8 @@ State state();
 // the guard of link_policy slows it down), otherwise the chosen one ('updates').
 link_policy::Updates updatesNow();
 
-// What the LED shows (M5 decision).
-enum class Indication { Off, Searching, Connected };
+// What the LED shows.
+enum class Indication : uint8_t { Off, Searching, Connected };
 Indication indication();
 
 // What the link is doing, for the battery log (stored as a byte: keep the values).

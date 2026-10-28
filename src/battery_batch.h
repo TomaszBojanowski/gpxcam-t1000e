@@ -60,7 +60,7 @@ private:
 
 // What to do at start with the file of firmware before 1.4.0 (/gpxcam/battery.bin). With both
 // files (back to 1.3 and up again) both stay, and 'bat log clear' removes both.
-enum class OldFile { None, Move, KeepBoth };
+enum class OldFile : uint8_t { None, Move, KeepBoth };
 OldFile oldFile(bool oldExists, bool newExists);
 
 } // namespace battery_batch

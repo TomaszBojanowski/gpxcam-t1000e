@@ -58,12 +58,14 @@ bool writeBatch()
         }
     }
     batch.clear();
-    if (!written) {
-        entriesInFile = countEntriesInFile(); // a part may have been written
-        logger::line("bat log: could not write %u entries to %s - they are lost", (unsigned)count, PATH);
+    // File::close() reports no errors: the file's size shows what was saved, also a part.
+    const uint32_t expected = entriesInFile + count;
+    entriesInFile = countEntriesInFile();
+    if (!written || entriesInFile != expected) {
+        logger::line("bat log: could not write %u entries to %s - %lu in the file", (unsigned)count, PATH,
+                     (unsigned long)entriesInFile);
         return false;
     }
-    entriesInFile += count;
     logger::line("bat log: %u entries saved (%lu in the file)", (unsigned)count, (unsigned long)entriesInFile);
     return true;
 }
@@ -86,7 +88,7 @@ void logOldFileLeft()
     logger::line("bat log: an older log is still in %s - 'bat log clear' removes it too", OLD_PATH);
 }
 
-// Once, on the first start of 1.4.0. littlefs 1.7 renames across directories safely over a
+// Once, at the first start after firmware before 1.4.0. littlefs 1.7 renames across directories safely over a
 // power cut: lfs_rename() marks the entry as moving first, and after a cut the first write of
 // the next start finishes or undoes the move (lfs_deorphan()).
 void moveOldFile()

@@ -11,7 +11,7 @@
 // Sources: S140 7.3.0 API (ble.h, ble_gap.h, ble_gattc.h), Bluefruit52Lib 0.21.0
 // (BLECentral.cpp: connect() uses the scanner's parameters and the central link
 // configuration set in Bluefruit.begin(); it cannot set the supervision timeout, so the
-// card connects with sd_ble_gap_connect() itself, with the same scan parameters).
+// card connects with sd_ble_gap_connect() itself, listening all the time while it connects).
 
 namespace {
 
@@ -23,6 +23,15 @@ QueueHandle_t eventQueue = nullptr;
 volatile uint16_t connHandle = BLE_CONN_HANDLE_INVALID; // written by the BLE task
 volatile uint32_t lost = 0;
 
+// Whether a connection is wanted: set by connect(), cleared by cancelConnect() and disconnect() (loop
+// task). A connection can come up just as the loop task gives it up: sd_ble_gap_connect_cancel() then
+// fails ("connection completed occurred", ble_gap.h) and the Connected event is still on its way, so a
+// session that ends sees no connection and closes none. The BLE task closes such a connection at once
+// instead of handing it to nobody (it would stay open, the camera showing a connection without locations).
+volatile bool connectionWanted = false;
+volatile uint32_t unwantedClosed = 0; // written by the BLE task
+uint32_t unwantedLogged = 0;          // loop task
+
 // The connection as Android 15 (gpxcam app) sets it up with the S5II, read from the phone's
 // HCI log (docs/PROTOCOL.md): interval 48.75 ms, latency 0, supervision timeout 5 s, and
 // packets of 61 bytes (the camera's MTU 57 plus the 4-byte L2CAP header). With Bluefruit's
@@ -31,6 +40,13 @@ constexpr uint16_t CONN_INTERVAL = 39;        // in 1.25 ms: 48.75 ms
 constexpr uint16_t SLAVE_LATENCY = 0;
 constexpr uint16_t SUPERVISION_TIMEOUT = 500; // in 10 ms: 5 s
 constexpr uint16_t DATA_LENGTH = 61;          // bytes per packet, both ways
+
+// While connecting, the radio listens all the time (window = interval) instead of the scanner's
+// 50 ms of every 100 ms, so it does not miss half of the camera's advertisements; it lasts at most
+// CONNECT_TIMEOUT_MS. Units of ble_gap_scan_params_t (ble_gap.h): 0.625 ms; a window may equal the
+// interval. The other fields are the scanner's (Bluefruit BLEScanner: legacy, 1 Mb/s, accept all).
+constexpr uint16_t INITIATOR_INTERVAL = 80; // 50 ms
+constexpr uint16_t INITIATOR_WINDOW = INITIATOR_INTERVAL;
 
 // Connection parameters travel from the BLE task to poll() through their own queue, so the
 // GATT steps of camera_session and link_control never see them.
@@ -53,7 +69,7 @@ QueueHandle_t paramsQueue = nullptr;
 // Units of ble_gap_conn_params_t (ble_gap.h): the interval in 1.25 ms, the timeout in 10 ms.
 constexpr uint32_t INTERVAL_UNIT_US = 1250;
 constexpr uint32_t TIMEOUT_UNIT_MS = 10;
-constexpr size_t PARAMS_TEXT_MAX = 80;
+constexpr size_t PARAMS_TEXT_MAX = 100;
 
 constexpr uint16_t FIRST_HANDLE = 0x0001;
 
@@ -65,6 +81,23 @@ ble_uuid_t characteristicUuids[camera_link::CHARACTERISTIC_COUNT] = {};
 const uint8_t *const CHARACTERISTIC_UUIDS[camera_link::CHARACTERISTIC_COUNT] = {
     lumix::KEY_UUID,  lumix::DEVICE_ID_UUID,  lumix::APP_NAME_UUID,  lumix::DEVICE_NAME_UUID,
     lumix::TIME_UUID, lumix::GPS_MODE_UUID, lumix::GPS_NOTIFY_UUID, lumix::LOCATION_UUID};
+
+// The older dialect's characteristics, registered so the card can speak it too (no service UUID:
+// found by reading across the handle range, older_session.cpp).
+ble_uuid_t olderCharacteristicUuids[lumix::OLDER_CHARACTERISTIC_COUNT] = {};
+const uint8_t *const OLDER_CHARACTERISTIC_UUIDS[lumix::OLDER_CHARACTERISTIC_COUNT] = {
+    lumix::OLDER_KEY_UUID,         lumix::OLDER_DEVICE_ID_UUID,   lumix::OLDER_DEVICE_NAME_UUID,
+    lumix::OLDER_CAMERA_NAME_UUID, lumix::OLDER_CAMERA_TEXT_UUID, lumix::OLDER_TIME_UUID,
+    lumix::OLDER_TIME_NOTIFY_UUID, lumix::OLDER_LOCATION_UUID,    lumix::OLDER_LOCATION_NOTIFY_UUID};
+
+uint8_t registeredCount = 0; // vendor UUIDs begin() registered
+static_assert(camera_link::OLDER_CHARACTERISTIC_COUNT == lumix::OLDER_CHARACTERISTIC_COUNT,
+              "the older-characteristic enum and UUID list agree");
+
+// Set by findOlderCharacteristics, cleared by connect() (loop task); read by the BLE task when the
+// discovery answers come: the next discovery matches the older dialect. The newer dialect never sets
+// it, so its discovery matches only the newer list.
+volatile bool discoverOlder = false;
 
 bool registerUuid(const uint8_t bigEndian[lumix::UUID_LENGTH], ble_uuid_t *out)
 {
@@ -90,6 +123,23 @@ void addCharacteristics(const ble_gattc_evt_char_disc_rsp_t &response, camera_li
     for (uint16_t i = 0; i < response.count; i++) {
         const ble_gattc_char_t &found = response.chars[i];
         out->characteristics.lastHandle = found.handle_value;
+        if (discoverOlder) {
+            for (uint8_t which = 0; which < camera_link::OLDER_CHARACTERISTIC_COUNT; which++) {
+                const ble_uuid_t &wanted = olderCharacteristicUuids[which];
+                if (found.uuid.type != wanted.type || found.uuid.uuid != wanted.uuid ||
+                    out->characteristics.olderCount >= camera_link::OLDER_CHARACTERISTIC_COUNT)
+                    continue;
+                camera_link::FoundOlderCharacteristic &entry =
+                    out->characteristics.olderList[out->characteristics.olderCount++];
+                entry.which = (camera_link::OlderCharacteristic)which;
+                entry.properties = (found.char_props.read ? camera_link::PROPERTY_READ : 0) |
+                                   (found.char_props.write ? camera_link::PROPERTY_WRITE : 0) |
+                                   (found.char_props.notify ? camera_link::PROPERTY_NOTIFY : 0) |
+                                   (found.char_props.indicate ? camera_link::PROPERTY_INDICATE : 0);
+                entry.valueHandle = found.handle_value;
+            }
+            continue; // older: do not also match the newer list
+        }
         for (uint8_t which = 0; which < camera_link::CHARACTERISTIC_COUNT; which++) {
             const ble_uuid_t &wanted = characteristicUuids[which];
             if (found.uuid.type != wanted.type || found.uuid.uuid != wanted.uuid ||
@@ -132,19 +182,19 @@ void queueParams(ParamsEvent type, const ble_gap_conn_params_t &params)
 }
 
 // "interval 48.75 ms, latency 0, supervision timeout 5000 ms"; an interval range when the
-// minimum and maximum differ (a camera request).
-void formatParams(const ble_gap_conn_params_t &params, char *out, size_t size)
+// minimum and maximum differ (a camera request). The longest, with every field at its largest
+// (uint16_t), is about 90 characters.
+void formatParams(const ble_gap_conn_params_t &params, char (&out)[PARAMS_TEXT_MAX])
 {
     const uint32_t minUs = params.min_conn_interval * INTERVAL_UNIT_US;
     const uint32_t maxUs = params.max_conn_interval * INTERVAL_UNIT_US;
-    int length = snprintf(out, size, "interval %lu.%02lu", (unsigned long)(minUs / 1000),
-                          (unsigned long)(minUs % 1000 / 10));
-    if (maxUs != minUs && length > 0 && (size_t)length < size)
-        length += snprintf(out + length, size - length, "-%lu.%02lu", (unsigned long)(maxUs / 1000),
-                           (unsigned long)(maxUs % 1000 / 10));
-    if (length > 0 && (size_t)length < size)
-        snprintf(out + length, size - length, " ms, latency %u, supervision timeout %lu ms", params.slave_latency,
-                 (unsigned long)(params.conn_sup_timeout * TIMEOUT_UNIT_MS));
+    char range[16] = ""; // "-81918.75"
+    if (maxUs != minUs)
+        snprintf(range, sizeof(range), "-%lu.%02lu", (unsigned long)(maxUs / 1000) % 100000,
+                 (unsigned long)(maxUs % 1000 / 10));
+    snprintf(out, sizeof(out), "interval %lu.%02lu%s ms, latency %u, supervision timeout %lu ms",
+             (unsigned long)(minUs / 1000) % 100000, (unsigned long)(minUs % 1000 / 10), range,
+             params.slave_latency, (unsigned long)(params.conn_sup_timeout * TIMEOUT_UNIT_MS));
 }
 
 } // namespace
@@ -155,13 +205,26 @@ bool begin()
 {
     eventQueue = xQueueCreateStatic(QUEUE_LENGTH, sizeof(Event), queueStorage, &queueControl);
     paramsQueue = xQueueCreateStatic(PARAMS_QUEUE_LENGTH, sizeof(ParamsInfo), paramsQueueStorage, &paramsQueueControl);
+    registeredCount = 0;
     if (!registerUuid(lumix::SERVICE_UUID, &serviceUuid))
         return false;
+    registeredCount++;
     for (size_t i = 0; i < CHARACTERISTIC_COUNT; i++) {
         if (!registerUuid(CHARACTERISTIC_UUIDS[i], &characteristicUuids[i]))
             return false;
+        registeredCount++;
+    }
+    for (size_t i = 0; i < lumix::OLDER_CHARACTERISTIC_COUNT; i++) {
+        if (!registerUuid(OLDER_CHARACTERISTIC_UUIDS[i], &olderCharacteristicUuids[i]))
+            return false;
+        registeredCount++;
     }
     return true;
+}
+
+uint8_t registeredUuidCount()
+{
+    return registeredCount;
 }
 
 void onBleEvent(const ble_evt_t *event)
@@ -174,6 +237,11 @@ void onBleEvent(const ble_evt_t *event)
     if (id == BLE_GAP_EVT_CONNECTED) {
         if (event->evt.gap_evt.params.connected.role != BLE_GAP_ROLE_CENTRAL)
             return;
+        if (!connectionWanted) { // given up meanwhile: closed, and its Disconnected is not for us
+            sd_ble_gap_disconnect(eventConn, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+            unwantedClosed++;
+            return;
+        }
         connHandle = eventConn;
         out.type = EventType::Connected;
         queueEvent(out);
@@ -268,16 +336,26 @@ bool connect(const camera_list::Report &camera)
 {
     if (connHandle != BLE_CONN_HANDLE_INVALID)
         return false;
+    discoverOlder = false; // a new connection discovers the newer dialect unless asked otherwise
     xQueueReset(eventQueue); // answers from an earlier connection
     ble_gap_addr_t address = {};
     address.addr_type = camera.addressType;
     memcpy(address.addr, camera.address, camera_list::ADDRESS_LENGTH);
     const ble_gap_conn_params_t params = {CONN_INTERVAL, CONN_INTERVAL, SLAVE_LATENCY, SUPERVISION_TIMEOUT};
-    return sd_ble_gap_connect(&address, Bluefruit.Scanner.getParams(), &params, CONN_CFG_CENTRAL) == NRF_SUCCESS;
+    ble_gap_scan_params_t initiator = *Bluefruit.Scanner.getParams();
+    initiator.interval = INITIATOR_INTERVAL;
+    initiator.window = INITIATOR_WINDOW;
+    initiator.timeout = BLE_GAP_SCAN_TIMEOUT_UNLIMITED; // the sessions cancel after CONNECT_TIMEOUT_MS
+    connectionWanted = true; // before: the Connected event may come at once
+    if (sd_ble_gap_connect(&address, &initiator, &params, CONN_CFG_CENTRAL) == NRF_SUCCESS)
+        return true;
+    connectionWanted = false;
+    return false;
 }
 
 void cancelConnect()
 {
+    connectionWanted = false; // first: a connection that completes now is closed by onBleEvent()
     sd_ble_gap_connect_cancel(); // NRF_ERROR_INVALID_STATE when no connection is being made
 }
 
@@ -298,6 +376,13 @@ bool findService()
 
 bool findCharacteristics(uint16_t startHandle, uint16_t endHandle)
 {
+    const ble_gattc_handle_range_t range = {startHandle, endHandle};
+    return sd_ble_gattc_characteristics_discover(connHandle, &range) == NRF_SUCCESS;
+}
+
+bool findOlderCharacteristics(uint16_t startHandle, uint16_t endHandle)
+{
+    discoverOlder = true;
     const ble_gattc_handle_range_t range = {startHandle, endHandle};
     return sd_ble_gattc_characteristics_discover(connHandle, &range) == NRF_SUCCESS;
 }
@@ -327,6 +412,7 @@ bool write(uint16_t handle, const uint8_t *data, uint16_t length)
 
 bool disconnect()
 {
+    connectionWanted = false; // also one that has not come up yet (onBleEvent())
     return sd_ble_gap_disconnect(connHandle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION) == NRF_SUCCESS;
 }
 
@@ -339,10 +425,16 @@ void poll()
 {
     if (paramsQueue == nullptr)
         return;
+    const uint32_t closed = unwantedClosed;
+    if (closed != unwantedLogged) {
+        unwantedLogged = closed;
+        logger::line("camera: a connection that came up after it was given up was closed (%lu since start)",
+                     (unsigned long)closed);
+    }
     ParamsInfo info;
     char text[PARAMS_TEXT_MAX];
     while (xQueueReceive(paramsQueue, &info, 0) == pdTRUE) {
-        formatParams(info.params, text, sizeof(text));
+        formatParams(info.params, text);
         switch (info.type) {
         case ParamsEvent::Connected:
             logger::line("camera: connection %s", text);

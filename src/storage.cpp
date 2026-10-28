@@ -57,6 +57,37 @@ lfs_config ramConfig = {};
 
 enum class State { Ok, Formatted, Damaged, NoRamStandIn };
 State state = State::Damaged;
+bool damagedInside = false; // Damaged: it mounted, but a block of it cannot be used
+
+// The core's file system writes 128-byte blocks, but its flash cache erases and programs the whole
+// 4 KB page each time (flash_cache.c, flash_cache_flush()): a reset in that moment (power, watchdog)
+// can leave both halves of a directory, or blocks a file points to, erased. lfs_mount() reads only the
+// superblock, so such a file system mounts, and littlefs stops the card in an assert at the first use
+// of an erased pointer (0xFFFFFFFF, lfs.c: LFS_ASSERT(block < block_count)), at every write.
+// lfs_traverse() (littlefs 1.7) passes each block number to the callback before it reads the block and
+// checks every directory's CRC, so it finds such damage without the assert.
+struct BlockCheck {
+    lfs_size_t blockCount;
+    uint32_t visits;
+};
+// A file's skip pointers name some blocks twice; many more visits would be a loop in damaged metadata.
+constexpr uint32_t VISITS_PER_BLOCK = 4;
+
+int checkBlock(void *data, lfs_block_t block)
+{
+    BlockCheck *check = static_cast<BlockCheck *>(data);
+    if (block >= check->blockCount || ++check->visits > VISITS_PER_BLOCK * check->blockCount)
+        return LFS_ERR_CORRUPT;
+    return 0;
+}
+
+// Every directory and every file's block list of the mounted file system can be read.
+bool wholeFileSystemUsable()
+{
+    lfs_t *lfs = InternalFS._getFS();
+    BlockCheck check = {lfs->cfg->block_count, 0};
+    return lfs_traverse(lfs, checkBlock, &check) == 0;
+}
 
 bool areaErased()
 {
@@ -96,7 +127,13 @@ namespace storage {
 void begin()
 {
     if (mount()) {
-        state = State::Ok;
+        if (wholeFileSystemUsable()) {
+            state = State::Ok;
+            return;
+        }
+        InternalFS.end(); // damaged inside: left as it is, as one that does not mount
+        damagedInside = true;
+        state = mountRamStandIn() ? State::Damaged : State::NoRamStandIn;
         return;
     }
     // The core's configuration, kept by lfs_mount() also when it failed (lfs_init()).
@@ -127,14 +164,10 @@ void logStart()
         logState();
 }
 
-void formatDamaged()
+void format()
 {
-    if (ready()) {
-        logger::line("storage: the file system is fine - not formatted");
-        return;
-    }
-    logger::line("storage: erasing 0x%05lX-0x%05lX and restarting", (unsigned long)AREA_START,
-                 (unsigned long)(AREA_START + AREA_SIZE));
+    logger::line("storage: erasing 0x%05lX-0x%05lX and restarting - the pairing comes back from its copy",
+                 (unsigned long)AREA_START, (unsigned long)(AREA_START + AREA_SIZE));
     for (uint32_t page = AREA_START; page < AREA_START + AREA_SIZE; page += FLASH_NRF52_PAGE_SIZE) {
         if (!flash_nrf5x_erase(page)) {
             logger::line("storage: erasing 0x%05lX failed - not restarted", (unsigned long)page);
@@ -158,8 +191,9 @@ void logState()
     case State::Damaged:
     case State::NoRamStandIn:
         // Kept in the history: it explains a card that forgot its settings.
-        logger::line("storage: DAMAGED - the file system 0x%05lX-0x%05lX does not mount; left as it is%s",
+        logger::line("storage: DAMAGED - the file system 0x%05lX-0x%05lX %s; left as it is%s",
                      (unsigned long)AREA_START, (unsigned long)(AREA_START + AREA_SIZE),
+                     damagedInside ? "has a damaged block" : "does not mount",
                      state == State::NoRamStandIn ? ", BLE not started" : "");
         logger::line("storage: the card uses the default settings; the pairing comes from its copy, if any;");
         logger::line("storage: 'storage format yes' erases it (time zone, settings, battery log; the pairing "

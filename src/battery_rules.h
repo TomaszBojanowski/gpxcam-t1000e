@@ -1,4 +1,4 @@
-// Battery rules of M6, without hardware dependencies (tested on the PC): when to power off
+// Battery rules, without hardware dependencies (tested on the PC): when to power off
 // to protect the battery, the state of charge, and the 8-byte entry of the battery log.
 #pragma once
 
@@ -7,7 +7,7 @@
 
 namespace battery_rules {
 
-// M6 decision: below this the card powers off (System OFF) to protect the battery.
+// Below this the card powers off (System OFF) to protect the battery.
 constexpr uint32_t LOW_MV = 3400;
 
 // While running, readings come every 60 s; this many low ones in a row power off, so a

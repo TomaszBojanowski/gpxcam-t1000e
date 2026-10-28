@@ -77,6 +77,18 @@ void test_a_copy_is_read_back()
     TEST_ASSERT_EQUAL_HEX8_ARRAY(madeUp(true).serial, result.record.serial, lumix::SERIAL_LENGTH);
 }
 
+void test_the_dialect_rides_in_the_copy()
+{
+    pairing_record::Record older = madeUp(true);
+    older.dialect = pairing_record::DIALECT_OLDER;
+    erase();
+    pairing_copy_record::encode(older, 7, page);
+    const Page result = pairing_copy_record::classify(page, sizeof(page));
+    TEST_ASSERT_EQUAL(Kind::Copy, result.kind);
+    TEST_ASSERT_EQUAL_HEX8(pairing_record::DIALECT_OLDER, result.record.dialect);
+    TEST_ASSERT_TRUE(pairing_record::isOlderDialect(result.record));
+}
+
 void test_an_erased_page_is_empty()
 {
     erase();
@@ -196,6 +208,7 @@ int main(int, char **)
     UNITY_BEGIN();
     RUN_TEST(test_encode_matches_the_expected_bytes);
     RUN_TEST(test_a_copy_is_read_back);
+    RUN_TEST(test_the_dialect_rides_in_the_copy);
     RUN_TEST(test_an_erased_page_is_empty);
     RUN_TEST(test_other_data_is_foreign);
     RUN_TEST(test_a_cut_off_copy_is_broken);

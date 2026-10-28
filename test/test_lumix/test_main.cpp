@@ -138,7 +138,9 @@ void test_state_names()
     TEST_ASSERT_EQUAL_STRING("on", lumix::stateName(0x00));
     TEST_ASSERT_EQUAL_STRING("pairing", lumix::stateName(0x03));
     TEST_ASSERT_EQUAL_STRING("standby", lumix::stateName(0x06));
-    TEST_ASSERT_EQUAL_STRING("unknown", lumix::stateName(0x01));
+    TEST_ASSERT_EQUAL_STRING("on, asleep (quick wake)", lumix::stateName(0x07)); // an S5 in its pairing screen
+    TEST_ASSERT_EQUAL_STRING("asleep", lumix::stateName(0x01));
+    TEST_ASSERT_EQUAL_STRING("unknown", lumix::stateName(0x0B));
 }
 
 void test_format_serial()

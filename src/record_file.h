@@ -1,8 +1,10 @@
 // Small records of the card, each in its own file of the internal file system (InternalFS).
-// A record is written to a temporary file that is renamed over it, which littlefs 1.7 does
-// atomically, also on power loss, replacing the old file (littlefs README, lfs.h lfs_rename());
-// then it is read back, because File::close() reports no errors. Use only when Bluefruit
-// mounted the file system (see tz_store.h). Loop task only.
+// A record is written to a temporary file, which is read back - File::close() reports no errors
+// (Adafruit_LittleFS_File.h), and a failed close would leave it short - and only then renamed over
+// the record: littlefs 1.7 renames atomically, replacing the old file (lfs.h lfs_rename()), so a
+// write cut off in the record's own blocks leaves the old record. It does not protect from the loss
+// of the 4 KB flash page around them (storage.cpp, docs/HARDWARE.md). The record is read back once
+// more after the rename. Use only when storage::ready(). Loop task only.
 #pragma once
 
 #include <stddef.h>

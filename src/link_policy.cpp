@@ -70,7 +70,7 @@ const char *updatesName(Updates updates)
 
 bool updatesFromName(const char *name, Updates *updates)
 {
-    for (Updates candidate : UPDATES) {
+    for (const Updates candidate : UPDATES) {
         if (strcmp(name, updatesName(candidate)) == 0) {
             *updates = candidate;
             return true;
@@ -146,6 +146,13 @@ bool earlyEndMeansUnknownCard(bool timeWritten, uint8_t *earlyEndsInARow)
     if (*earlyEndsInARow < UINT8_MAX)
         (*earlyEndsInARow)++;
     return *earlyEndsInARow >= EARLY_ENDS_FOR_UNKNOWN_CARD;
+}
+
+bool olderRefusalMeansUnknownCard(uint8_t *refusalsInARow)
+{
+    if (*refusalsInARow < UINT8_MAX)
+        (*refusalsInARow)++;
+    return *refusalsInARow >= EARLY_ENDS_FOR_UNKNOWN_CARD;
 }
 
 } // namespace link_policy

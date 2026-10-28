@@ -1,7 +1,7 @@
 // Read-only hardware diagnostics (reset reason, battery divider settling, the 64 MHz crystal)
 // and the watchdog test.
-// Nothing here changes flash or enters a sleep mode. The one-off checks of M1
-// step 1 (button, P0.04, P0.05, VDDH) are documented in docs/HARDWARE.md.
+// Nothing here changes flash or enters a sleep mode, except the test build's commands at the end.
+// The one-off checks (button, P0.04, P0.05, VDDH) are documented in docs/HARDWARE.md.
 #pragma once
 
 #include <stdint.h>
@@ -36,6 +36,11 @@ void poll();
 // area keeps its data, so it is not the empty area of a new card (storage.h): the damage of
 // 2026-10-24, for testing storage.h and pairing_copy.h on the card.
 void breakFileSystem();
+
+// Test builds only: 'diag storage break middle yes' erases one page of the file system that is not the
+// first (the one with the most blocks in use) and restarts: it still mounts, but a directory or a file's
+// block list is gone, as after a flash write cut off mid-page (storage.cpp).
+void breakFileSystemPage();
 #endif
 
 } // namespace diag

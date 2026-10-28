@@ -17,6 +17,14 @@ const uint8_t PAIRED[pairing_record::SIZE] = {0x47, 0x58, 0x50, 0x52, 0x01, 0x01
 const uint8_t NOT_PAIRED[pairing_record::SIZE] = {0x47, 0x58, 0x50, 0x52, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04,
                                                   0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
                                                   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb0, 0xe6, 0x1d, 0xff};
+// PAIRED with the older-dialect byte (27 = 0x01) and byte 27 = 0x02 (an unknown dialect), both with
+// a matching CRC computed independently with Python's zlib.crc32().
+const uint8_t PAIRED_OLDER[pairing_record::SIZE] = {0x47, 0x58, 0x50, 0x52, 0x01, 0x01, 0x00, 0x01, 0x02, 0x03, 0x04,
+                                                    0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+                                                    0x12, 0x34, 0x56, 0x78, 0x9a, 0x01, 0x22, 0x8a, 0xfc, 0x36};
+const uint8_t PAIRED_UNKNOWN[pairing_record::SIZE] = {0x47, 0x58, 0x50, 0x52, 0x01, 0x01, 0x00, 0x01, 0x02, 0x03, 0x04,
+                                                      0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+                                                      0x12, 0x34, 0x56, 0x78, 0x9a, 0x02, 0x98, 0xdb, 0xf5, 0xaf};
 
 pairing_record::Record madeUp(bool paired)
 {
@@ -87,6 +95,29 @@ void test_decode_rejects()
     TEST_ASSERT_EQUAL_MEMORY(&before, &record, sizeof(record)); // untouched
 }
 
+void test_dialect()
+{
+    // a newer-dialect record keeps byte 27 at 0, as before
+    pairing_record::Record record = {};
+    TEST_ASSERT_EQUAL(pairing_record::Status::Ok, pairing_record::decode(PAIRED, sizeof(PAIRED), &record));
+    TEST_ASSERT_EQUAL_HEX8(pairing_record::DIALECT_NEWER, record.dialect);
+    TEST_ASSERT_FALSE(pairing_record::isOlderDialect(record));
+    // the older dialect: byte 27 = 1, round-trips both ways
+    pairing_record::Record older = madeUp(true);
+    older.dialect = pairing_record::DIALECT_OLDER;
+    uint8_t out[pairing_record::SIZE];
+    pairing_record::encode(older, out);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(PAIRED_OLDER, out, sizeof(PAIRED_OLDER));
+    TEST_ASSERT_EQUAL(pairing_record::Status::Ok, pairing_record::decode(PAIRED_OLDER, sizeof(PAIRED_OLDER), &record));
+    TEST_ASSERT_EQUAL_HEX8(pairing_record::DIALECT_OLDER, record.dialect);
+    TEST_ASSERT_TRUE(pairing_record::isOlderDialect(record));
+    // an unknown value is kept but read as the newer dialect
+    TEST_ASSERT_EQUAL(pairing_record::Status::Ok,
+                      pairing_record::decode(PAIRED_UNKNOWN, sizeof(PAIRED_UNKNOWN), &record));
+    TEST_ASSERT_EQUAL_HEX8(0x02, record.dialect);
+    TEST_ASSERT_FALSE(pairing_record::isOlderDialect(record));
+}
+
 void test_random_uuid_bits()
 {
     uint8_t uuid[lumix::UUID_LENGTH];
@@ -118,6 +149,7 @@ int main(int, char **)
     RUN_TEST(test_encode);
     RUN_TEST(test_decode);
     RUN_TEST(test_decode_rejects);
+    RUN_TEST(test_dialect);
     RUN_TEST(test_random_uuid_bits);
     RUN_TEST(test_uuid_text);
     return UNITY_END();
