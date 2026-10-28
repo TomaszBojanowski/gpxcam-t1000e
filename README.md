@@ -129,6 +129,15 @@ which gpxcam versions it works with. On Windows 11 the `.msi` has been tried wit
 that use the older Panasonic app), which need one extra step over the camera's own Wi-Fi; see
 [app/README.md](app/README.md#pairing-an-older-camera).
 
+![The app's card section: connected to the card, with tiles for the camera (Connected), the GPS (Fix, 11 satellites), the battery (Charged, 100 %) and the time zone (Europe/Warsaw, clock on)](docs/images/app-state.png)
+
+![Pairing in the app: the card is looking for the camera, and a highlighted line says "Now start Bluetooth pairing on the camera"](docs/images/app-pairing.png)
+
+![The Wi-Fi step of an older camera: the app asks to join the camera's Wi-Fi network shown on its screen and keep the window open](docs/images/app-older-wifi.png)
+
+*The app's state after Connect, pairing, and the Wi-Fi step of an older camera. More in
+[app/README.md](app/README.md#what-it-looks-like); made with `tools/screenshots.mjs` and a simulated card.*
+
 > [!WARNING]
 > **Older cameras (LUMIX Sync generation): experimental.** Pairing and everyday use with an older camera are tested by the author with an S5II, which speaks the older protocol too, but not yet confirmed on a camera of the S5 generation: the one field test so far, with a LUMIX S5, has not connected. If you own an S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H or BGH1 and are willing to spend an hour testing, please say so in [issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2).
 

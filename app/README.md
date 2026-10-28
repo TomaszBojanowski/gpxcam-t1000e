@@ -11,6 +11,31 @@ pairing, the camera's clock and time zone, location updates and sound.
 - It sends nothing over the internet, and it has no Tauri plugins. Pairing an *older* camera is the
   one time it uses a network at all: only the camera's own Wi-Fi (see below).
 
+## What it looks like
+
+![The card section: connected to the card, with tiles for the camera (Connected, sends the position), the GPS (Fix, 11 satellites), the battery (Charged, 100 %, 4.18 V) and the time zone (Europe/Warsaw, clock on, now UTC+02:00)](../docs/images/app-state.png)
+
+*After Connect: the card's state, refreshed every few seconds.*
+
+![The camera section during pairing: the steps of How to pair, the Cancel button, and a highlighted line "Now start Bluetooth pairing on the camera (its Bluetooth menu, Pairing). The card looks for it for up to 2 minutes."](../docs/images/app-pairing.png)
+
+*Pair: start pairing on the camera only when the app says so.*
+
+![The camera section at the Wi-Fi step of an older camera: "Join the camera's Wi-Fi network shown on its screen and keep this window open", with where to find the password](../docs/images/app-older-wifi.png)
+
+*An older camera: Pair goes on with the Wi-Fi step by itself (see [below](#pairing-an-older-camera)).*
+
+![The settings: the camera's clock switched on with the time zone list (Europe/Warsaw selected), location updates set to Frequent, and the sound set to Quiet](../docs/images/app-settings.png)
+
+*The camera's clock and time zone, the location updates and the sound.*
+
+![Diagnostics after Scan for cameras: the scan's lines with the camera's serial number and the Bluetooth addresses hidden, and the Copy and Copy unmasked controls](../docs/images/app-diagnostics.png)
+
+*Diagnostics: Scan for cameras, ready to paste into a message, with the identifiers hidden.*
+
+The pictures come from `tools/screenshots.mjs` (`npm install`, then `npm run screenshots`): the card page in
+Chromium with the app's side and a card simulated with made-up values.
+
 ## Install
 
 Take the file for your computer from the app's release on GitHub (tag `app-vX.Y.Z`). `SHA256SUMS`

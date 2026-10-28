@@ -1,0 +1,12 @@
+{
+  "name": "gpxcam-t1000e-tools",
+  "private": true,
+  "description": "Node tools of gpxcam-t1000e: the screenshots of the card page in the desktop app (tools/screenshots.mjs)",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "screenshots": "node tools/screenshots.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.64.1"
+  }
+}
