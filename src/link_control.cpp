@@ -709,6 +709,57 @@ const char *phaseText()
     return "?";
 }
 
+// The older dialect's introduction ended without the camera taking the card. A camera that refused it
+// (a refused write, no 01 in time) counts, and the third such connection in a row stops the link as a
+// refusal does (link_policy::olderRefusalMeansUnknownCard()). Otherwise as in the newer dialect: a
+// connection that was not established gets a quick retry, anything else a longer pause each time.
+void olderEnded()
+{
+    if (older_session::cardNotTaken()) {
+        if (link_policy::olderRefusalMeansUnknownCard(&earlyEndsInARow)) {
+            logger::line("link: %u connections in a row ended without camera %s taking the card (last: %s)",
+                         (unsigned)earlyEndsInARow, serialText, older_session::failure());
+            rejectedByCamera();
+        } else {
+            connectionFailed(older_session::failure());
+        }
+        return;
+    }
+    if (older_session::linkFailure() == camera_link::LinkFailure::NotEstablished && !quickRetryUsed) {
+        quickRetry();
+        return;
+    }
+    connectionFailed(older_session::failure());
+}
+
+// The camera took the card: the connection is the link's, and the locations go as in the newer dialect.
+void onOlderAccepted()
+{
+    quickRetryUsed = false; // the next connection not established may get its quick retry again
+    locationHandle = older_session::locationHandle();
+    notifyHandle = 0; // the older dialect's notifications do not ask for locations
+    olderNotifyHandle = older_session::locationNotifyHandle();
+    logger::line("link: connected to camera %s (older dialect)", serialText);
+    connectionUp();
+    enterConnected();
+}
+
+// The older dialect's introduction is driven by older_session; this only goes on or pauses the link.
+void olderPhase()
+{
+    switch (older_session::poll()) {
+    case older_session::Result::Running:
+        break;
+    case older_session::Result::Accepted:
+        onOlderAccepted();
+        break;
+    case older_session::Result::Rejected:
+    case older_session::Result::Failed:
+        olderEnded();
+        break;
+    }
+}
+
 } // namespace
 
 namespace link_control {
@@ -861,57 +912,6 @@ void logState()
                      (unsigned long)sentCount);
     else
         logger::transient("link: %s; last location %s, %lu sent", phaseText(), last, (unsigned long)sentCount);
-}
-
-// The older dialect's introduction ended without the camera taking the card. A camera that refused it
-// (a refused write, no 01 in time) counts, and the third such connection in a row stops the link as a
-// refusal does (link_policy::olderRefusalMeansUnknownCard()). Otherwise as in the newer dialect: a
-// connection that was not established gets a quick retry, anything else a longer pause each time.
-void olderEnded()
-{
-    if (older_session::cardNotTaken()) {
-        if (link_policy::olderRefusalMeansUnknownCard(&earlyEndsInARow)) {
-            logger::line("link: %u connections in a row ended without camera %s taking the card (last: %s)",
-                         (unsigned)earlyEndsInARow, serialText, older_session::failure());
-            rejectedByCamera();
-        } else {
-            connectionFailed(older_session::failure());
-        }
-        return;
-    }
-    if (older_session::linkFailure() == camera_link::LinkFailure::NotEstablished && !quickRetryUsed) {
-        quickRetry();
-        return;
-    }
-    connectionFailed(older_session::failure());
-}
-
-// The camera took the card: the connection is the link's, and the locations go as in the newer dialect.
-void onOlderAccepted()
-{
-    quickRetryUsed = false; // the next connection not established may get its quick retry again
-    locationHandle = older_session::locationHandle();
-    notifyHandle = 0; // the older dialect's notifications do not ask for locations
-    olderNotifyHandle = older_session::locationNotifyHandle();
-    logger::line("link: connected to camera %s (older dialect)", serialText);
-    connectionUp();
-    enterConnected();
-}
-
-// The older dialect's introduction is driven by older_session; this only goes on or pauses the link.
-void olderPhase()
-{
-    switch (older_session::poll()) {
-    case older_session::Result::Running:
-        break;
-    case older_session::Result::Accepted:
-        onOlderAccepted();
-        break;
-    case older_session::Result::Rejected:
-    case older_session::Result::Failed:
-        olderEnded();
-        break;
-    }
 }
 
 void poll()

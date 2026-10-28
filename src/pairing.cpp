@@ -324,11 +324,7 @@ const char *phaseText()
     return "?";
 }
 
-} // namespace
-
-namespace pairing {
-
-static void startSession(bool older)
+void startSession(bool older)
 {
     if (phase != Phase::Idle) {
         logger::line("pair: already running");
@@ -368,6 +364,10 @@ static void startSession(bool older)
                  (unsigned long)(FIX_WAIT_MS / 1000));
     enter(Phase::WaitingForFix);
 }
+
+} // namespace
+
+namespace pairing {
 
 void start()
 {
