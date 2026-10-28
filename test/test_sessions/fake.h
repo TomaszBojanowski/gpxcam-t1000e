@@ -14,6 +14,7 @@
 #include <ble_gatt.h>
 
 #include "camera_link.h"
+#include "camera_list.h"
 #include "link_policy.h"
 #include "lumix.h"
 #include "pairing_record.h"
@@ -33,6 +34,31 @@ void loop(uint32_t ms);
 bool loopUntil(bool (*done)(), uint32_t timeoutMs);
 // Every fake back to its start, and the state machines idle: no camera, nothing logged, GPS off.
 void reset();
+
+// Moves the clock on LOOP_STEP_MS at a time for ms and calls poll() at each step (one session alone).
+template <class Poll> void pollFor(uint32_t ms, Poll poll)
+{
+    for (uint32_t done = 0; done < ms; done += LOOP_STEP_MS) {
+        advance(LOOP_STEP_MS);
+        poll();
+    }
+}
+
+// Polls a session (camera_session::poll, older_session::poll) on the test clock until it is not
+// Running, at most 60 s; *tookMs: how long it ran.
+template <class Poll> auto runSession(Poll poll, uint32_t *tookMs = nullptr) -> decltype(poll())
+{
+    using Result = decltype(poll());
+    const uint32_t start = now();
+    Result result = Result::Running;
+    while (result == Result::Running && now() - start < 60000) {
+        advance(LOOP_STEP_MS);
+        result = poll();
+    }
+    if (tookMs != nullptr)
+        *tookMs = now() - start;
+    return result;
+}
 
 // ---- Log (logger::line and logger::transient)
 
@@ -107,6 +133,8 @@ struct Camera {
     Descriptors descriptors = Descriptors::NoCccd;
 };
 extern Camera camera;
+// A report of this camera (SERIAL) in the given state, at -50 dBm, connectable: what a session starts with.
+camera_list::Report cameraIn(uint8_t state);
 // Milliseconds the clock moves on at every request to camera_link, as time passes on the card while it
 // works through events (0: none).
 extern uint32_t requestMs;

@@ -9,30 +9,14 @@ using older_session::Result;
 
 namespace {
 
-camera_list::Report cameraOn()
-{
-    camera_list::Report report = {};
-    memcpy(report.camera.serial, fake::SERIAL, sizeof(report.camera.serial));
-    report.camera.state = lumix::STATE_ON;
-    report.rssi = -50;
-    report.kind = advert_kind::Kind::Connectable;
-    return report;
-}
-
 // A lasting connection (the link's): polled on the test clock until it is not Running (at most 60 s).
 Result runLasting()
 {
     fake::gpsOn = true;
     fake::gpsFix = true;
     fake::camera.dialect = fake::Dialect::Older;
-    TEST_ASSERT_TRUE(older_session::start(cameraOn(), fake::record.uuid, true));
-    const uint32_t start = fake::now();
-    Result result = Result::Running;
-    while (result == Result::Running && fake::now() - start < 60000) {
-        fake::advance(fake::LOOP_STEP_MS);
-        result = older_session::poll();
-    }
-    return result;
+    TEST_ASSERT_TRUE(older_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
+    return fake::runSession(older_session::poll);
 }
 
 } // namespace

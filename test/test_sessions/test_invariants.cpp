@@ -42,28 +42,10 @@ const StepCase OLDER_STEPS[] = {
     {Request::Write, fake::OLDER_TIME, "time"},
 };
 
-camera_list::Report cameraOn()
-{
-    camera_list::Report report = {};
-    memcpy(report.camera.serial, fake::SERIAL, sizeof(report.camera.serial));
-    report.camera.state = lumix::STATE_ON;
-    report.rssi = -50;
-    report.kind = advert_kind::Kind::Connectable;
-    return report;
-}
-
 void withGps()
 {
     fake::gpsOn = true;
     fake::gpsFix = true;
-}
-
-template <class Poll> void pollFor(uint32_t ms, Poll poll)
-{
-    for (uint32_t done = 0; done < ms; done += fake::LOOP_STEP_MS) {
-        fake::advance(fake::LOOP_STEP_MS);
-        poll();
-    }
 }
 
 // 'link on' with the camera on and a fix; true once the link is in the connection (or still connecting).
@@ -84,8 +66,8 @@ void test_camera_session_cancel_closes_the_connection_in_every_step()
         fake::reset();
         fake::camera.silent = {step.request, step.handle};
         withGps();
-        TEST_ASSERT_TRUE(camera_session::start(cameraOn(), fake::record.uuid, true));
-        pollFor(50, [] { camera_session::poll(); });
+        TEST_ASSERT_TRUE(camera_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
+        fake::pollFor(50, [] { camera_session::poll(); });
         TEST_ASSERT_TRUE_MESSAGE(fake::linkUp(), step.name);
         camera_session::cancel();
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), step.name);
@@ -94,7 +76,7 @@ void test_camera_session_cancel_closes_the_connection_in_every_step()
     fake::reset(); // and while connecting: a connection that comes up now is closed at once
     fake::camera.answer = fake::Answer::NoAnswer;
     withGps();
-    TEST_ASSERT_TRUE(camera_session::start(cameraOn(), fake::record.uuid, true));
+    TEST_ASSERT_TRUE(camera_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
     camera_session::cancel();
     TEST_ASSERT_FALSE(fake::connectionWanted());
 }
@@ -106,8 +88,8 @@ void test_older_session_cancel_closes_the_connection_in_every_step()
         fake::camera.dialect = fake::Dialect::Older;
         fake::camera.silent = {step.request, step.handle};
         withGps();
-        TEST_ASSERT_TRUE(older_session::start(cameraOn(), fake::record.uuid, true));
-        pollFor(50, [] { older_session::poll(); });
+        TEST_ASSERT_TRUE(older_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
+        fake::pollFor(50, [] { older_session::poll(); });
         TEST_ASSERT_TRUE_MESSAGE(fake::linkUp(), step.name);
         older_session::cancel();
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), step.name);
@@ -117,8 +99,8 @@ void test_older_session_cancel_closes_the_connection_in_every_step()
     fake::camera.dialect = fake::Dialect::Older;
     fake::camera.knowsCard = false;
     withGps();
-    TEST_ASSERT_TRUE(older_session::start(cameraOn(), fake::record.uuid, false));
-    pollFor(1000, [] { older_session::poll(); });
+    TEST_ASSERT_TRUE(older_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, false));
+    fake::pollFor(1000, [] { older_session::poll(); });
     TEST_ASSERT_TRUE(fake::linkUp());
     older_session::cancel();
     TEST_ASSERT_FALSE(fake::linkUp());
@@ -128,7 +110,7 @@ void test_older_session_cancel_closes_the_connection_in_every_step()
     fake::camera.dialect = fake::Dialect::Older;
     fake::camera.answer = fake::Answer::NoAnswer;
     withGps();
-    TEST_ASSERT_TRUE(older_session::start(cameraOn(), fake::record.uuid, true));
+    TEST_ASSERT_TRUE(older_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
     older_session::cancel();
     TEST_ASSERT_FALSE(fake::connectionWanted());
 }

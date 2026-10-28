@@ -13,36 +13,18 @@ using fake::Request;
 
 namespace {
 
-camera_list::Report cameraIn(uint8_t state)
-{
-    camera_list::Report report = {};
-    memcpy(report.camera.serial, fake::SERIAL, sizeof(report.camera.serial));
-    report.camera.state = state;
-    report.rssi = -50;
-    report.kind = advert_kind::Kind::Connectable;
-    return report;
-}
-
 bool startSession(bool keepOpen)
 {
     fake::gpsOn = true;
     fake::gpsFix = true;
-    return camera_session::start(cameraIn(keepOpen ? lumix::STATE_ON : lumix::STATE_PAIRING), fake::record.uuid,
+    return camera_session::start(fake::cameraIn(keepOpen ? lumix::STATE_ON : lumix::STATE_PAIRING), fake::record.uuid,
                                  keepOpen);
 }
 
-// Polls the session on the test clock until it ends (at most 60 s); *tookMs: how long it ran.
+// Polls the session until it ends; *tookMs: how long it ran.
 Result run(uint32_t *tookMs = nullptr)
 {
-    const uint32_t start = fake::now();
-    Result result = Result::Running;
-    while (result == Result::Running && fake::now() - start < 60000) {
-        fake::advance(fake::LOOP_STEP_MS);
-        result = camera_session::poll();
-    }
-    if (tookMs != nullptr)
-        *tookMs = fake::now() - start;
-    return result;
+    return fake::runSession(camera_session::poll, tookMs);
 }
 
 // The steps after the connection, the request that starts each and its time limit.
@@ -185,7 +167,7 @@ void test_session_refused_time_means_an_unknown_card_but_other_refusals_do_not()
 void test_session_never_connects_to_a_camera_in_standby()
 {
     fake::gpsOn = fake::gpsFix = true;
-    TEST_ASSERT_FALSE(camera_session::start(cameraIn(lumix::STATE_STANDBY), fake::record.uuid, true));
+    TEST_ASSERT_FALSE(camera_session::start(fake::cameraIn(lumix::STATE_STANDBY), fake::record.uuid, true));
     TEST_ASSERT_EQUAL(0, fake::askedCount("connect"));
 }
 

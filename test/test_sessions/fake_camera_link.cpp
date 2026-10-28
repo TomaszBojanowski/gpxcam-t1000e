@@ -136,6 +136,16 @@ bool connectionWanted()
     return wanted;
 }
 
+camera_list::Report cameraIn(uint8_t state)
+{
+    camera_list::Report report = {};
+    memcpy(report.camera.serial, SERIAL, sizeof(report.camera.serial));
+    report.camera.state = state;
+    report.rssi = -50;
+    report.kind = advert_kind::Kind::Connectable;
+    return report;
+}
+
 void notify(uint16_t handle, uint8_t value)
 {
     camera_link::Event event = made(camera_link::EventType::Notified);
