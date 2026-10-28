@@ -63,9 +63,12 @@ person, who owns the repository. Every signing request is approved by hand.
 
 **Privacy policy**
 
-gpxcam card sends nothing over the internet or any other network: no telemetry, no analytics, no
-automatic updates. It talks only to the SenseCAP T1000-E card, over USB. No information is
-transferred to any networked system.
+gpxcam card sends nothing over the internet: no telemetry, no analytics, no automatic updates. It
+talks to the SenseCAP T1000-E card over USB. Its only network connection is the one-time Wi-Fi step
+of pairing an older LUMIX camera, and only when the user pairs such a camera: the app then talks
+only to the camera, at 192.168.54.1 on the camera's own Wi-Fi network, which the user joins by hand,
+and sends it the card's identity and device name. No information is transferred to any other
+networked system.
 
 **Verifying the signature (Windows)**
 
