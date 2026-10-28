@@ -22,22 +22,18 @@
 
 namespace {
 
-constexpr uint32_t STEP_MS = 5000; // GPS mode, descriptors, notifications, every location
-
 // A connection that was not established (HCI 0x3e) is tried again after this pause, once,
 // without counting as a failure; the next one is allowed after a successful connection
 // (the S5II often refuses the very first connection after it is switched on).
 constexpr uint32_t QUICK_RETRY_MS = 1000;
 
-// Scan timing of the search modes (link_policy::SearchMode).
+// Scan timing of the search modes (link_policy::SearchMode): the same window in each, every interval.
+constexpr uint16_t SCAN_WINDOW_MS = 100;
 constexpr uint16_t RARE_SCAN_INTERVAL_MS = 2000;
-constexpr uint16_t RARE_SCAN_WINDOW_MS = 100;
 // Standby: every 1 s, so the camera is found soon after a break between
 // photos; the GPS is on in this mode anyway, the scan adds little to the current.
 constexpr uint16_t STANDBY_SCAN_INTERVAL_MS = 1000;
-constexpr uint16_t STANDBY_SCAN_WINDOW_MS = 100;
 constexpr uint16_t LONG_STANDBY_SCAN_INTERVAL_MS = 10000;
-constexpr uint16_t LONG_STANDBY_SCAN_WINDOW_MS = 100;
 
 // CCCD values (Bluetooth Core Vol 3, Part G, 3.3.3.3), little-endian.
 constexpr uint8_t CCCD_NOTIFICATIONS[] = {0x01, 0x00};
@@ -177,13 +173,13 @@ void setScanFor(link_policy::SearchMode searchMode)
         bluetooth::setNormalScanTiming();
         break;
     case link_policy::SearchMode::Rare:
-        bluetooth::setScanTiming(RARE_SCAN_INTERVAL_MS, RARE_SCAN_WINDOW_MS);
+        bluetooth::setScanTiming(RARE_SCAN_INTERVAL_MS, SCAN_WINDOW_MS);
         break;
     case link_policy::SearchMode::Standby:
-        bluetooth::setScanTiming(STANDBY_SCAN_INTERVAL_MS, STANDBY_SCAN_WINDOW_MS);
+        bluetooth::setScanTiming(STANDBY_SCAN_INTERVAL_MS, SCAN_WINDOW_MS);
         break;
     case link_policy::SearchMode::LongStandby:
-        bluetooth::setScanTiming(LONG_STANDBY_SCAN_INTERVAL_MS, LONG_STANDBY_SCAN_WINDOW_MS);
+        bluetooth::setScanTiming(LONG_STANDBY_SCAN_INTERVAL_MS, SCAN_WINDOW_MS);
         break;
     }
 }
@@ -202,17 +198,17 @@ void applyMode(uint32_t now)
             break;
         case link_policy::SearchMode::Rare:
             logger::line("link: camera %s not seen for %lu min - scan %u ms every %u s, GPS in Backup", serialText,
-                         (unsigned long)(link_policy::RARE_AFTER_MS / link_policy::MS_PER_MINUTE), RARE_SCAN_WINDOW_MS,
+                         (unsigned long)(link_policy::RARE_AFTER_MS / link_policy::MS_PER_MINUTE), SCAN_WINDOW_MS,
                          RARE_SCAN_INTERVAL_MS / 1000);
             break;
         case link_policy::SearchMode::Standby:
             logger::line("link: camera %s in standby - scan %u ms every %u s, waiting for it to switch on", serialText,
-                         STANDBY_SCAN_WINDOW_MS, STANDBY_SCAN_INTERVAL_MS / 1000);
+                         SCAN_WINDOW_MS, STANDBY_SCAN_INTERVAL_MS / 1000);
             break;
         case link_policy::SearchMode::LongStandby:
             logger::line("link: camera %s in standby for %lu min - scan %u ms every %u s, GPS in Backup", serialText,
-                         (unsigned long)(link_policy::LONG_STANDBY_AFTER_MS / link_policy::MS_PER_MINUTE), LONG_STANDBY_SCAN_WINDOW_MS,
-                         LONG_STANDBY_SCAN_INTERVAL_MS / 1000);
+                         (unsigned long)(link_policy::LONG_STANDBY_AFTER_MS / link_policy::MS_PER_MINUTE),
+                         SCAN_WINDOW_MS, LONG_STANDBY_SCAN_INTERVAL_MS / 1000);
             break;
         }
     }
@@ -544,7 +540,7 @@ void connected(uint32_t now)
         return;
     }
     if (writePending) {
-        if (now - writeStartMs >= STEP_MS)
+        if (now - writeStartMs >= camera_link::REQUEST_TIMEOUT_MS)
             connectionFailed("location: no answer in time");
         return;
     }
@@ -602,7 +598,7 @@ void settingUp()
         connectionFailed(LOST_WITHOUT_EVENT);
         return;
     }
-    if (phase == current && millis() - phaseStart >= STEP_MS)
+    if (phase == current && millis() - phaseStart >= camera_link::REQUEST_TIMEOUT_MS)
         connectionFailed(phase == Phase::GpsMode ? "GPS mode: no answer in time" : "notifications: no answer in time");
 }
 

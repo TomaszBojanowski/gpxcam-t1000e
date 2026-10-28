@@ -20,9 +20,6 @@
 
 namespace {
 
-// Time limits, as camera_session.cpp.
-constexpr uint32_t MTU_MS = 3000;
-constexpr uint32_t STEP_MS = 5000; // every discovery answer, read and write
 // Waiting for the camera's 01 (lumix::OLDER_KNOWN). Pairing: the camera waits for the one-time
 // Wi-Fi step, so 300 s leaves time for a computer to join its network and send it. A lasting
 // connection: the camera that already knows the card sends 01 right after the device name.
@@ -149,7 +146,7 @@ void startWrite(camera_link::OlderCharacteristic which, size_t length, Step next
         fail("%s: write refused by the SoftDevice", CHARACTERISTIC_NAMES[which]);
         return;
     }
-    enter(next, STEP_MS);
+    enter(next, camera_link::REQUEST_TIMEOUT_MS);
 }
 
 void startRead(camera_link::OlderCharacteristic which, Step next)
@@ -158,7 +155,7 @@ void startRead(camera_link::OlderCharacteristic which, Step next)
         fail("%s: read refused by the SoftDevice", CHARACTERISTIC_NAMES[which]);
         return;
     }
-    enter(next, STEP_MS);
+    enter(next, camera_link::REQUEST_TIMEOUT_MS);
 }
 
 // The time of this moment with the zone of 'tz', into txData (as camera_session.cpp); without a fresh GPS
@@ -301,7 +298,7 @@ void onCharacteristics(const camera_link::Event &event)
         if (!camera_link::findOlderCharacteristics(last + 1, LAST_HANDLE))
             fail("characteristics: request refused");
         else
-            enter(Step::Characteristics, STEP_MS);
+            enter(Step::Characteristics, camera_link::REQUEST_TIMEOUT_MS);
         return;
     }
     logHandles();
@@ -381,7 +378,7 @@ void onConnected()
         fail("MTU: request refused");
         return;
     }
-    enter(Step::Mtu, MTU_MS);
+    enter(Step::Mtu, camera_link::MTU_TIMEOUT_MS);
 }
 
 void onMtu(const camera_link::Event &event)
@@ -392,7 +389,7 @@ void onMtu(const camera_link::Event &event)
     if (!camera_link::findOlderCharacteristics(FIRST_HANDLE, LAST_HANDLE))
         fail("characteristics: request refused");
     else
-        enter(Step::Characteristics, STEP_MS);
+        enter(Step::Characteristics, camera_link::REQUEST_TIMEOUT_MS);
 }
 
 // Events that may come in any step of a connection. Returns true if it handled the event.

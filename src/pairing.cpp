@@ -26,8 +26,7 @@ constexpr uint32_t FIX_WAIT_MS = 120000;
 constexpr uint32_t SEARCH_MS = 120000;
 // The GPS stays on for a pairing to come, so that it skips the wait for GPS time: after a session that
 // did not pair (another try), and after 'pair prepare' (the card page sends it on connecting).
-constexpr uint32_t RETRY_GPS_HOLD_MS = 600000;
-constexpr uint32_t PREPARE_GPS_HOLD_MS = 600000;
+constexpr uint32_t GPS_HOLD_MS = 600000;
 constexpr int MAX_ATTEMPTS = 3;
 constexpr uint32_t PAUSE_MS[MAX_ATTEMPTS - 1] = {10000, 30000}; // after attempts 1 and 2
 // A connection that never came up (camera_link::LinkFailure) is tried again at once, at the camera's next
@@ -108,7 +107,7 @@ void finish(bool resumeLink = true)
     if (gpsWasOn)
         return;
     if (resumeLink)
-        holdGps(RETRY_GPS_HOLD_MS, "for another try");
+        holdGps(GPS_HOLD_MS, "for another try");
     else
         gps::off(); // about 2 s: Backup mode for the next hot start
 }
@@ -390,7 +389,7 @@ void prepare()
         logger::line("pair: the link runs the GPS - nothing to prepare");
         return;
     }
-    holdGps(PREPARE_GPS_HOLD_MS, "ready for pairing");
+    holdGps(GPS_HOLD_MS, "ready for pairing");
 }
 
 uint32_t gpsHoldSeconds()

@@ -131,6 +131,11 @@ bool nextEvent(Event *event);
 // and pairing tries again at once on the camera's next advertisement.
 constexpr uint32_t CONNECT_TIMEOUT_MS = 5000;
 
+// How long the sessions and the link wait for an answer: to the MTU exchange, and to every other
+// request of a connection (a discovery, a read, a write).
+constexpr uint32_t MTU_TIMEOUT_MS = 3000;
+constexpr uint32_t REQUEST_TIMEOUT_MS = 5000;
+
 // Why a session got no link at all, for pairing's quick retries: no answer within
 // CONNECT_TIMEOUT_MS, or the connection not established (HCI 0x3e: the camera sent nothing in
 // its first connection events). None: a link was made, or the session ended some other way.

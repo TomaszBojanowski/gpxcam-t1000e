@@ -21,9 +21,7 @@ namespace {
 
 using camera_link::Characteristic;
 
-// Time limits (connecting: camera_link::CONNECT_TIMEOUT_MS).
-constexpr uint32_t MTU_MS = 3000;
-constexpr uint32_t STEP_MS = 5000; // service, characteristics, key and every write
+// The other time limits are camera_link's (CONNECT_TIMEOUT_MS, MTU_TIMEOUT_MS, REQUEST_TIMEOUT_MS).
 constexpr uint32_t DISCONNECT_MS = 5000;
 
 // A write request carries 3 bytes of ATT header; the longest write is the 32-byte app name.
@@ -161,7 +159,7 @@ void startWrite(Characteristic which, size_t length, Step next)
         setFailure("%s: write refused by the SoftDevice", stepName(next));
         fail();
     } else {
-        enter(next, STEP_MS);
+        enter(next, camera_link::REQUEST_TIMEOUT_MS);
     }
 }
 
@@ -240,7 +238,7 @@ void writeTimeAgain()
     else if (!camera_link::write(info.valueHandle[camera_link::TIME], txData, lumix::TIME_LENGTH))
         endTimeAgain("not sent: write refused by the SoftDevice");
     else
-        enter(Step::TimeAgain, STEP_MS);
+        enter(Step::TimeAgain, camera_link::REQUEST_TIMEOUT_MS);
 }
 
 void readKey()
@@ -270,7 +268,7 @@ void readKey()
         fail();
         return;
     }
-    enter(Step::Key, STEP_MS);
+    enter(Step::Key, camera_link::REQUEST_TIMEOUT_MS);
 }
 
 void onCharacteristics(const camera_link::Event &event)
@@ -359,7 +357,7 @@ void onMtu(const camera_link::Event &event)
         setFailure("service: request refused");
         fail();
     } else {
-        enter(Step::Service, STEP_MS);
+        enter(Step::Service, camera_link::REQUEST_TIMEOUT_MS);
     }
 }
 
@@ -378,7 +376,7 @@ void onService(const camera_link::Event &event)
         return;
     }
     info.serviceEnd = event.service.endHandle;
-    enter(Step::Characteristics, STEP_MS);
+    enter(Step::Characteristics, camera_link::REQUEST_TIMEOUT_MS);
     requestCharacteristics(event.service.startHandle);
 }
 
@@ -402,7 +400,7 @@ void onConnected()
         fail();
         return;
     }
-    enter(Step::Mtu, MTU_MS);
+    enter(Step::Mtu, camera_link::MTU_TIMEOUT_MS);
 }
 
 // Events that may come in any step.
