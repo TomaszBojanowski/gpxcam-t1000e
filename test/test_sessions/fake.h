@@ -135,11 +135,14 @@ constexpr uint16_t OLDER_LOCATION = 0x0050;
 constexpr uint16_t OLDER_LOCATION_NOTIFY = 0x0052;
 static_assert(Camera().knownAfter == OLDER_DEVICE_NAME && Camera().knownOn == OLDER_LOCATION_NOTIFY, "the default 01");
 
-// What the card asked camera_link, in order: "connect", "cancel connect", "disconnect", "mtu",
-// "service", "characteristics", "older characteristics", "descriptors 001f", "read 0012", "write 001a".
+// What the card asked camera_link, in order: "connect", "close", "mtu", "service", "characteristics",
+// "older characteristics", "descriptors 001f", "read 0012", "write 001a".
 extern std::vector<std::string> requests;
 int askedCount(const char *request);
 bool linkUp(); // a connection is open
+// A connection is wanted: connect() and no close() since. A connection that comes up while none is
+// wanted is closed by camera_link at once; one that is wanted belongs to a session or the link.
+bool connectionWanted();
 // The camera sends a notification, ends the connection, or an event does not fit camera_link's queue.
 void notify(uint16_t handle, uint8_t value);
 void endConnection(uint8_t reason);

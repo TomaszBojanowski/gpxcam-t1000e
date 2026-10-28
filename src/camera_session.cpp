@@ -118,7 +118,7 @@ void setFailure(const char *format, ...)
 // Closes the connection (also after success) and waits for the Disconnected event.
 void closeLink()
 {
-    if (camera_link::connected() && camera_link::disconnect())
+    if (camera_link::close())
         enter(Step::Disconnecting, DISCONNECT_MS);
     else
         step = Step::Done;
@@ -494,7 +494,6 @@ void handleTimeout()
         step = Step::Done;
         break;
     case Step::Connecting:
-        camera_link::cancelConnect();
         connectTimedOut = true;
         setFailure("connect: no answer in %lu s", (unsigned long)(stepLimit / 1000));
         fail(); // in case the connection came up just now
@@ -521,7 +520,7 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
         return false;
     }
     if (camera_link::connected()) {
-        camera_link::disconnect();
+        camera_link::close();
         setFailure("an earlier connection was still open - closed now");
         return false;
     }
@@ -614,10 +613,7 @@ void cancel()
 {
     if (step == Step::Idle)
         return;
-    if (step == Step::Connecting)
-        camera_link::cancelConnect();
-    if (camera_link::connected())
-        camera_link::disconnect();
+    camera_link::close();
     accepted = false;
     step = Step::Idle;
 }

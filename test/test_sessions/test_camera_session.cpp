@@ -70,7 +70,7 @@ void test_session_introduces_the_card_and_closes_the_connection()
     TEST_ASSERT_TRUE(startSession(false));
     TEST_ASSERT_EQUAL(Result::Accepted, run());
     TEST_ASSERT_EQUAL(1, fake::askedCount("write 001a")); // the time, once when pairing
-    TEST_ASSERT_EQUAL(1, fake::askedCount("disconnect"));
+    TEST_ASSERT_EQUAL(1, fake::askedCount("close"));
     TEST_ASSERT_FALSE(fake::linkUp());
 }
 
@@ -134,7 +134,8 @@ void test_session_without_an_answer_to_connect_cancels_it_after_5_s()
     TEST_ASSERT_EQUAL(Result::Failed, run(&took));
     TEST_ASSERT_UINT32_WITHIN(2 * fake::LOOP_STEP_MS, camera_link::CONNECT_TIMEOUT_MS, took);
     TEST_ASSERT_EQUAL_STRING("connect: no answer in 5 s", camera_session::failure());
-    TEST_ASSERT_EQUAL(1, fake::askedCount("cancel connect"));
+    TEST_ASSERT_EQUAL(1, fake::askedCount("close"));
+    TEST_ASSERT_FALSE(fake::connectionWanted()); // one that comes up now is closed at once
     TEST_ASSERT_TRUE(camera_session::linkFailure() == camera_link::LinkFailure::NoAnswer);
     TEST_ASSERT_FALSE(camera_session::endedAfterConnecting());
 }

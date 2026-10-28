@@ -22,6 +22,7 @@ struct Queued {
 };
 std::deque<Queued> events;
 bool linkOpen = false;
+bool wanted = false;         // connect() since the last close(), as camera_link's connectionWanted
 bool dropNext = false;       // loseNextEvent()
 bool dieOnFirstRequest = false; // Answer::NotEstablished: the camera sends nothing after connecting
 bool cccdAsked = false;      // Descriptors::CccdInSecondAnswer: the first answer had none
@@ -107,6 +108,7 @@ void resetCameraLink()
 {
     events.clear();
     linkOpen = false;
+    wanted = false;
     dropNext = false;
     dieOnFirstRequest = false;
     cccdAsked = false;
@@ -127,6 +129,11 @@ int askedCount(const char *request)
 bool linkUp()
 {
     return linkOpen;
+}
+
+bool connectionWanted()
+{
+    return wanted;
 }
 
 void notify(uint16_t handle, uint8_t value)
@@ -172,6 +179,7 @@ bool connect(const camera_list::Report &)
     if (fake::linkOpen)
         return false;
     fake::events.clear(); // answers from an earlier connection
+    fake::wanted = true;
     switch (fake::camera.answer) {
     case fake::Answer::Connects:
     case fake::Answer::NotEstablished:
@@ -185,19 +193,15 @@ bool connect(const camera_list::Report &)
     return true;
 }
 
-void cancelConnect()
-{
-    fake::ask("cancel connect");
-}
-
 bool connected()
 {
     return fake::linkOpen;
 }
 
-bool disconnect()
+bool close()
 {
-    fake::ask("disconnect");
+    fake::ask("close");
+    fake::wanted = false;
     if (!fake::linkOpen)
         return false;
     fake::linkOpen = false;

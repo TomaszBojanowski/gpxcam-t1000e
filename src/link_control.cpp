@@ -266,8 +266,7 @@ void pause(const char *why, bool closedByCamera = false)
     // A connection that lasted starts the pauses again from 5 s, however it ended.
     if (connectionOpen() && millis() - connectedAt >= link_policy::STABLE_CONNECTION_MS)
         failuresInARow = 0;
-    if (camera_link::connected())
-        camera_link::disconnect(); // the Disconnected event is dropped by the next connect
+    camera_link::close(); // its Disconnected event is dropped by the next connect
     failuresInARow++;
     pauseLength = link_policy::pauseMs(failuresInARow);
     char text[logger::LINE_MAX];
@@ -308,8 +307,7 @@ void rejectedByCamera()
 void rejectedWhileConnected(const char *what, uint16_t status)
 {
     logger::line("link: %s refused (GATT 0x%04x)", what, status);
-    if (camera_link::connected())
-        camera_link::disconnect(); // the Disconnected event is dropped by the next connect
+    camera_link::close(); // its Disconnected event is dropped by the next connect
     rejectedByCamera();
 }
 
@@ -771,8 +769,7 @@ void stop(bool keepGps)
         return;
     camera_session::cancel();
     older_session::cancel();
-    if (camera_link::connected())
-        camera_link::disconnect();
+    camera_link::close();
     if (bluetooth::scanning())
         bluetooth::scanOff();
     bluetooth::setNormalScanTiming(); // for pairing's next scanOn()

@@ -121,10 +121,7 @@ void fail(const char *format, ...)
     va_start(args, format);
     setFailure(format, args);
     va_end(args);
-    if (step == Step::Connecting)
-        camera_link::cancelConnect();
-    if (camera_link::connected())
-        camera_link::disconnect();
+    camera_link::close();
     step = Step::Idle;
 }
 
@@ -137,8 +134,7 @@ void reject(const char *format, ...)
     setFailure(format, args);
     va_end(args);
     rejected = true;
-    if (camera_link::connected())
-        camera_link::disconnect();
+    camera_link::close();
     step = Step::Idle;
 }
 
@@ -521,7 +517,7 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
         return false;
     }
     if (camera_link::connected()) {
-        camera_link::disconnect();
+        camera_link::close();
         snprintf(failureText, sizeof(failureText), "an earlier connection was still open - closed now");
         return false;
     }
@@ -602,10 +598,7 @@ void cancel()
 {
     if (step == Step::Idle)
         return;
-    if (step == Step::Connecting)
-        camera_link::cancelConnect();
-    if (camera_link::connected())
-        camera_link::disconnect();
+    camera_link::close();
     step = Step::Idle;
 }
 
