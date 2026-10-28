@@ -1,6 +1,6 @@
-// The copy of the pairing record outside the file system, and the choice of its flash page. On
-// 2026-10-24 a damaged file system took the pairing with it; the copy lives on two pages of
-// their own (pairing_copy.h) and brings it back. No hardware dependencies (tested on the PC).
+// The copy of the pairing record outside the file system, and the choice of its flash page. A
+// damaged file system would take the pairing with it; the copy lives on two pages of their own
+// (pairing_copy.h) and brings it back. No hardware dependencies (tested on the PC).
 //
 // Copy, at the start of its page, multi-byte values little-endian:
 //   0..3    magic "GXPC"
