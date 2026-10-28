@@ -134,9 +134,9 @@ uint32_t resumeFailuresSeen = 0; // the watchdog's last look at resumeFailuresTo
 bool resumeRestartLogged = false; // a restart after a failed resume: one line per scan, then counted only
 bool startFailureLogged = false;  // "could not start" once until a scan starts again
 
-void logScanLine(bluetooth::Lines lines, const char *text)
+void logScanLine(bluetooth::LogTo logTo, const char *text)
 {
-    if (lines == bluetooth::Lines::Kept)
+    if (logTo == bluetooth::LogTo::History)
         logger::line("%s", text);
     else
         logger::transient("%s", text);
@@ -144,17 +144,17 @@ void logScanLine(bluetooth::Lines lines, const char *text)
 
 // "<first>, <rest>" in one line when it fits the card's line (logger::TEXT_MAX), else <first> and then
 // "<restPrefix><rest>" in a line of its own, so that nothing is cut.
-void logInParts(bluetooth::Lines lines, const char *first, const char *restPrefix, const char *rest)
+void logInParts(bluetooth::LogTo logTo, const char *first, const char *restPrefix, const char *rest)
 {
     char text[logger::LINE_MAX];
     if (strlen(first) + 2 + strlen(rest) <= logger::TEXT_MAX) {
         snprintf(text, sizeof(text), "%s, %s", first, rest);
-        logScanLine(lines, text);
+        logScanLine(logTo, text);
         return;
     }
-    logScanLine(lines, first);
+    logScanLine(logTo, first);
     snprintf(text, sizeof(text), "%s%s", restPrefix, rest);
-    logScanLine(lines, text);
+    logScanLine(logTo, text);
 }
 
 Counts countsNow()
@@ -279,7 +279,7 @@ void logCamera(const char *what, const camera_list::Report &report)
     snprintf(prefix, sizeof(prefix), "scan: camera %s: ", serial);
     snprintf(rest, sizeof(rest), "%s %s, %d dBm, %s", address, camera_list::addressTypeName(report.addressType),
              report.rssi, advert_kind::name(report.kind));
-    logInParts(bluetooth::Lines::Kept, first, prefix, rest); // two lines only for the longest state names
+    logInParts(bluetooth::LogTo::History, first, prefix, rest); // two lines only for the longest state names
 }
 
 void logLost(const camera_list::Entry &entry)
@@ -344,7 +344,7 @@ bool begin()
     return true;
 }
 
-void scanOn(Lines lines)
+void scanOn(LogTo logTo)
 {
     if (!started) {
         logger::line("scan: not possible, the SoftDevice did not start");
@@ -378,7 +378,7 @@ void scanOn(Lines lines)
     char text[logger::LINE_MAX];
     snprintf(text, sizeof(text), "scan: on - active, radio %u ms of every %u ms, logging LUMIX cameras only",
              scanWindowMs, scanIntervalMs);
-    logScanLine(lines, text);
+    logScanLine(logTo, text);
 }
 
 bool setScanTiming(uint16_t intervalMs, uint16_t windowMs)
@@ -409,7 +409,7 @@ void setNormalScanTiming()
     setScanTiming(SCAN_INTERVAL_MS, SCAN_WINDOW_MS);
 }
 
-void scanOff(Lines lines)
+void scanOff(LogTo logTo)
 {
     if (!scanActive)
         return;
@@ -424,7 +424,7 @@ void scanOff(Lines lines)
              (unsigned long)counts.reports, (unsigned long)cameraReports);
     snprintf(rest, sizeof(rest), "%lu other Panasonic, %lu dropped, %lu untracked", (unsigned long)counts.otherPanasonic,
              (unsigned long)counts.dropped, (unsigned long)untracked);
-    logInParts(lines, first, "scan: ", rest); // one line but with very large counts
+    logInParts(logTo, first, "scan: ", rest); // one line but with very large counts
 }
 
 bool scanning()

@@ -120,7 +120,7 @@ const char *reasonText(link_policy::Send reason)
 void startSearch()
 {
     if (!bluetooth::scanning())
-        bluetooth::scanOn(bluetooth::Lines::Sent); // one per connection attempt: kept out of the history
+        bluetooth::scanOn(bluetooth::LogTo::SerialOnly); // one per connection attempt: kept out of the history
     waitingForTimeLogged = false;
     weakSignalLogged = false;
     enter(Phase::Searching);
@@ -668,7 +668,7 @@ void search(uint32_t now)
         const camera_list::Entry *camera = bluetooth::camera(i);
         if (camera == nullptr || !link_policy::shouldConnect(record, *camera, now))
             continue;
-        bluetooth::scanOff(bluetooth::Lines::Sent); // connecting needs the radio; one per attempt
+        bluetooth::scanOff(bluetooth::LogTo::SerialOnly); // connecting needs the radio; one per attempt
         logger::transient("link: camera %s is on, %d dBm - connecting", serialText, camera->last.rssi);
         olderLink = pairing_record::isOlderDialect(record);
         if (olderLink) {
