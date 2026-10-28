@@ -341,7 +341,7 @@ static void startSession(bool older)
         return;
     }
     if (!pairing_store::writable()) { // a pairing from its copy alone: it could not be saved
-        logger::line("pair: not possible - the file system is damaged ('storage format yes' first)");
+        logger::line("%s", pairing_store::NOT_WRITABLE_LINE);
         sound::playRefuse(sound::Kind::HoldAnswer);
         lastResult = Result::NotPossible;
         return;

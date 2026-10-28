@@ -423,7 +423,7 @@ bool handleCommonEvent(const camera_link::Event &event)
         fail();
         return true;
     case camera_link::EventType::SecurityRequest:
-        logger::line("camera: asked for encryption - not answered (as the gpxcam app)");
+        logger::line("%s", camera_link::SECURITY_REQUEST_LINE);
         return true;
     default:
         return false;

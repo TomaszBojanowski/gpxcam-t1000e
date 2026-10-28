@@ -252,7 +252,7 @@ void forgetCamera()
         return;
     }
     if (!pairing_store::writable()) {
-        logger::line("pair: not possible - the file system is damaged ('storage format yes' first)");
+        logger::line("%s", pairing_store::NOT_WRITABLE_LINE);
         return;
     }
     link_control::stop(false); // it would go on with the forgotten camera

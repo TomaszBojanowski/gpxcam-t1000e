@@ -408,7 +408,7 @@ bool handleCommonEvent(const camera_link::Event &event)
         fail("no ATT answer for 30 s");
         return true;
     case EventType::SecurityRequest:
-        logger::line("older: the camera asked for encryption - not answered");
+        logger::line("%s", camera_link::SECURITY_REQUEST_LINE);
         return true;
     case EventType::Notified:
         onNotified(event);

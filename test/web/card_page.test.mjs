@@ -1175,6 +1175,9 @@ test("the pairing stages and results are explained", () => {
   assert.equal(page.classifyUnpairAnswer(["pair: not available"]), "failed");
   assert.equal(page.classifyUnpairAnswer(
     ["pair: not possible - the file system is damaged ('storage format yes' first)"]), "storage-damaged");
+  // The card's line (src/pairing_store.h NOT_WRITABLE_LINE) must stay the one the page knows.
+  const store = readFileSync(new URL("../../src/pairing_store.h", import.meta.url), "utf8");
+  assert.ok(store.includes("\"pair: not possible - the file system is damaged ('storage format yes' first)\""));
   assert.match(page.unpairAnswerText("storage-damaged")[0], /^The card cannot change the pairing while/);
   assert.equal(page.unpairAnswerText("storage-damaged")[1], "bad");
   assert.equal(page.classifyUnpairAnswer([]), "none");

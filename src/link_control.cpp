@@ -431,7 +431,7 @@ bool handleConnectionEvent(const camera_link::Event &event)
         connectionFailed("no ATT answer for 30 s");
         return true;
     case camera_link::EventType::SecurityRequest:
-        logger::line("camera: asked for encryption - not answered (as the gpxcam app)");
+        logger::line("%s", camera_link::SECURITY_REQUEST_LINE);
         return true;
     case camera_link::EventType::Notified:
         if (event.read.handle == notifyHandle) {
