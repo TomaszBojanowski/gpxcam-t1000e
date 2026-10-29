@@ -122,7 +122,7 @@ Sync generation), which need one extra step over the camera's own Wi-Fi; see
 > |---|---|---|
 > | LUMIX S5II | *Pair* on the card page or in the app | tested |
 > | Other current bodies: S5IIX, S9, GH7, G9II, S1II, S1RII, S1IIE, L10 | *Pair* on the card page or in the app | same protocol as the S5II, expected to work, not tested yet |
-> | LUMIX S5II in its older protocol | *Pair an older camera* in the app, with the Wi-Fi step | tested by the author: pairing, locations with Normal and Frequent |
+> | LUMIX S5II in its older protocol | *Start* under *Pair does not recognise your older camera?* in the app, with the Wi-Fi step | tested by the author: pairing, locations with Normal and Frequent |
 > | LUMIX Sync generation: S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H, BGH1 | *Pair* in the desktop app, with a one-time step over the camera's Wi-Fi | not confirmed; the one field test so far, a LUMIX S5, has not connected |
 >
 > How to pair them: [app/README.md](app/README.md#pairing-an-older-camera).

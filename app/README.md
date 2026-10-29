@@ -77,8 +77,8 @@ Most newer LUMIX cameras (S5II and the like) pair straight from the card page or
 *Pair*. **Older** cameras — the LUMIX Sync generation —
 need one extra step over the camera's own Wi-Fi, which only the app can do (a web page cannot reach
 the camera that way). In the app, *Pair* recognises such a camera and goes on with that step by
-itself. *Pair an older camera*, lower in the window, does the same from the start, for an older
-camera that *Pair* does not recognise:
+itself. Under *Pair*, the folded *Pair does not recognise your older camera?* has *Start*, which
+does the same from the start, for an older camera that *Pair* does not recognise:
 
 https://github.com/user-attachments/assets/6de0f7d9-dfe0-4dd2-bccc-11901fb6f236
 
@@ -91,7 +91,8 @@ camera the moment it starts advertising, and the card will not get in.
 1. Put the card where its GPS gets a fix, outdoors or by a window. The app switches the card's GPS
    on as soon as it connects (gpxcam 1.5.0 or newer); the GPS tile shows *Fix* when it is
    ready, which can take a few minutes after a fresh start.
-2. Click *Pair* (or *Start* under *Pair an older camera*). Do not start pairing on the camera yet.
+2. Click *Pair* (or *Start* under *Pair does not recognise your older camera?*). Do not start pairing
+   on the camera yet.
 3. **Only when the app says *Now start Bluetooth pairing on the camera*** do it (the camera's
    Bluetooth menu → Pairing). The order matters: the camera stays in pairing mode only about 30
    seconds, so the card must already be looking for it (for up to 2 minutes). The card introduces
