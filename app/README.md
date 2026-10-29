@@ -17,13 +17,14 @@ pairing, the camera's clock and time zone, location updates and sound.
 
 *After Connect: the card's state, refreshed every few seconds.*
 
-![The camera section during pairing: the steps of How to pair, the Cancel button, and a highlighted line "Now start Bluetooth pairing on the camera (its Bluetooth menu, Pairing). The card looks for it for up to 2 minutes."](../docs/images/app-pairing.png)
+![The camera section during pairing: the steps of How to pair, the Cancel button, a highlighted line "Now start Bluetooth pairing on the camera (its Bluetooth menu, Pairing). The card looks for it for up to 2 minutes.", and below it the folded "Pair does not recognise your older camera?"](../docs/images/app-pairing.png)
 
 *Pair: start pairing on the camera only when the app says so.*
 
-![The camera section at the Wi-Fi step of an older camera: "Join the camera's Wi-Fi network shown on its screen and keep this window open", with where to find the password](../docs/images/app-older-wifi.png)
+![The camera section at the Wi-Fi step of an older camera, started with Start under the unfolded "Pair does not recognise your older camera?": the one status line says "Join the camera's Wi-Fi network shown on its screen and keep this window open", with where to find the password, beside the Cancel button](../docs/images/app-older-wifi.png)
 
-*An older camera: Pair goes on with the Wi-Fi step by itself (see [below](#pairing-an-older-camera)).*
+*An older camera: Start under "Pair does not recognise your older camera?" (or Pair, which goes on by itself)
+leads to the Wi-Fi step, in the same section (see [below](#pairing-an-older-camera)).*
 
 ![The settings: the camera's clock switched on with the time zone list (Europe/Warsaw selected), location updates set to Frequent, and the sound set to Quiet](../docs/images/app-settings.png)
 

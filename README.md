@@ -108,7 +108,7 @@ Sync generation), which need one extra step over the camera's own Wi-Fi; see
 
 ![Pairing in the app: the card is looking for the camera, and a highlighted line says "Now start Bluetooth pairing on the camera"](docs/images/app-pairing.png)
 
-![The Wi-Fi step of an older camera: the app asks to join the camera's Wi-Fi network shown on its screen and keep the window open](docs/images/app-older-wifi.png)
+![The Wi-Fi step of an older camera, started under the unfolded "Pair does not recognise your older camera?": in the camera section, the app asks to join the camera's Wi-Fi network shown on its screen and keep the window open](docs/images/app-older-wifi.png)
 
 *The app's state after Connect, pairing, and the Wi-Fi step of an older camera. More in
 [app/README.md](app/README.md#what-it-looks-like); made with `tools/screenshots.mjs` and a simulated card.*

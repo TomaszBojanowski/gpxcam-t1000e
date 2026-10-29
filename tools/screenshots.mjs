@@ -37,8 +37,8 @@ const NOT_PAIRED = { paired: 0, link: "off" };
 
 // Runs in the page before its own scripts: window.__TAURI__ from simulatedApp, with a card that
 // answers as gpxcam 1.5.0 does (src/main.cpp, src/pairing.cpp, src/bluetooth.cpp) and keeps its state
-// in window.simulatedCard.state, which a shot may change. Made-up values only: the card id of the
-// test vectors, the camera serial number 123456789a, Bluetooth addresses of the documentation range.
+// as its commands change it. Made-up values only: the card id of the test vectors, the camera serial
+// number 123456789a, Bluetooth addresses of the documentation range.
 function installCard(simulatedApp, state) {
   const STATUS_LINES = [
     ["format", "fw", "git"], ["battery_mv", "battery_pct", "charger"], ["gps", "gps_fix", "gps_sat", "gps_hold"],
@@ -71,6 +71,13 @@ function installCard(simulatedApp, state) {
       Object.assign(state, { pair: "idle", pair_result: "cancelled" });
       return ["pair: cancelled\r\n"];
     },
+    // The card has introduced itself to an older camera and waits for the Wi-Fi step (src/older_session.cpp);
+    // the identity of the made-up seed of test/device_identity_vectors.txt.
+    "pair older": () => {
+      Object.assign(state, { paired: 0, link: "off", pair: "waiting_wifi", pair_attempt: 1, pair_result: "none" });
+      return ["link: off\r\n", "older: introduced - waiting up to 300 s for the camera's 01\r\n",
+        "older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E\r\n"];
+    },
     p: ["pair: card id 00112233-4455-4677-8899-a1b2c3d4e5f6, no camera paired\r\n"],
     "diag scan": SCAN,
   };
@@ -78,7 +85,6 @@ function installCard(simulatedApp, state) {
   app.registerOutcome = "wait"; // the Wi-Fi step waits, as while the user joins the camera's network
   app.registerStages = [];
   window.__TAURI__ = app.window.__TAURI__;
-  window.simulatedCard = { state };
 }
 
 // Serves docs/index.html at http://127.0.0.1:<port>/ (a secure context, as the app's web view).
@@ -159,14 +165,16 @@ const SHOTS = {
     await page.waitForSelector("#pair-progress.act");
     return { page, parts: CAMERA };
   },
-  // An older camera: Pair reached the Wi-Fi step, and the app waits for the user to join the camera's network.
+  // An older camera, started from the unfolded "Pair does not recognise your older camera?": the card has
+  // introduced itself, and the app waits for the user to join the camera's network.
   "older-wifi": async (browser, url) => {
     const page = await connectedPage(browser, url, NOT_PAIRED);
-    await page.click("#pair");
-    await page.waitForSelector("#pair-progress.act");
-    await page.evaluate(() => { window.simulatedCard.state.pair = "waiting_wifi"; });
+    await page.evaluate(() => {
+      document.getElementById("pair-help").open = false; // the step stands out
+      document.getElementById("older").open = true;
+    });
+    await page.click("#older-start");
     await page.waitForFunction(() => document.getElementById("pair-progress").textContent.startsWith("Join"));
-    await page.evaluate(() => { document.getElementById("pair-help").open = false; }); // the step stands out
     return { page, parts: CAMERA };
   },
   // Diagnostics: Scan for cameras, the camera's serial number hidden.
