@@ -89,14 +89,21 @@ const STATUS_1_4 = statusWith({ fw: "1.4.0", updates: "normal", updates_now: "no
 const VERSION_1_4 = ["gpxcam-t1000e 1.4.0 (git 1234567), uptime 12 s, log dropped 0\r\n"];
 const NOT_PAIRED = { paired: 0, link: "off" };
 const PAIR_STARTED = ["link: off\r\n", "pair: started - waiting for GPS time (up to 120 s)\r\n"];
+const PAIR_OFF_ANSWER = Object.freeze(["pair: cancelled\r\n"]);
+const PREPARE_ANSWER = Object.freeze(["pair: GPS on for 600 s, ready for pairing\r\n"]);
+// A card with gpxcam 1.2 (no 'status'; its time zone in the answer to 'tz') and one with 1.3 (its state).
+// Shared, so frozen: a test that changes the answers makes its own copy ({ ...CARD_1_3 }).
+const CARD_1_2 = Object.freeze({ v: VERSION_ANSWER, status: NO_STATUS, tz: TZ_STATE });
+const CARD_1_3 = Object.freeze({ v: VERSION_1_3, status: STATUS_ANSWER });
 const FORGOTTEN = ["link: off\r\n", "pair: camera forgotten (the card id stays)\r\n"];
 const SOUND_OFF_SAVED = [
   "sound: off saved\r\n",
   "sound: off - the card only answers a held button (switching on and off, pairing), quietly\r\n",
 ];
 
-// A serial port that answers commands with chunks of text; it records what the page does.
-// readFails: reading fails at once, as in Chromium on Linux after a pyserial program.
+// A serial port that answers commands with chunks of text; it records what the page does, and pending
+// counts the pieces of answers still on their way. readFails: reading fails at once, as in Chromium on
+// Linux after a pyserial program.
 function simulatedCard(answers, readFails = false) {
   const encoder = new TextEncoder();
   let output;
@@ -105,6 +112,7 @@ function simulatedCard(answers, readFails = false) {
     signals: null,
     closed: false,
     written: [],
+    pending: 0,
     readable: new ReadableStream({
       start: (controller) => { output = controller; },
       pull: (controller) => {
@@ -116,7 +124,8 @@ function simulatedCard(answers, readFails = false) {
         const command = new TextDecoder().decode(chunk);
         port.written.push(command);
         for (const piece of answers[command.replace(/\n$/, "")] || []) {
-          setTimeout(() => output.enqueue(encoder.encode(piece)), 5);
+          port.pending++;
+          setTimeout(() => { port.pending--; output.enqueue(encoder.encode(piece)); }, 5);
         }
       },
     }),
@@ -200,6 +209,22 @@ async function chooseZone(ui, zone) {
   radio.checked = true;
   await radio.fire("change");
   return text.children[0];
+}
+
+// The page connected to a simulated card: { port, ui }.
+async function connected(answers) {
+  const port = simulatedCard(answers);
+  const ui = openPage(port);
+  await ui.connect.fire("click");
+  return { port, ui };
+}
+
+// The page in the desktop app with one simulated card, connected: { app, ui }.
+async function connectedApp(answers) {
+  const app = simulatedApp(["/dev/ttyACM0"], answers);
+  const ui = openPage(null, { app });
+  await ui.connect.fire("click");
+  return { app, ui };
 }
 
 async function openCard(answers, readFails = false) {
@@ -306,7 +331,7 @@ test("only the commands of test/commands.json can be sent, and About names each 
   assert.equal(page.tzCommand("Mars/Olympus_Mons"), null);
 });
 
-test("parseOlderRegister reads the card's line, and olderOutcomeText maps the result", () => {
+test("the older-camera wizard reads the card's line and explains the Wi-Fi step's outcome", () => {
   assert.deepEqual(
     json(page.parseOlderRegister("older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E")),
     { identity: "4D454930-0100-1000-8001-A1B2C3D4E5F6", name: "T1000-E" },
@@ -322,7 +347,9 @@ test("parseOlderRegister reads the card's line, and olderOutcomeText maps the re
   for (const word of ["bad-identity", "bad-name"]) {
     assert.match(page.olderOutcomeText(word)[0], /^The app cannot register the identity this card gave\./, word);
   }
-  // The wizard shows the stages in the words of Pair; only two are its own.
+});
+
+test("the older-camera wizard shows the stages in the words of Pair, with two of its own", () => {
   const stage = (pair, options) => page.pairingText({ ...STATE, pair, pairAttempt: 0 }, { older: true, ...options });
   for (const pair of ["waiting_gps", "searching", "connecting", "pausing"]) {
     assert.equal(stage(pair), page.pairingText({ ...STATE, pair, pairAttempt: 0 }), pair);
@@ -507,7 +534,7 @@ test("a refused command is not written; no answer ends after the time limit", as
 
 test("a read that fails at once is explained", async () => {
   const { card } = await openCard({ v: VERSION_ANSWER }, true);
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await until(() => card.reader === null); // reading has ended
   assert.equal(card.readError.message, "The device has been lost.");
   assert.equal(card.reader, null); // reading has ended
   assert.match(page.noAnswerText(card.readError), /^Reading from the card failed \(The device has been lost\.\)/);
@@ -530,7 +557,7 @@ test("closing ends reading and closes the port", async () => {
   let closed = false;
   card.onClosed = () => { closed = true; };
   await card.close();
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await until(() => closed);
   assert.equal(port.closed, true);
   assert.equal(closed, true);
 });
@@ -608,7 +635,7 @@ test("commands go one at a time: the next after the answer to the one before", a
   const { port, card } = await openCard({ v: VERSION_ANSWER, status: STATUS_ANSWER });
   const version = card.version();
   const status = card.status();
-  await new Promise((resolve) => setTimeout(resolve, 1));
+  await tick(1); // the second is not written yet
   assert.deepEqual(port.written, ["v\n"]);
   assert.equal(await version, "1.2.0");
   assert.equal((await status).kind, "ok");
@@ -618,7 +645,7 @@ test("commands go one at a time: the next after the answer to the one before", a
 });
 
 test("the page shows the state of a card with 'status'", async () => {
-  const port = simulatedCard({ v: VERSION_1_3, status: STATUS_ANSWER });
+  const port = simulatedCard(CARD_1_3);
   const ui = openPage(port);
   assert.equal(ui.intro.hidden, false); // how to connect, until connected
   assert.equal(ui.connect.disabled, false);
@@ -646,9 +673,7 @@ test("the page shows the state of a card with 'status'", async () => {
 });
 
 test("the page sets the time zone of a card with gpxcam 1.2 and says what 1.3.0 adds", async () => {
-  const port = simulatedCard({ v: VERSION_ANSWER, status: NO_STATUS, tz: TZ_STATE });
-  const ui = openPage(port);
-  await ui.connect.fire("click");
+  const { port, ui } = await connected(CARD_1_2);
   assert.deepEqual(port.written, ["v\n", "status\n", "tz\n"]);
   assert.equal(ui["card-status"].textContent, "Connected: gpxcam 1.2.0. Its time zone now:");
   assert.match(ui["card-lines"].textContent, /^tz: Europe\/Warsaw/);
@@ -765,7 +790,7 @@ test("in the app: a port without permission or in use is explained", async () =>
 });
 
 test("unplugging the card ends the connection on the page", async () => {
-  const port = simulatedCard({ v: VERSION_1_3, status: STATUS_ANSWER });
+  const port = simulatedCard(CARD_1_3);
   const serialEvents = {};
   const ui = openPage(port, { serialEvents });
   await ui.connect.fire("click");
@@ -773,7 +798,7 @@ test("unplugging the card ends the connection on the page", async () => {
   serialEvents.disconnect({ target: {} }); // another port: nothing happens
   assert.equal(port.closed, false);
   serialEvents.disconnect({ target: port });
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await until(() => port.closed);
   assert.equal(port.closed, true);
   assert.match(ui["card-status"].textContent, /^The connection to the card ended/);
   assert.equal(ui.connect.disabled, false);
@@ -796,7 +821,7 @@ test("zone names break after a slash, not inside a word", () => {
 });
 
 test("the zone to save says whether the card has it already", async () => {
-  const port = simulatedCard({ v: VERSION_1_3, status: STATUS_ANSWER }); // the card has Europe/Warsaw
+  const port = simulatedCard(CARD_1_3); // the card has Europe/Warsaw
   const ui = openPage(port);
   await chooseZone(ui, "Europe/Warsaw");
   assert.match(ui.selected.textContent, /^To save: Europe\/Warsaw, now UTC\+0[12]:00$/);
@@ -811,30 +836,30 @@ test("the zone to save says whether the card has it already", async () => {
 
 test("saving a zone: the note about the next connection only when it was saved", async () => {
   const answers = { v: VERSION_1_3, status: STATUS_ANSWER, "tz America/New_York": TZ_SAVED };
-  const port = simulatedCard(answers);
-  const ui = openPage(port);
-  await ui.connect.fire("click");
+  const { port, ui } = await connected(answers);
   await chooseZone(ui, "America/New_York");
-  const statusAfterSave = () => new Promise((resolve) => setTimeout(resolve, 100)); // the page asks for its state
+  // After saving, the page asks for the card's state, with the new zone: wait for its answer.
+  const statusAsks = () => port.written.filter((command) => command === "status\n").length;
+  const stateRead = (before) => until(() => statusAsks() > before && port.pending === 0);
+  let asked = statusAsks();
   await ui.save.fire("click");
   assert.ok(port.written.includes("tz America/New_York\n"));
   assert.equal(ui["save-status"].textContent, "Saved: America/New_York.");
   assert.equal(ui["save-note"].hidden, false);
   assert.equal(ui["save-lines"].textContent, ""); // "Saved: ..." says what the card's lines say
-  await statusAfterSave();
+  await stateRead(asked);
+  asked = statusAsks();
   answers["tz America/New_York"] = ["tz: could not write the time zone file\r\n"];
   await ui.save.fire("click");
   assert.equal(ui["save-status"].className, "bad");
   assert.equal(ui["save-note"].hidden, true);
   assert.equal(ui["save-lines"].textContent, "tz: could not write the time zone file");
-  await statusAfterSave();
+  await stateRead(asked);
   await ui.disconnect.fire("click");
 });
 
 test("a card that does not answer 'status' is closed with a message", async () => {
-  const port = simulatedCard({ v: VERSION_1_3 });
-  const ui = openPage(port);
-  await ui.connect.fire("click");
+  const { port, ui } = await connected({ v: VERSION_1_3 });
   assert.equal(port.closed, true);
   assert.match(ui["card-status"].textContent, /^No answer from the card to 'status'/);
   assert.equal(ui["card-status"].className, "bad");
@@ -884,7 +909,7 @@ test("what the clock and the sound settings mean, also with gpxcam that cannot c
 });
 
 test("the clock switch follows the card and turns the time zone choice off with it", async () => {
-  const answers = { v: VERSION_1_3, status: STATUS_ANSWER };
+  const answers = { ...CARD_1_3 };
   const port = simulatedCard(answers);
   const ui = openPage(port);
   assert.equal(ui.clock.disabled, true); // not connected
@@ -923,9 +948,7 @@ test("the clock switch follows the card and turns the time zone choice off with 
 });
 
 test("with gpxcam 1.2 the clock switch stays on and cannot be changed", async () => {
-  const port = simulatedCard({ v: VERSION_ANSWER, status: NO_STATUS, tz: TZ_STATE });
-  const ui = openPage(port);
-  await ui.connect.fire("click");
+  const { ui } = await connected(CARD_1_2);
   assert.equal(ui.clock.checked, true);
   assert.equal(ui.clock.disabled, true);
   assert.equal(ui.zones.disabled, false);
@@ -972,7 +995,7 @@ test("the clock is a switch, the sound and the location updates are segmented ch
 });
 
 test("the sound choice follows the card", async () => {
-  const answers = { v: VERSION_1_3, status: STATUS_ANSWER };
+  const answers = { ...CARD_1_3 };
   const port = simulatedCard(answers);
   const ui = openPage(port);
   const checked = () => [...page.SOUND_SETTINGS].filter((setting) => ui[`sound-${setting}`].checked);
@@ -1144,8 +1167,8 @@ test("the location updates choice follows the card, with a note while the camera
 });
 
 test("with gpxcam 1.3 and 1.2 the location updates stay normal and cannot be changed", async () => {
-  for (const [answers, version] of [[{ v: VERSION_1_3, status: STATUS_ANSWER }, "1.3.0"],
-    [{ v: VERSION_ANSWER, status: NO_STATUS, tz: TZ_STATE }, "1.2.0"]]) {
+  for (const [answers, version] of [[CARD_1_3, "1.3.0"],
+    [CARD_1_2, "1.2.0"]]) {
     const ui = openPage(simulatedCard(answers));
     await ui.connect.fire("click");
     assert.equal(ui["updates-normal"].checked, true, version);
@@ -1161,9 +1184,7 @@ test("with gpxcam 1.3 and 1.2 the location updates stay normal and cannot be cha
 });
 
 test("with gpxcam 1.2 the sound stays loud and cannot be changed", async () => {
-  const port = simulatedCard({ v: VERSION_ANSWER, status: NO_STATUS, tz: TZ_STATE });
-  const ui = openPage(port);
-  await ui.connect.fire("click");
+  const { ui } = await connected(CARD_1_2);
   assert.equal(ui["sound-loud"].checked, true);
   assert.equal(ui["sound-says"].textContent, "All sounds."); // 1.2 plays them loud
   assert.equal(ui["sound-loud"].disabled, true);
@@ -1193,6 +1214,9 @@ test("the pairing stages and results are explained", () => {
   assert.equal(page.pairResultText("failed")[1], "bad");
   assert.match(page.pairResultText("failed")[0], /If the camera lists T1000\u2011E from an earlier pairing, delete it/);
   assert.deepEqual(json(page.pairResultText("cancelled")), ["Pairing cancelled.", ""]);
+});
+
+test("the answers to 'unpair' are told apart, also the card's line for damaged storage", () => {
   assert.equal(page.classifyUnpairAnswer(["link: off", "pair: camera forgotten (the card id stays)"]), "forgotten");
   assert.equal(page.classifyUnpairAnswer(["pair: no camera paired"]), "not-paired");
   assert.equal(page.classifyUnpairAnswer(["pair: could not write the pairing file"]), "failed");
@@ -1272,9 +1296,7 @@ test("pairing from the page: the stages, the result, then forgetting the camera"
 
 test("a cancelled pairing, one refused at once and one started with the card's button", async () => {
   const answers = { v: VERSION_1_3, status: statusWith(NOT_PAIRED), pair: PAIR_STARTED };
-  const port = simulatedCard(answers);
-  const ui = openPage(port);
-  await ui.connect.fire("click");
+  const { port, ui } = await connected(answers);
 
   answers.status = statusWith({ ...NOT_PAIRED, pair: "searching" });
   await ui.pair.fire("click");
@@ -1301,9 +1323,7 @@ test("a cancelled pairing, one refused at once and one started with the card's b
 });
 
 test("with gpxcam 1.2 pairing is left to the card's button", async () => {
-  const port = simulatedCard({ v: VERSION_ANSWER, status: NO_STATUS, tz: TZ_STATE });
-  const ui = openPage(port);
-  await ui.connect.fire("click");
+  const { ui } = await connected(CARD_1_2);
   assert.equal(ui.pair.disabled, true);
   assert.equal(ui.unpair.hidden, true);
   for (const id of ["camera-note", "pair-help", "pair-row"]) assert.equal(ui[id].hidden, true, id);
@@ -1443,7 +1463,7 @@ test("Scan for cameras on a card without it says which gpxcam it needs", async (
   await ui.disconnect.fire("click");
 });
 
-// ---- The GPS ready for pairing (gpxcam 1.5.0-beta.2) ----
+// ---- The GPS ready for pairing ('pair prepare', 'status' gps_hold) ----
 
 // STATUS_ANSWER of a card with 'pair prepare': the GPS line has gps_hold.
 const STATUS_GPS_HOLD = [STATUS_ANSWER.join("").replace("gps_sat=11", "gps_sat=11 gps_hold=0")];
@@ -1454,14 +1474,14 @@ test("gps_hold tells a card with 'pair prepare'; only an unpaired, idle one gets
   assert.equal(state.gpsHold, 540);
   const unpaired = { ...STATE, paired: false, link: "off", gpsHold: 0 };
   assert.equal(page.shouldPrepareGps(unpaired), true);
-  assert.equal(page.shouldPrepareGps({ ...unpaired, gpsHold: null }), false); // gpxcam before 1.5.0-beta.2
+  assert.equal(page.shouldPrepareGps({ ...unpaired, gpsHold: null }), false); // a card without 'pair prepare'
   assert.equal(page.shouldPrepareGps({ ...unpaired, paired: true }), false); // the link has the GPS
   assert.equal(page.shouldPrepareGps({ ...unpaired, pair: "searching" }), false);
 });
 
 test("connecting to an unpaired card switches its GPS on for pairing; a paired one is left alone", async () => {
   const unpaired = simulatedCard({ v: VERSION_1_4, status: statusWith(NOT_PAIRED, STATUS_GPS_HOLD),
-    "pair prepare": ["pair: GPS on for 600 s, ready for pairing\r\n"] });
+    "pair prepare": PREPARE_ANSWER });
   const ui = openPage(unpaired);
   await ui.connect.fire("click");
   await tick();
@@ -1469,7 +1489,7 @@ test("connecting to an unpaired card switches its GPS on for pairing; a paired o
   await ui.disconnect.fire("click");
 
   const paired = { v: VERSION_1_4, status: STATUS_GPS_HOLD };
-  const withoutPrepare = { v: VERSION_1_4, status: statusWith(NOT_PAIRED) }; // before 1.5.0-beta.2
+  const withoutPrepare = { v: VERSION_1_4, status: statusWith(NOT_PAIRED) }; // without 'pair prepare'
   for (const answers of [paired, withoutPrepare]) {
     const port = simulatedCard(answers);
     const other = openPage(port);
@@ -1503,8 +1523,9 @@ test("Copy log and Scan hide serial numbers, addresses and the card's identity, 
   assert.equal(mask("link: looking for camera 123456789a"), "link: looking for camera ********9a");
   assert.equal(mask("scan: camera 123456789A seen: on (00), 00:00:5e:00:53:01 RPA, -64 dBm, connectable"),
     "scan: camera ********9A seen: on (00), **:**:**:**:**:01 RPA, -64 dBm, connectable");
+  // the same line with the radio channel too
   assert.equal(mask("scan: camera 123456789A seen: on (00), 00:00:5e:00:53:01 RPA, -64 dBm, ch 39, connectable"),
-    "scan: camera ********9A seen: on (00), **:**:**:**:**:01 RPA, -64 dBm, ch 39, connectable"); // 1.5.0-beta.5
+    "scan: camera ********9A seen: on (00), **:**:**:**:**:01 RPA, -64 dBm, ch 39, connectable");
   assert.equal(mask("older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E"),
     "older: app register identity 4D454930-0100-1000-8001-********E5F6 name T1000-E");
   assert.equal(mask("pair: card id 00112233-4455-4677-8899-a1b2c3d4e5f6, no camera paired"),
@@ -1518,7 +1539,7 @@ test("Copy log and Scan hide serial numbers, addresses and the card's identity, 
   assert.equal(mask(longest), longest.replace("06 12 34 56 78 9a", "06 ** ** ** ** 9a"));
   assert.equal(mask(header + "\n" + "diag scan:   bytes: 02 01 06 09 ff 3a 00 03 12 34 56 78 9a\n"),
     header + "\n" + "diag scan:   bytes: 02 01 06 09 ff 3a 00 03 ** ** ** ** 9a\n"); // as Copy shows the run
-  // up to 1.5.0-beta.5: the bytes at the end of the header line
+  // the older format: the bytes at the end of the header line
   assert.equal(mask("diag scan: **:**:**:**:**:e2 RPA -48 dBm ch 38 adv connectable 13 B, camera, bytes: " +
     "02 01 06 09 ff 3a 00 03 12 34 56 78 9a"),
   "diag scan: **:**:**:**:**:e2 RPA -48 dBm ch 38 adv connectable 13 B, camera, bytes: " +
@@ -1578,7 +1599,7 @@ const WAITING_WIFI = statusWith({ ...NOT_PAIRED, pair: "waiting_wifi" }, STATUS_
 // statusAfterStart: the card's state from 'pair older' on (by default it stays idle).
 async function olderWizard(registerOutcome, statusAfterStart = null) {
   const answers = { v: VERSION_1_4, status: statusWith(NOT_PAIRED, STATUS_GPS_HOLD), "pair older": OLDER_STARTED,
-    "pair off": ["pair: cancelled\r\n"], "pair prepare": ["pair: GPS on for 600 s, ready for pairing\r\n"] };
+    "pair off": PAIR_OFF_ANSWER, "pair prepare": PREPARE_ANSWER };
   const app = simulatedApp(["/dev/ttyACM0"], answers);
   app.registerOutcome = registerOutcome;
   const ui = openPage(null, { app });
@@ -1655,9 +1676,7 @@ test("in the app: after a failed Wi-Fi step, Cancel cancels without a red messag
 // Pair again used to leave its last stage ("Connecting to the camera...") in a second section of its own.
 test("in the app: after Pair again, the camera section's one status line shows the result", async () => {
   const answers = { v: VERSION_1_4, status: STATUS_GPS_HOLD, pair: PAIR_STARTED };
-  const app = simulatedApp(["/dev/ttyACM0"], answers);
-  const ui = openPage(null, { app });
-  await ui.connect.fire("click");
+  const { ui } = await connectedApp(answers);
   answers.status = statusWith({ link: "off", pair: "connecting", pair_attempt: 1 }, STATUS_GPS_HOLD);
   await ui.pair.fire("click"); // Pair again: the page asks for the card's state at once
   assert.equal(ui["pair-progress"].textContent, "Connecting to the camera (attempt 1 of 3)...");
@@ -1673,10 +1692,8 @@ test("in the app: after Pair again, the camera section's one status line shows t
 test("in the app: the wizard's stages and its Cancel are the camera section's", async () => {
   const answers = { v: VERSION_1_4, status: statusWith(NOT_PAIRED, STATUS_GPS_HOLD),
     "pair older": ["link: off\r\npair: older started - waiting for GPS time (up to 120 s)\r\n"],
-    "pair off": ["pair: cancelled\r\n"] };
-  const app = simulatedApp(["/dev/ttyACM0"], answers);
-  const ui = openPage(null, { app });
-  await ui.connect.fire("click");
+    "pair off": PAIR_OFF_ANSWER };
+  const { app, ui } = await connectedApp(answers);
   const run = ui["older-start"].fire("click");
   await until(() => app.calls.includes("send pair older"));
   assert.match(ui["pair-progress"].textContent, /^Starting - wait for "Now start Bluetooth pairing on the camera"/);
@@ -1722,10 +1739,8 @@ test("in the app: a cancelled Wi-Fi step stops the card's pairing", async () => 
 // The app opened again (or the cable came back) while the card still pairs: the page follows it.
 async function olderReconnect(pairPhase) {
   const answers = { v: VERSION_1_4, status: statusWith({ ...NOT_PAIRED, pair: pairPhase }, STATUS_GPS_HOLD),
-    p: CARD_ID_ANSWER, "pair off": ["pair: cancelled\r\n"] };
-  const app = simulatedApp(["/dev/ttyACM0"], answers);
-  const ui = openPage(null, { app });
-  await ui.connect.fire("click");
+    p: CARD_ID_ANSWER, "pair off": PAIR_OFF_ANSWER };
+  const { app, ui } = await connectedApp(answers);
   return { app, ui, answers };
 }
 
@@ -1779,8 +1794,8 @@ const PAIR_CANCELLED = statusWith({ ...NOT_PAIRED, pair_result: "cancelled" }, S
 // The card as the firmware pairs it: Pair goes to the Wi-Fi step (an older camera); afterStep(app):
 // the state once the Wi-Fi step has run or the pairing was cancelled.
 async function pairFindsOlderCamera(registerOutcome, afterStep) {
-  const answers = { v: VERSION_1_4, pair: PAIR_STARTED, p: CARD_ID_ANSWER, "pair off": ["pair: cancelled\r\n"],
-    "pair prepare": ["pair: GPS on for 600 s, ready for pairing\r\n"],
+  const answers = { v: VERSION_1_4, pair: PAIR_STARTED, p: CARD_ID_ANSWER, "pair off": PAIR_OFF_ANSWER,
+    "pair prepare": PREPARE_ANSWER,
     status: (app) => afterStep(app) || (app.calls.includes("send pair") ? WAITING_WIFI
       : statusWith(NOT_PAIRED, STATUS_GPS_HOLD)) };
   const app = simulatedApp(["/dev/ttyACM0"], answers);
@@ -1843,9 +1858,7 @@ test("in the app: a failed Wi-Fi step after Pair can be tried again", async () =
 
 test("in a browser: a Pair that finds an older camera says that it needs the app", async () => {
   const answers = { v: VERSION_1_4, status: statusWith(NOT_PAIRED), pair: PAIR_STARTED };
-  const port = simulatedCard(answers);
-  const ui = openPage(port);
-  await ui.connect.fire("click");
+  const { port, ui } = await connected(answers);
   answers.status = statusWith({ ...NOT_PAIRED, pair: "waiting_wifi" });
   await ui.pair.fire("click");
   assert.match(ui["pair-progress"].textContent, /^This is an older camera: .* only the gpxcam card app can do/);
