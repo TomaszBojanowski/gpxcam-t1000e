@@ -1,8 +1,9 @@
 //! The one-time Wi-Fi step for pairing an older LUMIX camera (docs/PROTOCOL.md). After the card has
 //! introduced itself over Bluetooth, the camera opens its own Wi-Fi access point; the user joins it
 //! by hand, and the app registers the same identity and device name the card showed, over the
-//! camera's local HTTP service. The app reaches only the camera's own address (192.168.54.1) and
-//! never the internet. Plain `TcpStream`, no HTTP library.
+//! camera's local HTTP service. The app connects only to the camera's own address (192.168.54.1),
+//! its one SSDP search leaves only through the camera's network, and nothing goes to the internet.
+//! Plain `TcpStream`, no HTTP library.
 //!
 //! The byte encoding and the request sequence: docs/PROTOCOL.md ("Older dialect: the one-time Wi-Fi
 //! step"). The User-Agent here is a neutral one, not the older app's name; the S5II accepts it.
@@ -13,18 +14,23 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
+use socket2::{Domain, Protocol, Socket, Type};
 
-/// The camera's address on its own access point, and the UPnP port used only to warm the camera up.
+/// The camera's address on its own access point, and the UPnP port and SSDP address used only to
+/// warm the camera up.
 pub struct Target {
     pub camera: SocketAddr,
     pub upnp_port: u16,
+    pub ssdp: SocketAddr,
 }
 
-/// The camera on its access point: always 192.168.54.1, HTTP on 80, UPnP on 60606.
+/// The camera on its access point: always 192.168.54.1, HTTP on 80, UPnP on 60606; the SSDP search
+/// goes to the standard SSDP multicast group.
 pub fn camera_target() -> Target {
     Target {
         camera: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 54, 1)), 80),
         upnp_port: 60606,
+        ssdp: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(239, 255, 255, 250)), 1900),
     }
 }
 
@@ -36,7 +42,12 @@ pub struct Timing {
     pub io_timeout: Duration,
     pub tries: u32,    // req_acc_e attempts while the camera has not decided
     pub gap: Duration, // between those attempts
-    pub warmup: bool,  // replay the UPnP/SSDP warm-up (off in the tests)
+    // The warm-up before the registration: a UPnP read, `after_read`, the SSDP search (its socket
+    // open for `search_open`), `before_second_read`, a second UPnP read, `after_read`.
+    pub upnp_timeout: Duration, // connect, write and read of each UPnP read
+    pub after_read: Duration,
+    pub search_open: Duration,
+    pub before_second_read: Duration,
 }
 
 impl Timing {
@@ -48,7 +59,11 @@ impl Timing {
             io_timeout: Duration::from_secs(6),
             tries: 25,
             gap: Duration::from_millis(500),
-            warmup: true,
+            // the gaps the older app used: the two UPnP reads about 2 s apart
+            upnp_timeout: Duration::from_secs(2),
+            after_read: Duration::from_millis(100),
+            search_open: Duration::from_millis(200),
+            before_second_read: Duration::from_millis(1900),
         }
     }
 }
@@ -116,7 +131,7 @@ fn encode(text: &str, token: u32) -> String {
     out
 }
 
-/// The Host header: the bare IP for port 80 (as the camera uses), else "ip:port" (the tests).
+/// The Host header: the bare IP for port 80 (as the camera uses), else "ip:port".
 fn host_header(addr: &SocketAddr) -> String {
     if addr.port() == 80 {
         addr.ip().to_string()
@@ -226,50 +241,76 @@ fn request_access(
 }
 
 /// Waits until a connection to the camera succeeds (the user has joined its network) or the time
-/// runs out.
-fn wait_for_network(target: &Target, timing: &Timing, cancel: &AtomicBool) -> bool {
+/// runs out, and returns that connection.
+fn wait_for_network(target: &Target, timing: &Timing, cancel: &AtomicBool) -> Option<TcpStream> {
     let deadline = Instant::now() + timing.network_wait;
     loop {
         if cancel.load(Ordering::SeqCst) {
-            return false;
+            return None;
         }
-        if TcpStream::connect_timeout(&target.camera, timing.connect_timeout).is_ok() {
-            return true;
+        if let Ok(stream) = TcpStream::connect_timeout(&target.camera, timing.connect_timeout) {
+            return Some(stream);
         }
         if Instant::now() >= deadline {
-            return false;
+            return None;
         }
         std::thread::sleep(timing.network_poll);
     }
 }
 
-/// Best-effort replay of the UPnP description read and an SSDP search, with the gaps the older app
-/// used, before the registration. Every error is ignored; it only nudges the camera.
-fn warm_up(target: &Target) {
-    let upnp = SocketAddr::new(target.camera.ip(), target.upnp_port);
-    let ddd = || {
-        if let Ok(mut stream) = TcpStream::connect_timeout(&upnp, Duration::from_secs(2)) {
-            let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
-            let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
-            let _ = http_get(&mut stream, &host_header(&upnp), UPNP_PATH);
-        }
-    };
-    ddd();
-    std::thread::sleep(Duration::from_millis(100));
-    ssdp_search();
-    std::thread::sleep(Duration::from_millis(1900));
-    ddd();
-    std::thread::sleep(Duration::from_millis(100));
+/// This computer's address on the camera's network: the local end of a connection that reached the
+/// camera, if it is an IPv4 address in the camera's /24 (192.168.54.x). Anything else means the
+/// camera was reached some other way, and the SSDP search is not sent.
+fn camera_network_address(local: IpAddr, camera: IpAddr) -> Option<Ipv4Addr> {
+    match (local, camera) {
+        (IpAddr::V4(local), IpAddr::V4(camera)) if local.octets()[..3] == camera.octets()[..3] => Some(local),
+        _ => None,
+    }
 }
 
-fn ssdp_search() {
-    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
-        let _ = socket.set_multicast_ttl_v4(2);
-        let message = "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\n\
-                       ST: urn:schemas-upnp-org:device:MediaServer:1\r\n\r\n";
-        let _ = socket.send_to(message.as_bytes(), "239.255.255.250:1900");
-        std::thread::sleep(Duration::from_millis(200));
+/// Best-effort replay of the UPnP description read and an SSDP search, with the older app's gaps
+/// (`Timing`), before the registration. Every error is ignored; it only nudges the camera. The
+/// search goes out only through `local`, this computer's address on the camera's network.
+fn warm_up(target: &Target, local: Option<Ipv4Addr>, timing: &Timing) {
+    let upnp = SocketAddr::new(target.camera.ip(), target.upnp_port);
+    let ddd = || {
+        if let Ok(mut stream) = TcpStream::connect_timeout(&upnp, timing.upnp_timeout) {
+            let _ = stream.set_read_timeout(Some(timing.upnp_timeout));
+            let _ = stream.set_write_timeout(Some(timing.upnp_timeout));
+            let _ = http_get(&mut stream, &host_header(&upnp), UPNP_PATH);
+        }
+        std::thread::sleep(timing.after_read);
+    };
+    ddd();
+    if let Some(local) = local {
+        let _ = ssdp_search(local, target.ssdp, timing.search_open);
     }
+    std::thread::sleep(timing.before_second_read);
+    ddd();
+}
+
+const SSDP_SEARCH: &str = "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\n\
+                           ST: urn:schemas-upnp-org:device:MediaServer:1\r\n\r\n";
+const SSDP_TTL: u32 = 2;
+
+/// A socket that sends only from `local`. Without IP_MULTICAST_IF the system picks the interface for
+/// a multicast from its routing table, which may be another network; IP_MULTICAST_IF set to `local`
+/// sends it out through the camera's network (ip(7) on Linux, ip(4) on macOS, IPPROTO_IP socket
+/// options in Winsock). The bind makes `local` the packet's source as well.
+fn ssdp_socket(local: Ipv4Addr) -> io::Result<UdpSocket> {
+    let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+    socket.set_multicast_if_v4(&local)?;
+    socket.set_multicast_ttl_v4(SSDP_TTL)?;
+    socket.bind(&SocketAddr::new(IpAddr::V4(local), 0).into())?;
+    Ok(socket.into())
+}
+
+/// One SSDP search from `local`. The socket stays open for `open`; the camera's answer is not read.
+fn ssdp_search(local: Ipv4Addr, destination: SocketAddr, open: Duration) -> io::Result<()> {
+    let socket = ssdp_socket(local)?;
+    socket.send_to(SSDP_SEARCH.as_bytes(), destination)?;
+    std::thread::sleep(open);
+    Ok(())
 }
 
 /// The whole step: wait for the camera's network, warm it up, register, and report the stages
@@ -283,17 +324,20 @@ pub fn register(
     progress: &mut dyn FnMut(Progress),
 ) -> Outcome {
     progress(Progress::WaitingForNetwork);
-    if !wait_for_network(target, timing, cancel) {
+    let Some(reached) = wait_for_network(target, timing, cancel) else {
         return if cancel.load(Ordering::SeqCst) {
             Outcome::Cancelled
         } else {
             Outcome::NotOnNetwork
         };
-    }
+    };
+    let local = reached
+        .local_addr()
+        .ok()
+        .and_then(|address| camera_network_address(address.ip(), target.camera.ip()));
+    drop(reached);
     progress(Progress::OnNetwork);
-    if timing.warmup {
-        warm_up(target);
-    }
+    warm_up(target, local, timing);
     progress(Progress::Registering);
     request_access(target, identity, name, timing, cancel).unwrap_or(Outcome::Failed)
 }
@@ -303,6 +347,7 @@ mod tests {
     use super::*;
     use std::collections::{HashMap, VecDeque};
     use std::net::TcpListener;
+    use std::sync::{Arc, Mutex};
     use std::thread;
 
     // The made-up identity and name of test/device_identity_vectors.txt, shared with the card's
@@ -326,7 +371,10 @@ mod tests {
             io_timeout: Duration::from_millis(500),
             tries: 4,
             gap: Duration::from_millis(5),
-            warmup: false,
+            upnp_timeout: Duration::from_millis(200),
+            after_read: Duration::ZERO,
+            search_open: Duration::ZERO,
+            before_second_read: Duration::ZERO,
         }
     }
 
@@ -353,17 +401,39 @@ mod tests {
         let _ = stream.flush();
     }
 
-    // A camera that answers req_acc_g with `g_reply` and req_acc_e with the scripted replies in
-    // order (the last one repeats). Runs on 127.0.0.1 and ends when the process does.
-    fn fake_camera(g_reply: &'static str, acc_e: &[&'static str]) -> SocketAddr {
+    // The camera's HTTP and UPnP on one port, and `ssdp` for the search.
+    fn target_at(camera: SocketAddr, ssdp: &UdpSocket) -> Target {
+        Target {
+            camera,
+            upnp_port: camera.port(),
+            ssdp: ssdp.local_addr().unwrap(),
+        }
+    }
+
+    // A camera on 127.0.0.1 that answers req_acc_g with `g_reply`, req_acc_e with the scripted
+    // replies in order (the last one repeats) and the UPnP read with "ok". It keeps the first line of
+    // each request in `requests` and the SSDP search in `ssdp`; it ends when the process does.
+    struct FakeCamera {
+        target: Target,
+        requests: Arc<Mutex<Vec<String>>>,
+        ssdp: UdpSocket,
+    }
+
+    fn fake_camera(g_reply: &'static str, acc_e: &[&'static str]) -> FakeCamera {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
+        let ssdp = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let target = target_at(listener.local_addr().unwrap(), &ssdp);
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let seen = Arc::clone(&requests);
         let mut replies: VecDeque<String> = acc_e.iter().map(|reply| reply.to_string()).collect();
         thread::spawn(move || {
             for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { break };
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
                 while let Some(request) = read_request(&mut stream) {
+                    seen.lock()
+                        .unwrap()
+                        .push(request.lines().next().unwrap_or_default().to_string());
                     if request.contains("type=req_acc_g") {
                         respond(&mut stream, g_reply);
                     } else if request.contains("type=req_acc_e") {
@@ -379,18 +449,32 @@ mod tests {
                 }
             }
         });
-        address
+        FakeCamera { target, requests, ssdp }
     }
 
-    fn run(camera: SocketAddr) -> (Outcome, Vec<Progress>) {
-        let identity = vectors()["identity_text"].clone();
-        let name = vectors()["name"].clone();
-        let target = Target { camera, upnp_port: 0 };
-        let cancel = AtomicBool::new(false);
+    // A camera at a closed port: connecting is refused, so the step never reaches the UPnP port or
+    // the SSDP address.
+    fn unreachable_camera() -> Target {
+        let camera = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
+        Target {
+            camera,
+            upnp_port: camera.port(),
+            ssdp: camera,
+        }
+    }
+
+    fn run(target: &Target, cancelled: bool) -> (Outcome, Vec<Progress>) {
+        let vectors = vectors();
+        let cancel = AtomicBool::new(cancelled);
         let mut events = Vec::new();
-        let outcome = register(&target, &identity, &name, &test_timing(), &cancel, &mut |event| {
-            events.push(event)
-        });
+        let outcome = register(
+            target,
+            &vectors["identity_text"],
+            &vectors["name"],
+            &test_timing(),
+            &cancel,
+            &mut |event| events.push(event),
+        );
         (outcome, events)
     }
 
@@ -419,7 +503,7 @@ mod tests {
     #[test]
     fn accepts_once_the_camera_says_ok() {
         let camera = fake_camera("ok,deadbeef", &["ok_under_research,x", "ok,CAM,remote,open,abcd"]);
-        let (outcome, events) = run(camera);
+        let (outcome, events) = run(&camera.target, false);
         assert_eq!(outcome, Outcome::Accepted);
         assert_eq!(
             events,
@@ -430,63 +514,92 @@ mod tests {
     #[test]
     fn accepts_after_the_user_was_asked_on_the_camera() {
         let camera = fake_camera("ok,deadbeef", &["err_user_refused,x", "ok,CAM,remote,open,abcd"]);
-        assert_eq!(run(camera).0, Outcome::Accepted);
+        assert_eq!(run(&camera.target, false).0, Outcome::Accepted);
     }
 
     #[test]
     fn not_confirmed_when_the_camera_never_decides() {
         let camera = fake_camera("ok,deadbeef", &["ok_under_research,x"]);
-        assert_eq!(run(camera).0, Outcome::NotConfirmed);
+        assert_eq!(run(&camera.target, false).0, Outcome::NotConfirmed);
     }
 
     #[test]
     fn fails_on_an_unexpected_reply() {
         let camera = fake_camera("ok,deadbeef", &["err_something_else"]);
-        assert_eq!(run(camera).0, Outcome::Failed);
+        assert_eq!(run(&camera.target, false).0, Outcome::Failed);
     }
 
     #[test]
     fn fails_when_req_acc_g_has_no_token() {
         let camera = fake_camera("err", &["ok,CAM"]);
-        assert_eq!(run(camera).0, Outcome::Failed);
+        assert_eq!(run(&camera.target, false).0, Outcome::Failed);
+    }
+
+    #[test]
+    fn warms_up_with_two_upnp_reads_and_one_ssdp_search_before_registering() {
+        let camera = fake_camera("ok,deadbeef", &["ok,CAM,remote,open,abcd"]);
+        assert_eq!(run(&camera.target, false).0, Outcome::Accepted);
+
+        let requests = camera.requests.lock().unwrap();
+        assert_eq!(
+            requests[..3],
+            [
+                "GET /Lumix/Server0/ddd HTTP/1.1",
+                "GET /Lumix/Server0/ddd HTTP/1.1",
+                "GET /cam.cgi?mode=accctrl&type=req_acc_g HTTP/1.1",
+            ]
+        );
+        assert_eq!(requests.len(), 4, "then req_acc_e: {requests:?}");
+
+        let mut buffer = [0u8; 512];
+        camera.ssdp.set_read_timeout(Some(Duration::from_millis(200))).unwrap();
+        let (length, from) = camera.ssdp.recv_from(&mut buffer).unwrap();
+        assert_eq!(&buffer[..length], SSDP_SEARCH.as_bytes());
+        assert_eq!(from.ip(), IpAddr::V4(Ipv4Addr::LOCALHOST)); // the local end of the connection to the camera
+        assert!(camera.ssdp.recv_from(&mut buffer).is_err(), "only one search");
+    }
+
+    #[test]
+    fn the_ssdp_search_is_sent_only_from_an_address_on_the_cameras_network() {
+        let camera = IpAddr::V4(Ipv4Addr::new(192, 168, 54, 1));
+        let on_camera_network = Ipv4Addr::new(192, 168, 54, 10);
+        assert_eq!(
+            camera_network_address(IpAddr::V4(on_camera_network), camera),
+            Some(on_camera_network)
+        );
+        assert_eq!(camera_network_address("192.168.1.10".parse().unwrap(), camera), None);
+        assert_eq!(camera_network_address("10.0.0.2".parse().unwrap(), camera), None);
+        assert_eq!(camera_network_address("fe80::1".parse().unwrap(), camera), None);
+    }
+
+    #[test]
+    fn the_ssdp_socket_sends_multicast_only_through_the_given_address() {
+        let local = Ipv4Addr::LOCALHOST;
+        let socket = ssdp_socket(local).unwrap();
+        let options = socket2::SockRef::from(&socket);
+        assert_eq!(options.multicast_if_v4().unwrap(), local);
+        assert_eq!(options.multicast_ttl_v4().unwrap(), SSDP_TTL);
+        assert_eq!(socket.local_addr().unwrap().ip(), IpAddr::V4(local));
     }
 
     #[test]
     fn not_on_network_when_the_camera_cannot_be_reached() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        drop(listener); // a closed port: connecting is refused
-        let (outcome, events) = run(address);
+        let (outcome, events) = run(&unreachable_camera(), false);
         assert_eq!(outcome, Outcome::NotOnNetwork);
         assert_eq!(events, [Progress::WaitingForNetwork]);
     }
 
     #[test]
     fn cancelled_stops_the_step() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        drop(listener);
-        let cancel = AtomicBool::new(true); // already cancelled: it stops before the network
-        let target = Target {
-            camera: address,
-            upnp_port: 0,
-        };
-        let vectors = vectors();
-        let outcome = register(
-            &target,
-            &vectors["identity_text"],
-            &vectors["name"],
-            &test_timing(),
-            &cancel,
-            &mut |_| {},
-        );
-        assert_eq!(outcome, Outcome::Cancelled);
+        // already cancelled: it stops before the network
+        assert_eq!(run(&unreachable_camera(), true).0, Outcome::Cancelled);
     }
 
     #[test]
     fn fails_when_the_camera_does_not_answer() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
+        let ssdp = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let target = target_at(listener.local_addr().unwrap(), &ssdp);
         thread::spawn(move || {
             for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { break };
@@ -495,6 +608,6 @@ mod tests {
                 thread::sleep(Duration::from_millis(300));
             }
         });
-        assert_eq!(run(address).0, Outcome::Failed);
+        assert_eq!(run(&target, false).0, Outcome::Failed);
     }
 }

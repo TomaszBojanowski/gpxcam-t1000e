@@ -72,8 +72,9 @@ fn close_card(open: State<'_, OpenCard>) {
 
 /// The one-time Wi-Fi step for pairing an older camera (older_wifi): the page passes the identity
 /// and device name the card showed over Bluetooth; the app registers them over the camera's own
-/// Wi-Fi access point and reports the stages over `on_event`. It reaches only 192.168.54.1, never
-/// the internet. A long call: it waits for the user to join the camera's network.
+/// Wi-Fi access point and reports the stages over `on_event`. It connects only to 192.168.54.1, its
+/// one SSDP search leaves only through the camera's network, and nothing goes to the internet. A long
+/// call: it waits for the user to join the camera's network.
 #[tauri::command]
 async fn register_older(
     identity: String,

@@ -224,7 +224,8 @@ acceptance (up to 300 s).
 - Before the registration the app, like the phone app of the LUMIX Sync generation, only nudges the camera awake: it
   reads the UPnP description (TCP to port 60606, `GET /Lumix/Server0/ddd`) twice, 2 s apart, with one SSDP search (a
   UDP multicast `M-SEARCH` for `urn:schemas-upnp-org:device:MediaServer:1` to 239.255.255.250:1900) in between, and
-  ignores the answers and any error.
+  ignores the answers and any error. The app sends the search only through the computer's own address on the
+  camera's network (192.168.54.x, from the connection that reached the camera), never through another network.
 - On one keep-alive connection: `GET /cam.cgi?mode=accctrl&type=req_acc_g` returns `ok,<token>` with a 4-byte
   session token (hex); then `GET /cam.cgi?mode=accctrl&type=req_acc_e&value=<identity>&value2=<name>`.
 - **Wi-Fi encoding** of a text: pad its ASCII bytes with `0xFF` to a multiple of four, then for each 4-byte word

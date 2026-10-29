@@ -19,6 +19,7 @@ tauri-build = { version = "2.7.4", features = [] }
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
 serialport = "4.10.1"
+socket2 = "0.6.5" # IP_MULTICAST_IF: the SSDP search leaves only through the camera's network
 tauri = { version = "2.12.5", features = [] }
 
 [dev-dependencies]
