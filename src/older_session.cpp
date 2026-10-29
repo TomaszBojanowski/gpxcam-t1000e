@@ -46,9 +46,7 @@ Step step = Step::Idle;
 uint32_t stepStart = 0;
 uint32_t stepLimit = NO_LIMIT;
 bool keepOpen = false; // true: the connection goes to the caller once the camera accepts (the link)
-bool rejected = false; // the camera refused a write of the introduction or the time
-bool notKnown = false;     // the camera sent no 01 in time
-camera_link::LinkFailure linkFailed = camera_link::LinkFailure::None; // the session got no link at all
+session_end::Reason ending = session_end::Reason::Failed; // endReason(); Accepted once the camera took the card
 uint8_t cardUuid[lumix::UUID_LENGTH];
 uint16_t handles[camera_link::OLDER_CHARACTERISTIC_COUNT];
 uint8_t key[lumix::KEY_LENGTH];
@@ -105,34 +103,32 @@ void enter(Step next, uint32_t limitMs)
     stepLimit = limitMs;
 }
 
-void setFailure(const char *format, va_list args)
+// Ends the session for this reason, with the failure text. Disconnects; the pending event is ignored.
+void end(session_end::Reason reason, const char *format, va_list args)
 {
     vsnprintf(failureText, sizeof(failureText), format, args);
+    ending = reason;
+    camera_link::close();
+    step = Step::Idle;
 }
 
-// Ends the session with a connection problem (Failed). Disconnects; the pending event is ignored.
+void endWith(session_end::Reason reason, const char *format, ...) __attribute__((format(printf, 2, 3)));
+void endWith(session_end::Reason reason, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    end(reason, format, args);
+    va_end(args);
+}
+
+// Ends the session with a connection problem (Failed).
 void fail(const char *format, ...) __attribute__((format(printf, 1, 2)));
 void fail(const char *format, ...)
 {
     va_list args;
     va_start(args, format);
-    setFailure(format, args);
+    end(session_end::Reason::Failed, format, args);
     va_end(args);
-    camera_link::close();
-    step = Step::Idle;
-}
-
-// Ends the session because the camera did not take the card (Rejected). Disconnects.
-void reject(const char *format, ...) __attribute__((format(printf, 1, 2)));
-void reject(const char *format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    setFailure(format, args);
-    va_end(args);
-    rejected = true;
-    camera_link::close();
-    step = Step::Idle;
 }
 
 bool found(camera_link::OlderCharacteristic which)
@@ -181,6 +177,7 @@ bool makeTimePacket()
 void accept()
 {
     logger::line("older: the camera took the card");
+    ending = session_end::Reason::Accepted;
     enter(Step::Done, NO_LIMIT);
 }
 
@@ -332,7 +329,7 @@ bool writeAccepted(const camera_link::Event &event, camera_link::OlderCharacteri
         logger::line("older: %s written", CHARACTERISTIC_NAMES[which]);
         return true;
     }
-    reject("%s: refused (GATT 0x%04x)", CHARACTERISTIC_NAMES[which], event.status);
+    endWith(session_end::Reason::Refused, "%s: refused (GATT 0x%04x)", CHARACTERISTIC_NAMES[which], event.status);
     return false;
 }
 
@@ -392,6 +389,14 @@ void onMtu(const camera_link::Event &event)
         enter(Step::Characteristics, camera_link::REQUEST_TIMEOUT_MS);
 }
 
+// Why the camera's disconnect ends the session.
+session_end::Reason disconnectedReason(uint16_t hciReason)
+{
+    if (hciReason == BLE_HCI_CONN_FAILED_TO_BE_ESTABLISHED)
+        return session_end::Reason::NotEstablished;
+    return step == Step::Connecting ? session_end::Reason::Failed : session_end::Reason::EndedEarly;
+}
+
 // Events that may come in any step of a connection. Returns true if it handled the event.
 bool handleCommonEvent(const camera_link::Event &event)
 {
@@ -400,9 +405,7 @@ bool handleCommonEvent(const camera_link::Event &event)
     case EventType::Disconnected:
         if (step == Step::Done)
             return true; // already accepted; the caller cancels
-        if (event.status == BLE_HCI_CONN_FAILED_TO_BE_ESTABLISHED)
-            linkFailed = camera_link::LinkFailure::NotEstablished;
-        fail("the camera disconnected (HCI 0x%02x)", event.status);
+        endWith(disconnectedReason(event.status), "the camera disconnected (HCI 0x%02x)", event.status);
         return true;
     case EventType::GattTimeout:
         fail("no ATT answer for 30 s");
@@ -482,14 +485,12 @@ void handleEvent(const camera_link::Event &event)
 
 void handleTimeout()
 {
-    if (step == Step::WaitKnown) {
-        notKnown = true; // Failed: a camera may be slow; the link counts it (link_policy)
-        fail("no 01 from the camera in %lu s", (unsigned long)(stepLimit / 1000));
+    if (step == Step::WaitKnown) { // a camera may be slow; the link counts it (link_policy)
+        endWith(session_end::Reason::NotTaken, "no 01 from the camera in %lu s", (unsigned long)(stepLimit / 1000));
         return;
     }
-    if (step == Step::Connecting)
-        linkFailed = camera_link::LinkFailure::NoAnswer;
-    fail("no answer in step '%s' in %lu s", stepName(step), (unsigned long)(stepLimit / 1000));
+    endWith(step == Step::Connecting ? session_end::Reason::NoAnswer : session_end::Reason::Failed,
+            "no answer in step '%s' in %lu s", stepName(step), (unsigned long)(stepLimit / 1000));
 }
 
 } // namespace
@@ -513,9 +514,7 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     }
     memcpy(cardUuid, uuid, sizeof(cardUuid));
     keepOpen = keepConnection;
-    rejected = false;
-    notKnown = false;
-    linkFailed = camera_link::LinkFailure::None;
+    ending = session_end::Reason::Failed;
     timeFromFixLogged = false;
     knownByLocationNotify = false;
     knownByTimeNotify = false;
@@ -546,7 +545,7 @@ Result poll()
         return Result::Accepted; // pairing: again at every poll until the caller cancels
     }
     if (step == Step::Idle)
-        return rejected ? Result::Rejected : Result::Failed;
+        return session_end::resultOf(ending);
     if (gone) {
         fail("the connection ended without its event");
         return Result::Failed;
@@ -554,7 +553,7 @@ Result poll()
     if (stepLimit != NO_LIMIT && millis() - stepStart >= stepLimit) {
         handleTimeout();
         if (step == Step::Idle)
-            return rejected ? Result::Rejected : Result::Failed;
+            return session_end::resultOf(ending);
     }
     return Result::Running;
 }
@@ -564,14 +563,9 @@ const char *failure()
     return failureText;
 }
 
-camera_link::LinkFailure linkFailure()
+session_end::Reason endReason()
 {
-    return linkFailed;
-}
-
-bool cardNotTaken()
-{
-    return rejected || notKnown;
+    return ending;
 }
 
 uint16_t locationHandle()
@@ -589,6 +583,7 @@ void cancel()
     if (step == Step::Idle)
         return;
     camera_link::close();
+    ending = session_end::Reason::Failed;
     step = Step::Idle;
 }
 

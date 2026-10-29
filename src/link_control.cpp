@@ -17,6 +17,7 @@
 #include "pairing.h"
 #include "pairing_record.h"
 #include "pairing_store.h"
+#include "session_end.h"
 #include "settings_store.h"
 #include "sound.h"
 
@@ -613,29 +614,6 @@ void quickRetry()
     enter(Phase::Pausing);
 }
 
-void introducing()
-{
-    switch (camera_session::poll()) {
-    case camera_session::Result::Running:
-        break;
-    case camera_session::Result::Accepted:
-        onAccepted();
-        break;
-    case camera_session::Result::Rejected:
-        rejectedByCamera();
-        break;
-    case camera_session::Result::Failed:
-        if (camera_session::endedAfterConnecting() && earlyEndStopped())
-            break;
-        if (camera_session::notEstablished() && !quickRetryUsed) {
-            quickRetry();
-        } else {
-            connectionFailed(camera_session::failure());
-        }
-        break;
-    }
-}
-
 void search(uint32_t now)
 {
     // A scan restart with new timing can fail (bluetooth::setScanTiming()); try again.
@@ -709,27 +687,18 @@ const char *phaseText()
     return "?";
 }
 
-// The older dialect's introduction ended without the camera taking the card. A camera that refused it
-// (a refused write, no 01 in time) counts, and the third such connection in a row stops the link as a
-// refusal does (link_policy::olderRefusalMeansUnknownCard()). Otherwise as in the newer dialect: a
-// connection that was not established gets a quick retry, anything else a longer pause each time.
-void olderEnded()
+// The older dialect's introduction ended without the camera taking the card (a refused write, no 01 in
+// time): it counts, and the third such connection in a row stops the link as a refusal does
+// (link_policy::olderRefusalMeansUnknownCard()).
+void olderCardNotTaken(const char *failure)
 {
-    if (older_session::cardNotTaken()) {
-        if (link_policy::olderRefusalMeansUnknownCard(&earlyEndsInARow)) {
-            logger::line("link: %u connections in a row ended without camera %s taking the card (last: %s)",
-                         (unsigned)earlyEndsInARow, serialText, older_session::failure());
-            rejectedByCamera();
-        } else {
-            connectionFailed(older_session::failure());
-        }
+    if (!link_policy::olderRefusalMeansUnknownCard(&earlyEndsInARow)) {
+        connectionFailed(failure);
         return;
     }
-    if (older_session::linkFailure() == camera_link::LinkFailure::NotEstablished && !quickRetryUsed) {
-        quickRetry();
-        return;
-    }
-    connectionFailed(older_session::failure());
+    logger::line("link: %u connections in a row ended without camera %s taking the card (last: %s)",
+                 (unsigned)earlyEndsInARow, serialText, failure);
+    rejectedByCamera();
 }
 
 // The camera took the card: the connection is the link's, and the locations go as in the newer dialect.
@@ -744,20 +713,55 @@ void onOlderAccepted()
     enterConnected();
 }
 
-// The older dialect's introduction is driven by older_session; this only goes on or pauses the link.
-void olderPhase()
+// The introduction in either dialect has ended: the connection goes on, or the link tries again, pauses or
+// stops.
+void introductionEnded(session_end::Reason reason, const char *failure)
 {
-    switch (older_session::poll()) {
-    case older_session::Result::Running:
+    switch (reason) {
+    case session_end::Reason::Accepted:
+        if (olderLink)
+            onOlderAccepted();
+        else
+            onAccepted();
         break;
-    case older_session::Result::Accepted:
-        onOlderAccepted();
+    case session_end::Reason::Refused:
+        if (olderLink)
+            olderCardNotTaken(failure);
+        else
+            rejectedByCamera();
         break;
-    case older_session::Result::Rejected:
-    case older_session::Result::Failed:
-        olderEnded();
+    case session_end::Reason::NotTaken:
+        olderCardNotTaken(failure);
+        break;
+    case session_end::Reason::EndedEarly:
+        // In the newer dialect without the time written an early end is how an unknown card shows; in the
+        // older the camera's 01 shows it.
+        if (olderLink || !earlyEndStopped())
+            connectionFailed(failure);
+        break;
+    case session_end::Reason::NotEstablished:
+        if (quickRetryUsed)
+            connectionFailed(failure);
+        else
+            quickRetry();
+        break;
+    case session_end::Reason::NoAnswer:
+    case session_end::Reason::NoNewerService:
+    case session_end::Reason::Failed:
+        connectionFailed(failure);
         break;
     }
+}
+
+// Phase::Introducing and Phase::Older: the session of the connection's dialect.
+void introducing()
+{
+    if ((olderLink ? older_session::poll() : camera_session::poll()) == session_end::Result::Running)
+        return;
+    if (olderLink)
+        introductionEnded(older_session::endReason(), older_session::failure());
+    else
+        introductionEnded(camera_session::endReason(), camera_session::failure());
 }
 
 } // namespace
@@ -925,6 +929,7 @@ void poll()
         search(now);
         break;
     case Phase::Introducing:
+    case Phase::Older:
         introducing();
         break;
     case Phase::GpsMode:
@@ -934,9 +939,6 @@ void poll()
         break;
     case Phase::Connected:
         connected(now);
-        break;
-    case Phase::Older:
-        olderPhase();
         break;
     case Phase::Pausing:
         if (now - phaseStart >= pauseLength)

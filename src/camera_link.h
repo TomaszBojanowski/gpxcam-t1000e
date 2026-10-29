@@ -139,11 +139,6 @@ constexpr uint32_t REQUEST_TIMEOUT_MS = 5000;
 // The log line for a SecurityRequest event, in any session or the link.
 constexpr const char *SECURITY_REQUEST_LINE = "camera: asked for encryption - not answered (as the gpxcam app)";
 
-// Why a session got no link at all, for pairing's quick retries: no answer within
-// CONNECT_TIMEOUT_MS, or the connection not established (HCI 0x3e: the camera sent nothing in
-// its first connection events). None: a link was made, or the session ended some other way.
-enum class LinkFailure : uint8_t { None, NoAnswer, NotEstablished };
-
 // Starts connecting to the camera of the report (its address and type), with the phone's
 // connection parameters (camera_link.cpp), the radio listening all the time until it connects.
 // Scanning must be off. False if the SoftDevice refused.

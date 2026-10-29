@@ -5,7 +5,6 @@
 #include <string.h>
 
 #include "bluetooth.h"
-#include "camera_link.h"
 #include "camera_list.h"
 #include "camera_session.h"
 #include "gps.h"
@@ -16,6 +15,7 @@
 #include "older_session.h"
 #include "pairing_record.h"
 #include "pairing_store.h"
+#include "session_end.h"
 #include "sound.h"
 
 namespace {
@@ -29,9 +29,10 @@ constexpr uint32_t SEARCH_MS = 120000;
 constexpr uint32_t GPS_HOLD_MS = 600000;
 constexpr int MAX_ATTEMPTS = 3;
 constexpr uint32_t PAUSE_MS[MAX_ATTEMPTS - 1] = {10000, 30000}; // after attempts 1 and 2
-// A connection that never came up (camera_link::LinkFailure) is tried again at once, at the camera's next
-// fresh pairing advertisement, this often per session: its pairing mode is short (an S5: about 30 s), so
-// the pauses above are kept for what fails after the link was made. A quick retry is not an attempt.
+// A connection that never came up (session_end NoAnswer, NotEstablished) is tried again at once, at the
+// camera's next fresh pairing advertisement, this often per session: its pairing mode is short (an S5:
+// about 30 s), so the pauses above are kept for what fails after the link was made. A quick retry is not
+// an attempt.
 constexpr int QUICK_RETRIES = 5;
 constexpr uint32_t SCAN_RETRY_MS = 1000; // the search switches a stopped scan on again at most this often
 
@@ -149,32 +150,27 @@ void attemptFailed(const char *reason)
     enter(Phase::Pausing);
 }
 
-const char *linkFailureText(camera_link::LinkFailure failure)
+// A session that got no link at all: NoAnswer or NotEstablished.
+const char *noLinkText(session_end::Reason reason)
 {
-    return failure == camera_link::LinkFailure::NotEstablished ? "link not established (0x3e)"
-                                                               : "no answer in connect";
+    return reason == session_end::Reason::NotEstablished ? "link not established (0x3e)" : "no answer in connect";
 }
 
 void startSearch();
 
-// A session that ended without pairing. No link at all: a quick retry, or giving up when they are used
-// up; a failure after the link was made, or a refusal: a failed attempt with its pause.
-void sessionFailed(camera_link::LinkFailure link, const char *failure)
+// No link at all: a quick retry, or giving up when they are used up.
+void quickRetry(session_end::Reason reason)
 {
-    if (link == camera_link::LinkFailure::None) {
-        attemptFailed(failure);
-        return;
-    }
     if (quickRetries >= QUICK_RETRIES) {
-        char reason[logger::LINE_MAX];
-        snprintf(reason, sizeof(reason), "no connection to the camera after %d quick retries (last: %s)",
-                 QUICK_RETRIES, linkFailureText(link));
-        giveUp(Result::Failed, reason);
+        char why[logger::LINE_MAX];
+        snprintf(why, sizeof(why), "no connection to the camera after %d quick retries (last: %s)", QUICK_RETRIES,
+                 noLinkText(reason));
+        giveUp(Result::Failed, why);
         return;
     }
     quickRetries++;
     attempt--; // the attempt did not reach the camera
-    logger::line("pair: quick retry %d/%d - %s", quickRetries, QUICK_RETRIES, linkFailureText(link));
+    logger::line("pair: quick retry %d/%d - %s", quickRetries, QUICK_RETRIES, noLinkText(reason));
     startSearch(); // scanning again at once; a fresh pairing advertisement is needed (scanOn() clears the list)
 }
 
@@ -269,38 +265,33 @@ void switchToOlder()
     enter(Phase::WaitingForWifi);
 }
 
+// The session of either dialect. No link at all: a quick retry; a failure after the link was made, or a
+// refusal: a failed attempt with its pause.
 void introducing()
 {
-    if (olderMode) {
-        switch (older_session::poll()) {
-        case older_session::Result::Running:
-            break;
-        case older_session::Result::Accepted:
-            succeed();
-            break;
-        case older_session::Result::Rejected:
-            attemptFailed(older_session::failure());
-            break;
-        case older_session::Result::Failed:
-            sessionFailed(older_session::linkFailure(), older_session::failure());
-            break;
-        }
+    if ((olderMode ? older_session::poll() : camera_session::poll()) == session_end::Result::Running)
         return;
-    }
-    switch (camera_session::poll()) {
-    case camera_session::Result::Running:
-        break;
-    case camera_session::Result::Accepted:
+    const char *failure = olderMode ? older_session::failure() : camera_session::failure();
+    const session_end::Reason reason = olderMode ? older_session::endReason() : camera_session::endReason();
+    switch (reason) {
+    case session_end::Reason::Accepted:
         succeed();
         break;
-    case camera_session::Result::Rejected: // not expected in pairing mode
-        attemptFailed(camera_session::failure());
-        break;
-    case camera_session::Result::Failed:
-        if (autoDialect && camera_session::lacksNewerService())
+    case session_end::Reason::NoNewerService:
+        if (autoDialect)
             switchToOlder();
         else
-            sessionFailed(camera_session::linkFailure(), camera_session::failure());
+            attemptFailed(failure);
+        break;
+    case session_end::Reason::NoAnswer:
+    case session_end::Reason::NotEstablished:
+        quickRetry(reason);
+        break;
+    case session_end::Reason::Refused:
+    case session_end::Reason::NotTaken:
+    case session_end::Reason::EndedEarly:
+    case session_end::Reason::Failed:
+        attemptFailed(failure);
         break;
     }
 }

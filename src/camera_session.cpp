@@ -41,12 +41,7 @@ uint32_t stepStart = 0;
 uint32_t stepLimit = 0;
 bool keepOpen = false;
 bool timeWritten = true; // set at the start: false only with the clock off in a lasting connection
-bool accepted = false;
-bool rejected = false; // a refusal that means the camera does not know the card (link_policy)
-bool establishFailed = false; // HCI 0x3e: the connection was not established
-bool connectTimedOut = false; // no connection within camera_link::CONNECT_TIMEOUT_MS
-bool endedEarly = false;      // the connection ended after it was made, during the introduction
-bool newerServiceAbsent = false; // the newer-dialect service (1FE71B85) was not on the camera
+session_end::Reason ending = session_end::Reason::Failed; // endReason(); Accepted once the camera took the card
 char failureText[80] = "";
 
 uint8_t cardUuid[lumix::UUID_LENGTH];
@@ -133,11 +128,11 @@ void keepHandles()
     logger::transient("camera: handles kept for the next connection");
 }
 
-void fail()
+void fail(session_end::Reason reason = session_end::Reason::Failed)
 {
     if (handle_cache::forgetAfterFailure(step != Step::Connecting, false))
         camera_session::forgetHandles(failureText);
-    accepted = false;
+    ending = reason;
     closeLink();
 }
 
@@ -214,7 +209,7 @@ void writeTime()
 void introduceWithoutTime()
 {
     logger::transient("camera: clock off - no time written");
-    accepted = true;
+    ending = session_end::Reason::Accepted;
     if (!usingKept)
         keepHandles();
     step = Step::Done; // the link goes on with the open connection
@@ -305,8 +300,8 @@ void onWritten(const camera_link::Event &event, void (*next)())
 {
     if (event.status != BLE_GATT_STATUS_SUCCESS) {
         setFailure("%s: refused (GATT 0x%04x)", stepName(step), event.status);
-        rejected = link_policy::refusalMeansUnknownCard(introductionWrite(step), timeWritten);
-        fail();
+        const bool unknownCard = link_policy::refusalMeansUnknownCard(introductionWrite(step), timeWritten);
+        fail(unknownCard ? session_end::Reason::Refused : session_end::Reason::Failed);
         return;
     }
     logger::transient("camera: %s accepted", stepName(step));
@@ -320,7 +315,7 @@ void onWritten(const camera_link::Event &event, void (*next)())
 // writes it twice.
 void onTimeAccepted()
 {
-    accepted = true;
+    ending = session_end::Reason::Accepted;
     if (!usingKept)
         keepHandles();
     if (keepOpen)
@@ -366,13 +361,13 @@ void onService(const camera_link::Event &event)
     if (!event.service.found) {
         // The camera says it has no such service: "attribute not found", or an answer without one. 'pair'
         // switches to the older dialect then (pairing.cpp); any other error is only a failed attempt.
-        newerServiceAbsent = event.status == BLE_GATT_STATUS_ATTERR_ATTRIBUTE_NOT_FOUND ||
-                             event.status == BLE_GATT_STATUS_SUCCESS;
-        if (newerServiceAbsent)
+        if (event.status == BLE_GATT_STATUS_ATTERR_ATTRIBUTE_NOT_FOUND || event.status == BLE_GATT_STATUS_SUCCESS) {
             setFailure("service: the newer dialect is not on this camera (GATT 0x%04x)", event.status);
-        else
+            fail(session_end::Reason::NoNewerService);
+        } else {
             setFailure("service: not found (GATT 0x%04x)", event.status);
-        fail();
+            fail();
+        }
         return;
     }
     info.serviceEnd = event.service.endHandle;
@@ -403,6 +398,14 @@ void onConnected()
     enter(Step::Mtu, camera_link::MTU_TIMEOUT_MS);
 }
 
+// Why the camera's disconnect ends the session.
+session_end::Reason disconnectedReason(uint16_t hciReason)
+{
+    if (hciReason == BLE_HCI_CONN_FAILED_TO_BE_ESTABLISHED)
+        return session_end::Reason::NotEstablished;
+    return step == Step::Connecting ? session_end::Reason::Failed : session_end::Reason::EndedEarly;
+}
+
 // Events that may come in any step.
 bool handleCommonEvent(const camera_link::Event &event)
 {
@@ -410,11 +413,11 @@ bool handleCommonEvent(const camera_link::Event &event)
     case camera_link::EventType::Disconnected:
         if (step != Step::Disconnecting) {
             setFailure("%s: the camera disconnected (HCI 0x%02x)", stepName(step), event.status);
-            establishFailed = event.status == BLE_HCI_CONN_FAILED_TO_BE_ESTABLISHED;
-            endedEarly = step != Step::Connecting && !establishFailed;
-            if (!accepted && handle_cache::forgetAfterFailure(true, establishFailed))
+            const session_end::Reason reason = disconnectedReason(event.status);
+            if (ending != session_end::Reason::Accepted &&
+                handle_cache::forgetAfterFailure(true, reason == session_end::Reason::NotEstablished))
                 camera_session::forgetHandles(failureText);
-            accepted = false; // the link is gone, also after an accepted time
+            ending = reason; // the link is gone, also after an accepted time
         }
         step = Step::Done;
         return true;
@@ -492,9 +495,8 @@ void handleTimeout()
         step = Step::Done;
         break;
     case Step::Connecting:
-        connectTimedOut = true;
         setFailure("connect: no answer in %lu s", (unsigned long)(stepLimit / 1000));
-        fail(); // in case the connection came up just now
+        fail(session_end::Reason::NoAnswer); // closes a connection that came up just now
         break;
     default:
         setFailure("%s: no answer in %lu s", stepName(step), (unsigned long)(stepLimit / 1000));
@@ -532,12 +534,7 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     info.mtu = BLE_GATT_ATT_MTU_DEFAULT;
     keepOpen = keepConnection;
     timeWritten = !keepConnection || tz_store::clockOn();
-    accepted = false;
-    rejected = false;
-    establishFailed = false;
-    connectTimedOut = false;
-    endedEarly = false;
-    newerServiceAbsent = false;
+    ending = session_end::Reason::Failed;
     failureText[0] = '\0';
     if (!camera_link::connect(camera)) {
         setFailure("connect: refused by the SoftDevice");
@@ -559,9 +556,7 @@ Result poll()
     if (step != Step::Done)
         return Result::Running;
     step = Step::Idle;
-    if (accepted)
-        return Result::Accepted;
-    return rejected ? Result::Rejected : Result::Failed;
+    return session_end::resultOf(ending);
 }
 
 const char *failure()
@@ -569,26 +564,9 @@ const char *failure()
     return failureText;
 }
 
-bool notEstablished()
+session_end::Reason endReason()
 {
-    return establishFailed;
-}
-
-bool endedAfterConnecting()
-{
-    return endedEarly;
-}
-
-camera_link::LinkFailure linkFailure()
-{
-    if (establishFailed)
-        return camera_link::LinkFailure::NotEstablished;
-    return connectTimedOut ? camera_link::LinkFailure::NoAnswer : camera_link::LinkFailure::None;
-}
-
-bool lacksNewerService()
-{
-    return newerServiceAbsent;
+    return ending;
 }
 
 bool writesTime()
@@ -612,7 +590,7 @@ void cancel()
     if (step == Step::Idle)
         return;
     camera_link::close();
-    accepted = false;
+    ending = session_end::Reason::Failed;
     step = Step::Idle;
 }
 

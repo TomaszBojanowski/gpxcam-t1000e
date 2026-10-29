@@ -9,6 +9,7 @@ void runLinkTests();
 void runPairingTests();
 void runOlderSessionTests();
 void runInvariantTests();
+void runSessionEndTests();
 
 void setUp()
 {
@@ -30,5 +31,6 @@ int main(int, char **)
     runPairingTests();
     runOlderSessionTests();
     runInvariantTests();
+    runSessionEndTests();
     return UNITY_END();
 }
