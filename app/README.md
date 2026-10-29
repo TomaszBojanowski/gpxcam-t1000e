@@ -68,7 +68,7 @@ talks to the SenseCAP T1000-E card over USB. Its only network connection is the 
 of pairing an older LUMIX camera, and only when the user pairs such a camera: the app then talks
 only to the camera, at 192.168.54.1 on the camera's own Wi-Fi network, which the user joins by hand,
 and sends it the card's identity and device name. Before registering, it also sends one SSDP search
-(a standard local discovery packet with no user or card data) to the local network, to wake the
+(a standard discovery packet with no user or card data) on the camera's network only, to wake the
 camera's service. No information is transferred to any other networked system.
 
 **Verifying the signature (Windows)**
