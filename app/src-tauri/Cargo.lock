@@ -1084,12 +1084,13 @@ dependencies = [
 
 [[package]]
 name = "gpxcam-card"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "libc",
  "serde",
  "serde_json",
  "serialport",
+ "socket2",
  "tauri",
  "tauri-build",
 ]

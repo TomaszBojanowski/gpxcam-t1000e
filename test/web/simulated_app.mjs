@@ -5,12 +5,13 @@
 // As app/src-tauri gives it to the page: list_cards, open_card with a channel for the card's lines,
 // send (the answers come back over the channel, line by line) and close_card; register_older (its
 // stages, app.registerStages, over a channel, then app.registerOutcome; "wait": until cancel_older)
-// and cancel_older for older-camera pairing. An answer can be a function of app (for a state that
-// follows the commands sent). openError: the word open_card fails with.
+// and cancel_older for older-camera pairing; app.registerError: the word register_older fails with. An
+// answer can be a function of app (for a state that follows the commands sent). openError: the word
+// open_card fails with. unplug(): the card's port ends with a word, as when the card is unplugged.
 export function simulatedApp(paths, answers, { openError = null } = {}) {
   const app = {
-    calls: [], channel: null, registerOutcome: "accepted", registerStages: ["on-network", "registering"],
-    registered: [],
+    calls: [], channel: null, registerOutcome: "accepted", registerError: null,
+    registerStages: ["on-network", "registering"], registered: [],
   };
   const core = {
     Channel: class {
@@ -31,6 +32,7 @@ export function simulatedApp(paths, answers, { openError = null } = {}) {
         return null;
       }
       if (command === "register_older") {
+        if (app.registerError) throw app.registerError; // before anything is sent, as the app checks first
         app.registered.push(`${args.identity} ${args.name}`);
         for (const kind of app.registerStages) setTimeout(() => args.onEvent.onmessage({ kind }), 5);
         if (app.registerOutcome === "wait") return new Promise((resolve) => { app.stopRegister = resolve; });
@@ -48,6 +50,6 @@ export function simulatedApp(paths, answers, { openError = null } = {}) {
     },
   };
   app.window = { isSecureContext: true, __TAURI__: { core } };
-  app.unplug = () => app.channel.onmessage({ kind: "closed", error: "the card was unplugged" });
+  app.unplug = (word = "port-failed") => app.channel.onmessage({ kind: "closed", error: word });
   return app;
 }

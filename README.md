@@ -99,16 +99,15 @@ Edge. It does the same as the page and, like it, sends nothing over the internet
 version numbers and releases: tags `app-vX.Y.Z`, named "gpxcam card" in
 [Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases).
 [app/README.md](app/README.md#install) says how to install it, how to open it the first time and
-which gpxcam versions it works with. On Windows 11 the `.msi` has been tried with a card; the
-`-setup.exe` and the macOS version not yet. The app can also pair *older* LUMIX cameras (the LUMIX
-Sync generation), which need one extra step over the camera's own Wi-Fi; see
+which gpxcam versions it works with. The app can also pair *older* LUMIX cameras (the LUMIX Sync
+generation), which need one extra step over the camera's own Wi-Fi; see
 [app/README.md](app/README.md#pairing-an-older-camera).
 
 ![The app's card section: connected to the card, with tiles for the camera (Connected), the GPS (Fix, 11 satellites), the battery (Charged, 100 %) and the time zone (Europe/Warsaw, clock on)](docs/images/app-state.png)
 
 ![Pairing in the app: the card is looking for the camera, and a highlighted line says "Now start Bluetooth pairing on the camera"](docs/images/app-pairing.png)
 
-![The Wi-Fi step of an older camera: the app asks to join the camera's Wi-Fi network shown on its screen and keep the window open](docs/images/app-older-wifi.png)
+![The Wi-Fi step of an older camera, started under the unfolded "Pair does not recognise your older camera?": in the camera section, the app asks to join the camera's Wi-Fi network shown on its screen and keep the window open](docs/images/app-older-wifi.png)
 
 *The app's state after Connect, pairing, and the Wi-Fi step of an older camera. More in
 [app/README.md](app/README.md#what-it-looks-like); made with `tools/screenshots.mjs` and a simulated card.*
@@ -122,7 +121,7 @@ Sync generation), which need one extra step over the camera's own Wi-Fi; see
 > |---|---|---|
 > | LUMIX S5II | *Pair* on the card page or in the app | tested |
 > | Other current bodies: S5IIX, S9, GH7, G9II, S1II, S1RII, S1IIE, L10 | *Pair* on the card page or in the app | same protocol as the S5II, expected to work, not tested yet |
-> | LUMIX S5II in its older protocol | *Pair an older camera* in the app, with the Wi-Fi step | tested by the author: pairing, locations with Normal and Frequent |
+> | LUMIX S5II in its older protocol | *Start* under *Pair does not recognise your older camera?* in the app, with the Wi-Fi step | tested by the author: pairing, locations with Normal and Frequent |
 > | LUMIX Sync generation: S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H, BGH1 | *Pair* in the desktop app, with a one-time step over the camera's Wi-Fi | not confirmed; the one field test so far, a LUMIX S5, has not connected |
 >
 > How to pair them: [app/README.md](app/README.md#pairing-an-older-camera).
@@ -130,7 +129,7 @@ Sync generation), which need one extra step over the camera's own Wi-Fi; see
 ## Set the time zone
 
 The card sets the camera's clock every time it connects: the time from the GPS and the time zone.
-Without a setting the time zone is Europe/Warsaw (Central European Time), as up to version 1.1.
+Without a setting the time zone is Europe/Warsaw (Central European Time).
 The time zone changes only the camera's local time; the position and the GPS time in EXIF do not
 depend on it. The card keeps the setting through restarts and firmware updates and switches summer
 time by itself, with the rules of the tz database (IANA).
@@ -170,7 +169,7 @@ comes from the card. Pairing still sets the clock once, so set the camera's time
 after pairing. `clock on` brings the card's clock setting back; the camera takes it at the next
 connection (switch the camera off and on).
 
-Without writing the time the card cannot see at once that the camera has forgotten it (removed
+Without writing the time, the card cannot see at once that the camera has forgotten it (removed
 from the camera's list of devices): the camera refuses the time only from a card it does not know.
 So with the clock off the card stops working with the camera when the camera refuses any step of
 the introduction, or ends three connections in a row before it takes a position. The card page
@@ -193,8 +192,8 @@ The result is `.pio/build/t1000e/firmware.uf2`. After every build `tools/uf2chec
 UF2 family 0xADA52840, first block at 0x27000, all blocks inside 0x27000–0xEA000. A file that
 fails the check is deleted.
 
-The time zone table (`src/tz_table_data.inc`), its test vectors and the zone list of the time zone
-page are generated from the tz database of IANA in a pinned version (archives checked by their
+The time zone table (`src/tz_table_data.inc`), its test vectors and the zone list of the card
+page (`docs/zones.js`) are generated from the tz database of IANA in a pinned version (archives checked by their
 SHA-256). After a new tz database release, update the version in the script (its first lines say
 how) and run it; it needs Python 3.9+, `cc`, `make` and the network on the first run:
 
@@ -237,7 +236,7 @@ After gpxcam 1.4.0, Meshtastic up to 2.7.15 (the factory version) restarts once 
 Meshtastic 2.7.16 and later feed the same watchdog and should not restart; this has not been
 tested.
 
-Coming back to gpxcam 1.4.0 later:
+Coming back to gpxcam (1.4.0 or newer) later:
 - The copy of the pairing lives on two flash pages of its own (0xEB000 and 0xEC000), which
   flashing never writes. Meshtastic up to 2.7 does not use them, so the copy is still there.
   Meshtastic 2.8 and later keep their own node cache on these pages and overwrite the copy; gpxcam
@@ -295,7 +294,7 @@ more than 5 m, at most every 2 s. If the GPS loses its fix later, the connection
 position is sent until the fix is back.
 
 Charge the card with the magnetic cable on the bare card, not through a case, until the magnet
-clicks into place. A contact that keeps making and breaking once hung the card (see
+clicks into place. A contact that keeps making and breaking can hang the card (see
 [docs/HARDWARE.md](docs/HARDWARE.md#reliability-140)).
 
 When the camera is switched off, the card notices it (two falling beeps) and waits:
@@ -322,7 +321,7 @@ The card never wakes a camera that is switched off.
 | two short rising beeps | connected to the camera |
 | two short falling beeps | connection ended |
 
-**Volume (1.3.0):** **Loud** (as up to 1.2), **Quiet**, or **Off** – choose under **Sound** on
+**Volume (1.3.0):** **Loud**, **Quiet** or **Off** – choose under **Sound** on
 [the card page](#the-card-page), or send `sound loud`, `sound quiet` or `sound off`. Off keeps only
 the answers to a held button, quietly: switching on and off, pairing started, and two clicks when
 the card refuses to switch off or to pair. Without them you could not tell when to let go. The card
@@ -415,7 +414,8 @@ hardware and a test camera that can disconnect, stay silent or refuse at any ste
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) – the Bluetooth LE protocol of LUMIX cameras, the
   connection parameters the S5II works with, how the camera takes the time zone, and test vectors.
 - [The card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/) – the card's state, pairing,
-  the clock setting and the time zone from Chrome or Edge (source: `docs/index.html`).
+  the camera's clock and time zone, sound, location updates and Diagnostics, from Chrome or Edge
+  (source: `docs/index.html`).
 
 ## Sources
 

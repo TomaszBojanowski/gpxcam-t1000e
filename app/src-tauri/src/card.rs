@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
+use crate::Problem;
 use crate::commands;
 use crate::lines::LineAssembler;
 
@@ -25,47 +26,13 @@ pub const USB_PRODUCT_ID: u16 = 0x8057;
 const PORT_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// What the page gets over its channel (docs/index.html AppPort): the card's lines, then once
-/// Closed, with an error when the port failed (the card was unplugged), without one after close().
+/// Closed, with PortClosed or PortFailed when the port ended by itself (the card was unplugged),
+/// without one after close().
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Event {
     Line { text: String },
-    Closed { error: Option<String> },
-}
-
-/// Why a port did not open: the word the page explains (docs/index.html openProblemText()).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OpenError {
-    Permission,
-    Busy,
-    NotFound,
-    Failed,
-}
-
-impl OpenError {
-    pub fn word(self) -> &'static str {
-        match self {
-            OpenError::Permission => "permission",
-            OpenError::Busy => "busy",
-            OpenError::NotFound => "not-found",
-            OpenError::Failed => "failed",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SendError {
-    Refused, // not a command the page may send: nothing was written
-    Failed,  // the port did not take it
-}
-
-impl SendError {
-    pub fn word(self) -> &'static str {
-        match self {
-            SendError::Refused => "refused",
-            SendError::Failed => "failed",
-        }
-    }
+    Closed { error: Option<Problem> },
 }
 
 /// A port as the app uses it: the card's (SystemPort, opened by SystemPorts) or a stand-in in the tests.
@@ -77,7 +44,7 @@ pub trait CardPort: Read + Write + Send {
 
 /// Opens a port: SystemPorts for the card, a stand-in in the tests.
 pub trait Opener {
-    fn open(&self, path: &str, baud_rate: u32) -> Result<Box<dyn CardPort>, OpenError>;
+    fn open(&self, path: &str, baud_rate: u32) -> Result<Box<dyn CardPort>, Problem>;
 }
 
 /// The computer's serial ports, through the serialport crate. On Linux and macOS it opens a port
@@ -87,7 +54,7 @@ pub trait Opener {
 pub struct SystemPorts;
 
 impl Opener for SystemPorts {
-    fn open(&self, path: &str, baud_rate: u32) -> Result<Box<dyn CardPort>, OpenError> {
+    fn open(&self, path: &str, baud_rate: u32) -> Result<Box<dyn CardPort>, Problem> {
         let port = serialport::new(path, baud_rate)
             .timeout(PORT_TIMEOUT)
             .open()
@@ -125,12 +92,12 @@ impl CardPort for SystemPort {
 
 /// serialport reports a port in use as NoDevice: EBUSY from TIOCEXCL or a held flock on Linux
 /// and macOS, ERROR_ACCESS_DENIED on Windows (where a missing port gives it too).
-pub fn open_error(error: serialport::Error) -> OpenError {
+pub fn open_error(error: serialport::Error) -> Problem {
     match error.kind() {
-        serialport::ErrorKind::NoDevice => OpenError::Busy,
-        serialport::ErrorKind::Io(io::ErrorKind::PermissionDenied) => OpenError::Permission,
-        serialport::ErrorKind::Io(io::ErrorKind::NotFound) => OpenError::NotFound,
-        _ => OpenError::Failed,
+        serialport::ErrorKind::NoDevice => Problem::Busy,
+        serialport::ErrorKind::Io(io::ErrorKind::PermissionDenied) => Problem::Permission,
+        serialport::ErrorKind::Io(io::ErrorKind::NotFound) => Problem::NotFound,
+        _ => Problem::Failed,
     }
 }
 
@@ -176,10 +143,10 @@ impl Connection {
         opener: &dyn Opener,
         path: &str,
         events: impl Fn(Event) + Send + 'static,
-    ) -> Result<Connection, OpenError> {
+    ) -> Result<Connection, Problem> {
         let mut port = opener.open(path, BAUD_RATE)?;
-        port.set_dtr(true).map_err(|_| OpenError::Failed)?;
-        let reading = port.try_clone_port().map_err(|_| OpenError::Failed)?;
+        port.set_dtr(true).map_err(|_| Problem::Failed)?;
+        let reading = port.try_clone_port().map_err(|_| Problem::Failed)?;
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = Arc::clone(&stop);
         let reader = std::thread::spawn(move || read_lines(reading, &stopped, events));
@@ -191,14 +158,14 @@ impl Connection {
     }
 
     /// Sends a command of test/commands.json with its newline; anything else never reaches the card.
-    pub fn send(&self, command: &str) -> Result<(), SendError> {
+    pub fn send(&self, command: &str) -> Result<(), Problem> {
         if !commands::allowed(command) {
-            return Err(SendError::Refused);
+            return Err(Problem::Refused);
         }
-        let mut port = self.writer.lock().map_err(|_| SendError::Failed)?;
+        let mut port = self.writer.lock().map_err(|_| Problem::Failed)?;
         port.write_all(format!("{command}\n").as_bytes())
             .and_then(|()| port.flush())
-            .map_err(|_| SendError::Failed)
+            .map_err(|_| Problem::Failed)
     }
 
     /// Stops the reading and closes the port (dropping does the same).
@@ -228,14 +195,17 @@ fn read_lines(mut port: Box<dyn CardPort>, stop: &AtomicBool, events: impl Fn(Ev
             break None;
         }
         match port.read(&mut buffer) {
-            Ok(0) => break Some("the card's port closed".to_string()),
+            Ok(0) => break Some(Problem::PortClosed),
             Ok(count) => {
                 for text in lines.push(&buffer[..count]) {
                     events(Event::Line { text });
                 }
             }
             Err(error) if matches!(error.kind(), io::ErrorKind::TimedOut | io::ErrorKind::Interrupted) => {}
-            Err(error) => break Some(format!("the card's port failed: {error}")),
+            Err(error) => {
+                eprintln!("the card's port failed: {error}"); // the page gets only the word
+                break Some(Problem::PortFailed);
+            }
         }
     };
     events(Event::Closed { error });
@@ -297,7 +267,7 @@ mod tests {
     }
 
     impl Opener for StandInOpener {
-        fn open(&self, path: &str, baud_rate: u32) -> Result<Box<dyn CardPort>, OpenError> {
+        fn open(&self, path: &str, baud_rate: u32) -> Result<Box<dyn CardPort>, Problem> {
             self.opened.lock().unwrap().push((path.to_string(), baud_rate));
             Ok(Box::new(self.port.clone()))
         }
@@ -309,17 +279,17 @@ mod tests {
         (events, move |event| sink.lock().unwrap().push(event))
     }
 
-    fn wait_for_closed(events: &Mutex<Vec<Event>>) {
+    // Waits until `done` holds for the events so far, at most 2 s.
+    fn wait_for(events: &Mutex<Vec<Event>>, done: impl Fn(&[Event]) -> bool) {
         let start = Instant::now();
-        while !events
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|event| matches!(event, Event::Closed { .. }))
-        {
-            assert!(start.elapsed() < Duration::from_secs(2), "no Closed event");
+        while !done(&events.lock().unwrap()) {
+            assert!(start.elapsed() < Duration::from_secs(2), "not in time");
             std::thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    fn closed(events: &[Event]) -> bool {
+        events.iter().any(|event| matches!(event, Event::Closed { .. }))
     }
 
     #[test]
@@ -337,7 +307,7 @@ mod tests {
         let connection = Connection::open(&opener, "/dev/ttyACM0", sink).unwrap();
         assert_eq!(*opener.opened.lock().unwrap(), [("/dev/ttyACM0".to_string(), 115_200)]);
         assert_eq!(*port.dtr.lock().unwrap(), Some(true));
-        std::thread::sleep(Duration::from_millis(50));
+        wait_for(&events, |events| events.len() == 2);
         connection.close();
         assert_eq!(
             *events.lock().unwrap(),
@@ -366,18 +336,55 @@ mod tests {
         };
         let (events, sink) = collector();
         let connection = Connection::open(&opener, "/dev/ttyACM0", sink).unwrap();
-        wait_for_closed(&events);
+        wait_for(&events, closed);
         assert_eq!(
             *events.lock().unwrap(),
             [
                 Event::Line { text: "v".into() },
                 Event::Closed {
-                    error: Some("the card's port failed: Input/output error".into())
+                    error: Some(Problem::PortFailed)
                 },
             ]
         );
         drop(connection); // the thread has ended: nothing more
         assert_eq!(events.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_port_that_ends_ends_the_reading() {
+        let port = StandIn::default();
+        port.reads.lock().unwrap().push_back(Ok(Vec::new())); // a read of 0 bytes: end of file
+        let opener = StandInOpener {
+            port,
+            opened: Arc::default(),
+        };
+        let (events, sink) = collector();
+        let _connection = Connection::open(&opener, "/dev/ttyACM0", sink).unwrap();
+        wait_for(&events, closed);
+        assert_eq!(
+            *events.lock().unwrap(),
+            [Event::Closed {
+                error: Some(Problem::PortClosed)
+            }]
+        );
+    }
+
+    #[test]
+    fn the_page_gets_lines_and_the_end_as_json() {
+        let line = Event::Line { text: "v".into() };
+        let unplugged = Event::Closed {
+            error: Some(Problem::PortFailed),
+        };
+        let closed = Event::Closed { error: None };
+        assert_eq!(serde_json::to_string(&line).unwrap(), r#"{"kind":"line","text":"v"}"#);
+        assert_eq!(
+            serde_json::to_string(&unplugged).unwrap(),
+            r#"{"kind":"closed","error":"port-failed"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&closed).unwrap(),
+            r#"{"kind":"closed","error":null}"#
+        );
     }
 
     #[test]
@@ -392,13 +399,12 @@ mod tests {
         assert_eq!(connection.send("status"), Ok(()));
         assert_eq!(connection.send("tz Europe/Warsaw"), Ok(()));
         for refused in ["dfu", "off", "link off", "status\ndfu", "tz europe/warsaw", ""] {
-            assert_eq!(connection.send(refused), Err(SendError::Refused), "{refused:?}");
+            assert_eq!(connection.send(refused), Err(Problem::Refused), "{refused:?}");
         }
         assert_eq!(
             String::from_utf8(port.written.lock().unwrap().clone()).unwrap(),
             "status\ntz Europe/Warsaw\n"
         );
-        assert_eq!(SendError::Refused.word(), "refused");
     }
 
     #[test]
@@ -420,18 +426,18 @@ mod tests {
     }
 
     #[test]
-    fn open_errors_become_the_words_the_page_explains() {
+    fn open_errors_become_the_problems_the_page_explains() {
         let error = |kind| serialport::Error::new(kind, "test");
-        assert_eq!(open_error(error(serialport::ErrorKind::NoDevice)).word(), "busy");
+        assert_eq!(open_error(error(serialport::ErrorKind::NoDevice)), Problem::Busy);
         assert_eq!(
-            open_error(error(serialport::ErrorKind::Io(io::ErrorKind::PermissionDenied))).word(),
-            "permission"
+            open_error(error(serialport::ErrorKind::Io(io::ErrorKind::PermissionDenied))),
+            Problem::Permission
         );
         assert_eq!(
-            open_error(error(serialport::ErrorKind::Io(io::ErrorKind::NotFound))).word(),
-            "not-found"
+            open_error(error(serialport::ErrorKind::Io(io::ErrorKind::NotFound))),
+            Problem::NotFound
         );
-        assert_eq!(open_error(error(serialport::ErrorKind::Unknown)).word(), "failed");
+        assert_eq!(open_error(error(serialport::ErrorKind::Unknown)), Problem::Failed);
     }
 
     /// The card page in Chromium takes an empty read for a lost device when a program left the

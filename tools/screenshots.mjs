@@ -37,8 +37,8 @@ const NOT_PAIRED = { paired: 0, link: "off" };
 
 // Runs in the page before its own scripts: window.__TAURI__ from simulatedApp, with a card that
 // answers as gpxcam 1.5.0 does (src/main.cpp, src/pairing.cpp, src/bluetooth.cpp) and keeps its state
-// in window.simulatedCard.state, which a shot may change. Made-up values only: the card id of the
-// test vectors, the camera serial number 123456789a, Bluetooth addresses of the documentation range.
+// as its commands change it. Made-up values only: the card id of the test vectors, the camera serial
+// number 123456789a, Bluetooth addresses of the documentation range.
 function installCard(simulatedApp, state) {
   const STATUS_LINES = [
     ["format", "fw", "git"], ["battery_mv", "battery_pct", "charger"], ["gps", "gps_fix", "gps_sat", "gps_hold"],
@@ -71,6 +71,13 @@ function installCard(simulatedApp, state) {
       Object.assign(state, { pair: "idle", pair_result: "cancelled" });
       return ["pair: cancelled\r\n"];
     },
+    // The card has introduced itself to an older camera and waits for the Wi-Fi step (src/older_session.cpp);
+    // the identity of the made-up seed of test/device_identity_vectors.txt.
+    "pair older": () => {
+      Object.assign(state, { paired: 0, link: "off", pair: "waiting_wifi", pair_attempt: 1, pair_result: "none" });
+      return ["link: off\r\n", "older: introduced - waiting up to 300 s for the camera's 01\r\n",
+        "older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E\r\n"];
+    },
     p: ["pair: card id 00112233-4455-4677-8899-a1b2c3d4e5f6, no camera paired\r\n"],
     "diag scan": SCAN,
   };
@@ -78,18 +85,21 @@ function installCard(simulatedApp, state) {
   app.registerOutcome = "wait"; // the Wi-Fi step waits, as while the user joins the camera's network
   app.registerStages = [];
   window.__TAURI__ = app.window.__TAURI__;
-  window.simulatedCard = { app, state };
 }
 
 // Serves docs/index.html at http://127.0.0.1:<port>/ (a secure context, as the app's web view).
 function serve() {
   const html = readFileSync(PAGE);
   const server = createServer((request, response) => {
-    if (request.url !== "/") {
+    if (request.url === "/") {
+      response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(html);
+    } else if (/^\/[a-z_]+\.js$/.test(request.url) && existsSync(new URL(`.${request.url}`, PAGE))) {
+      // the scripts the page loads next to it (docs/zones.js)
+      response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" })
+        .end(readFileSync(new URL(`.${request.url}`, PAGE)));
+    } else {
       response.writeHead(404).end();
-      return;
     }
-    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(html);
   });
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
@@ -136,44 +146,46 @@ async function shoot(page, name, selectors) {
     path, fullPage: true, animations: "disabled", caret: "hide",
     clip: { x: left, y: top, width: right - left, height: bottom - top },
   });
-  await page.context().close();
   return path;
 }
 
-const CARD = "main > header.top, section:has(#state)";
-const CAMERA = "section:has(#pair)";
+const CARD = ["main > header.top", "section:has(#state)"];
+const CAMERA = ["section:has(#pair)"];
 const SETTINGS = ["section:has(#clock)", "section:has(#updates-normal)", "section:has(#sound-loud)"];
-const DIAGNOSTICS = "section:has(#scan)";
+const DIAGNOSTICS = ["section:has(#scan)"];
 
+// Each shot, by the name of its file (app-<name>.png): the page made ready for it, and its parts.
 const SHOTS = {
   // The card's state after Connect: paired and connected, a GPS fix, the battery charged.
-  state: async (browser, url) => shoot(await connectedPage(browser, url, {}), "state", CARD.split(", ")),
+  state: async (browser, url) => ({ page: await connectedPage(browser, url, {}), parts: CARD }),
   // Pair: the card looks for the camera, and the page says to start pairing on the camera now.
   pairing: async (browser, url) => {
     const page = await connectedPage(browser, url, NOT_PAIRED);
     await page.click("#pair");
     await page.waitForSelector("#pair-progress.act");
-    return shoot(page, "pairing", [CAMERA]);
+    return { page, parts: CAMERA };
   },
-  // An older camera: Pair reached the Wi-Fi step, and the app waits for the user to join the camera's network.
+  // An older camera, started from the unfolded "Pair does not recognise your older camera?": the card has
+  // introduced itself, and the app waits for the user to join the camera's network.
   "older-wifi": async (browser, url) => {
     const page = await connectedPage(browser, url, NOT_PAIRED);
-    await page.click("#pair");
-    await page.waitForSelector("#pair-progress.act");
-    await page.evaluate(() => { window.simulatedCard.state.pair = "waiting_wifi"; });
+    await page.evaluate(() => {
+      document.getElementById("pair-help").open = false; // the step stands out
+      document.getElementById("older").open = true;
+    });
+    await page.click("#older-start");
     await page.waitForFunction(() => document.getElementById("pair-progress").textContent.startsWith("Join"));
-    await page.evaluate(() => { document.getElementById("pair-help").open = false; }); // the step stands out
-    return shoot(page, "older-wifi", [CAMERA]);
+    return { page, parts: CAMERA };
   },
   // Diagnostics: Scan for cameras, the camera's serial number hidden.
   diagnostics: async (browser, url) => {
     const page = await connectedPage(browser, url, {});
     await page.click("#scan");
     await page.waitForFunction(() => document.getElementById("diag-status").textContent.startsWith("Scan done"));
-    return shoot(page, "diagnostics", [DIAGNOSTICS]);
+    return { page, parts: DIAGNOSTICS };
   },
   // The settings: the camera's clock and time zone, the location updates and the sound.
-  settings: async (browser, url) => shoot(await connectedPage(browser, url, {}), "settings", SETTINGS),
+  settings: async (browser, url) => ({ page: await connectedPage(browser, url, {}), parts: SETTINGS }),
 };
 
 const server = await serve();
@@ -181,7 +193,14 @@ const url = `http://127.0.0.1:${server.address().port}/`;
 const browser = await chromium.launch({ executablePath: chromiumPath() });
 const files = [];
 try {
-  for (const [name, take] of Object.entries(SHOTS)) files.push(await take(browser, url));
+  for (const [name, prepare] of Object.entries(SHOTS)) {
+    const { page, parts } = await prepare(browser, url);
+    try {
+      files.push(await shoot(page, name, parts));
+    } finally {
+      await page.context().close();
+    }
+  }
 } finally {
   await browser.close();
   server.close();
@@ -191,6 +210,6 @@ let tooBig = false;
 for (const file of files) {
   const bytes = statSync(file).size;
   tooBig ||= bytes > MAX_BYTES;
-  console.log(`${file}: ${Math.round(bytes / 1024)} KB${bytes > MAX_BYTES ? " - over 150 KB" : ""}`);
+  console.log(`${file}: ${Math.round(bytes / 1024)} KB${bytes > MAX_BYTES ? ` - over ${MAX_BYTES / 1024} KB` : ""}`);
 }
 process.exitCode = tooBig ? 1 : 0;

@@ -1,10 +1,10 @@
 # gpxcam card – the desktop app
 
-The [card page](../docs/index.html) in its own window, for computers without Chrome or Edge
+The [card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/) in its own window, for computers without Chrome or Edge
 (Firefox, Safari, Linux without Chromium). It shows the card's state and sets it up the same way:
 pairing, the camera's clock and time zone, location updates and sound.
 
-- It talks to the card over USB at 115200 baud, and only to a T1000‑E running gpxcam
+- It talks to the card over USB at 115200 baud, and only to a T1000-E running gpxcam
   (USB 2886:8057).
 - It sends the card only the commands of [test/commands.json](../test/commands.json). The page
   checks them, and the app's Rust side checks them again.
@@ -17,13 +17,14 @@ pairing, the camera's clock and time zone, location updates and sound.
 
 *After Connect: the card's state, refreshed every few seconds.*
 
-![The camera section during pairing: the steps of How to pair, the Cancel button, and a highlighted line "Now start Bluetooth pairing on the camera (its Bluetooth menu, Pairing). The card looks for it for up to 2 minutes."](../docs/images/app-pairing.png)
+![The camera section during pairing: the steps of How to pair, the Cancel button, a highlighted line "Now start Bluetooth pairing on the camera (its Bluetooth menu, Pairing). The card looks for it for up to 2 minutes.", and below it the folded "Pair does not recognise your older camera?"](../docs/images/app-pairing.png)
 
 *Pair: start pairing on the camera only when the app says so.*
 
-![The camera section at the Wi-Fi step of an older camera: "Join the camera's Wi-Fi network shown on its screen and keep this window open", with where to find the password](../docs/images/app-older-wifi.png)
+![The camera section at the Wi-Fi step of an older camera, started with Start under the unfolded "Pair does not recognise your older camera?": the one status line says "Join the camera's Wi-Fi network shown on its screen and keep this window open", with where to find the password, beside the Cancel button](../docs/images/app-older-wifi.png)
 
-*An older camera: Pair goes on with the Wi-Fi step by itself (see [below](#pairing-an-older-camera)).*
+*An older camera: Start under "Pair does not recognise your older camera?" (or Pair, which goes on by itself)
+leads to the Wi-Fi step, in the same section (see [below](#pairing-an-older-camera)).*
 
 ![The settings: the camera's clock switched on with the time zone list (Europe/Warsaw selected), location updates set to Frequent, and the sound set to Quiet](../docs/images/app-settings.png)
 
@@ -38,8 +39,9 @@ Chromium with the app's side and a card simulated with made-up values.
 
 ## Install
 
-Take the file for your computer from the app's release on GitHub (tag `app-vX.Y.Z`). `SHA256SUMS`
-next to it lets you check the download (`sha256sum -c SHA256SUMS` on Linux).
+Take the file for your computer from the newest "gpxcam card" release (tag `app-vX.Y.Z`) on the
+[Releases](https://github.com/TomaszBojanowski/gpxcam-t1000e/releases) page. `SHA256SUMS` next to it
+lets you check the download (`sha256sum -c SHA256SUMS --ignore-missing` on Linux).
 
 **Linux** – Fedora: `sudo dnf install ./gpxcam-card-*.x86_64.rpm`; Debian, Ubuntu:
 `sudo apt install ./gpxcam-card_*_amd64.deb`. The card's port belongs to the `dialout` group.
@@ -64,25 +66,20 @@ is not signed, so Windows SmartScreen may say "Windows protected your PC": click
 "Run anyway". The app uses Microsoft Edge WebView2, which Windows 10 and 11 usually have; if it is
 missing, the installer downloads it.
 
-The `.msi` has been tried with a card on Windows 11. The `-setup.exe` and the macOS version are
-built the same way but have not been tried with a card yet.
-If something does not work there, please open an issue on GitHub.
+Only the Linux version is tried with a card for each release; the Windows and macOS versions are
+built the same way. If something does not work there, please open an issue on GitHub.
 
 ## Pairing an older camera
 
 > [!WARNING]
-> **Older cameras (LUMIX Sync generation): experimental.** Pairing and everyday use with an older camera are tested by the author with an S5II, which speaks the older protocol too, but not yet confirmed on a camera of the S5 generation: the one field test so far, with a LUMIX S5, has not connected. If you own an S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H or BGH1 and are willing to spend an hour testing, please say so in [issue #2](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues/2).
+> Older cameras (LUMIX Sync generation) are experimental: [the table in the README](../README.md#the-desktop-app) shows which cameras are tested and how each one pairs.
 
 Most newer LUMIX cameras (S5II and the like) pair straight from the card page or this app with
-*Pair*. **Older** cameras — the LUMIX Sync generation —
-need one extra step over the camera's own Wi-Fi, which only the app can do (a web page cannot reach
-the camera that way). In the app, *Pair* recognises such a camera and goes on with that step by
-itself. *Pair an older camera*, lower in the window, does the same from the start, for an older
-camera that *Pair* does not recognise:
-
-https://github.com/user-attachments/assets/6de0f7d9-dfe0-4dd2-bccc-11901fb6f236
-
-The video is a schematic run-through; the on-screen steps may differ a little from your camera.
+*Pair*. **Older** cameras – the LUMIX Sync generation – need one extra step over the camera's own
+Wi-Fi, which only the app can do (a web page cannot reach the camera that way). In the app, *Pair*
+recognises such a camera and goes on with that step by itself. Under *Pair*, the folded *Pair does
+not recognise your older camera?* has *Start*, which does the same from the start, for an older
+camera that *Pair* does not recognise.
 
 Before pairing, remove the phone from the camera's Bluetooth device list (Setup → Bluetooth →
 Delete), or at least turn the phone's Bluetooth off. A phone that is still registered may grab the
@@ -91,17 +88,20 @@ camera the moment it starts advertising, and the card will not get in.
 1. Put the card where its GPS gets a fix, outdoors or by a window. The app switches the card's GPS
    on as soon as it connects (gpxcam 1.5.0 or newer); the GPS tile shows *Fix* when it is
    ready, which can take a few minutes after a fresh start.
-2. Click *Pair* (or *Start* under *Pair an older camera*). Do not start pairing on the camera yet.
+2. Click *Pair* (or *Start* under *Pair does not recognise your older camera?*). Do not start pairing
+   on the camera yet.
 3. **Only when the app says *Now start Bluetooth pairing on the camera*** do it (the camera's
    Bluetooth menu → Pairing). The order matters: the camera stays in pairing mode only about 30
    seconds, so the card must already be looking for it (for up to 2 minutes). The card introduces
-   itself over Bluetooth; the camera then shows its Wi-Fi network on its screen.
+   itself over Bluetooth; the camera then shows its Wi-Fi network name (and a password, if one is set)
+   on its screen.
 4. Join that Wi-Fi network on this computer, by hand. On the S5 and similar it has **no password by
    default**, so just pick it from the list; if the camera asks for one, it is on the camera's screen
    or in its Wi-Fi setup: **[Setup] → [Wi-Fi] → [Wi-Fi Setup] → [Wi-Fi Password]** (see the
    [S5 manual](https://eww.pavc.panasonic.co.jp/dscoi/DC-S5/GA_GW_GC_GH_GN_GT_GD/DC-S5_DVQP2213ZD_full_eng.pdf),
-   pages 424–426). The app registers the card over the camera's own address (192.168.54.1) — never
-   the internet — and tells you how it went.
+   pages 424–426). The app sends one discovery packet on the camera's network only, registers the
+   card over the camera's own address (192.168.54.1) – nothing goes to the internet – and tells you
+   how it went.
 
 If the card does not find the camera, click *Pair* (or *Start*) again: the card keeps its GPS on for
 10 minutes after a pairing that did not succeed, so it starts looking for the camera at once.
@@ -116,12 +116,14 @@ The protocol is in [docs/PROTOCOL.md](../docs/PROTOCOL.md).
 
 ## How it is made
 
-- `../docs/index.html` is the page. `tools/app_frontend.py` copies it to `dist/index.html` with two
-  changes: its content security policy lets the page talk to the app over Tauri's IPC, and "About
-  this app" shows the version from `src-tauri/Cargo.toml`.
+- `../docs/index.html` is the page. `tools/app_frontend.py` copies it, with the script it loads
+  (`../docs/zones.js`), to `dist/` and makes two changes: its content security policy lets the page
+  talk to the app over Tauri's IPC, and "About this app" shows the version from
+  `src-tauri/Cargo.toml`.
 - `src-tauri/` is the Rust side. It finds the card, opens its port at 115200 baud with DTR, passes
   the card's lines to the page and sends the allowed commands.
-- The page finds the app through `window.__TAURI__`, and Card works over it unchanged.
+- The page finds the app through `window.__TAURI__`, and the page's Card class works over it as
+  over Web Serial.
 
 ## Build and run on Linux (Fedora)
 

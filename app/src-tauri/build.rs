@@ -1,7 +1,8 @@
-//! Before the app is compiled: its ACL manifest, so the page may call only the app's six commands
+//! Before the app is compiled: its ACL manifest, so the page may call only the app's own commands
 //! (capabilities/default.json), and the list of time zone names the card knows, from the card
-//! page's table (docs/index.html TZ_DATA, made by tools/gen_tz_table.py), so that 'tz NAME'
-//! passes here exactly as on the page.
+//! page's table (docs/zones.js, made by tools/gen_tz_table.py), so that 'tz NAME' passes here
+//! exactly as on the page. The old POSIX-style names the page does not offer (its "legacy") are
+//! listed apart, for the tests.
 use std::{env, fs, path::Path};
 
 const COMMANDS: &[&str] = &[
@@ -12,9 +13,9 @@ const COMMANDS: &[&str] = &[
     "register_older",
     "cancel_older",
 ];
-const PAGE: &str = "../../docs/index.html";
+const ZONES: &str = "../../docs/zones.js";
 const TABLE_START: &str = "const TZ_DATA = ";
-const TABLE_END: &str = "\n};\n// END TZ_DATA";
+const TABLE_END: &str = "\n};"; // the file ends with it
 
 fn main() {
     write_zone_names();
@@ -23,13 +24,13 @@ fn main() {
 }
 
 fn write_zone_names() {
-    println!("cargo:rerun-if-changed={PAGE}");
+    println!("cargo:rerun-if-changed={ZONES}");
     // A Windows checkout may have CRLF line ends (git's core.autocrlf); TABLE_END has LF.
-    let page = fs::read_to_string(PAGE).expect("docs/index.html").replace("\r\n", "\n");
-    let start = page.find(TABLE_START).expect("TZ_DATA in docs/index.html") + TABLE_START.len();
-    let end = page.find(TABLE_END).expect("the end of TZ_DATA") + 2; // with its closing brace
+    let text = fs::read_to_string(ZONES).expect("docs/zones.js").replace("\r\n", "\n");
+    let start = text.find(TABLE_START).expect("TZ_DATA in docs/zones.js") + TABLE_START.len();
+    let end = text.rfind(TABLE_END).expect("the end of TZ_DATA") + 2; // with its closing brace
     let table: serde_json::Value =
-        serde_json::from_str(&without_trailing_commas(&page[start..end])).expect("TZ_DATA as JSON");
+        serde_json::from_str(&without_trailing_commas(&text[start..end])).expect("TZ_DATA as JSON");
     let zones = table["zones"]
         .as_array()
         .expect("TZ_DATA.zones")
@@ -44,8 +45,16 @@ fn write_zone_names() {
     names.sort_unstable();
     names.dedup();
     let list: String = names.iter().map(|name| format!("    {name:?},\n")).collect();
+    let legacy: String = table["legacy"]
+        .as_object()
+        .expect("TZ_DATA.legacy")
+        .keys()
+        .map(|name| format!("    {name:?},\n"))
+        .collect();
     let code = format!(
-        "/// Every zone and alias of the card's table, sorted.\npub const ZONE_NAMES: &[&str] = &[\n{list}];\n"
+        "/// Every zone and alias the page offers, sorted.\npub const ZONE_NAMES: &[&str] = &[\n{list}];\n\
+         /// The names the card knows but the page does not offer.\n#[cfg(test)]\n\
+         pub const LEGACY_NAMES: &[&str] = &[\n{legacy}];\n"
     );
     fs::write(Path::new(&env::var("OUT_DIR").expect("OUT_DIR")).join("zones.rs"), code).expect("zones.rs");
 }

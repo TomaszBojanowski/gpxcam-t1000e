@@ -37,6 +37,17 @@ class AppPage(unittest.TestCase):
             with self.assertRaises(ValueError, msg=page):
                 app_frontend.app_page(page + app_frontend.VERSION_SLOT, "1.2.3")
 
+    def test_the_scripts_of_the_page_are_its_files(self):
+        page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+        names = app_frontend.page_scripts(page)
+        self.assertEqual(names, ["zones.js"])
+        for name in names:
+            self.assertTrue((ROOT / "docs" / name).is_file(), name)
+        for script in ['<script src="https://example.com/x.js"></script>', '<script src="../zones.js"></script>',
+                       '<script type="module" src="zones.js"></script>']:
+            with self.assertRaises(ValueError, msg=script):
+                app_frontend.page_scripts(script)
+
     def test_a_page_without_one_place_for_the_version_is_refused(self):
         meta = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:">'
         for slots in [0, 2]:
@@ -48,9 +59,9 @@ class AppVersion(unittest.TestCase):
     def test_the_version_comes_from_the_package(self):
         self.assertEqual(app_frontend.app_version(CARGO.format("1.0.0")), "1.0.0")
 
-    def test_the_app_has_a_version(self):
+    def test_the_apps_cargo_toml_has_an_x_y_z_version(self):
         cargo = (ROOT / "app" / "src-tauri" / "Cargo.toml").read_text(encoding="utf-8")
-        self.assertRegex(app_frontend.app_version(cargo), r"^\d+\.\d+\.\d+$")
+        app_frontend.app_version(cargo)  # ValueError unless it is x.y.z
 
     def test_only_x_y_z_reaches_the_page(self):
         for version in ["1.0", "1.0.0-beta", "1.0.0<script>", ""]:

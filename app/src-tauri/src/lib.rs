@@ -1,8 +1,7 @@
 //! gpxcam card: the card page (docs/index.html) in its own window, for computers without Chrome
-//! or Edge. The page reaches the card through four commands (its transport "app"): list_cards,
-//! open_card, send and close_card; two more do an older camera's Wi-Fi step: register_older and
-//! cancel_older. Nothing else is open to the page: no plugins, and in capabilities/default.json
-//! only these six.
+//! or Edge. The page reaches the card (its transport "app") and an older camera's Wi-Fi step only
+//! through the commands of `run()`'s generate_handler!; capabilities/default.json allows exactly
+//! these, and no plugins.
 
 mod card;
 mod commands;
@@ -26,6 +25,23 @@ struct OlderPairing {
     cancel: Arc<AtomicBool>,
 }
 
+/// What went wrong, as the word the page explains (docs/index.html openProblemText(),
+/// olderOutcomeText(), readErrorText()): why a command failed, or why the card's port closed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Problem {
+    Permission,  // the system does not let the app open the port
+    Busy,        // another program has the port open, or the page has a card open already
+    NotFound,    // the card is gone
+    NotOpen,     // no card is open
+    Refused,     // not a command the page may send: nothing was written
+    BadIdentity, // not the identity text the card shows
+    BadName,     // not a device name the card shows
+    PortClosed,  // the card's port ended
+    PortFailed,  // reading the card's port failed (the card was unplugged)
+    Failed,      // anything else
+}
+
 #[derive(Serialize)]
 struct CardInfo {
     path: String,
@@ -39,27 +55,25 @@ fn list_cards() -> Vec<CardInfo> {
 /// Opens a card that list_cards gives: never another device. The card's lines and the end of
 /// the connection come over `on_event`.
 #[tauri::command]
-fn open_card(path: String, on_event: Channel<card::Event>, open: State<'_, OpenCard>) -> Result<(), String> {
-    let mut slot = open.0.lock().map_err(|_| "failed")?;
+fn open_card(path: String, on_event: Channel<card::Event>, open: State<'_, OpenCard>) -> Result<(), Problem> {
+    let mut slot = open.0.lock().map_err(|_| Problem::Failed)?;
     if slot.is_some() {
-        return Err("busy".into()); // the page closes a card before it opens one
+        return Err(Problem::Busy); // the page closes a card before it opens one
     }
     if !card::list().contains(&path) {
-        return Err("not-found".into());
+        return Err(Problem::NotFound);
     }
     let events = move |event| {
         let _ = on_event.send(event); // the window may be closing
     };
-    let connection = card::Connection::open(&card::SystemPorts, &path, events).map_err(|error| error.word())?;
-    *slot = Some(connection);
+    *slot = Some(card::Connection::open(&card::SystemPorts, &path, events)?);
     Ok(())
 }
 
 #[tauri::command]
-fn send(command: String, open: State<'_, OpenCard>) -> Result<(), String> {
-    let slot = open.0.lock().map_err(|_| "failed")?;
-    let connection = slot.as_ref().ok_or("not-open")?;
-    connection.send(&command).map_err(|error| error.word().into())
+fn send(command: String, open: State<'_, OpenCard>) -> Result<(), Problem> {
+    let slot = open.0.lock().map_err(|_| Problem::Failed)?;
+    slot.as_ref().ok_or(Problem::NotOpen)?.send(&command)
 }
 
 #[tauri::command]
@@ -72,15 +86,16 @@ fn close_card(open: State<'_, OpenCard>) {
 
 /// The one-time Wi-Fi step for pairing an older camera (older_wifi): the page passes the identity
 /// and device name the card showed over Bluetooth; the app registers them over the camera's own
-/// Wi-Fi access point and reports the stages over `on_event`. It reaches only 192.168.54.1, never
-/// the internet. A long call: it waits for the user to join the camera's network.
+/// Wi-Fi access point and reports the stages over `on_event`. It connects only to 192.168.54.1, its
+/// one SSDP search leaves only through the camera's network, and nothing goes to the internet. A long
+/// call: it waits for the user to join the camera's network.
 #[tauri::command]
 async fn register_older(
     identity: String,
     name: String,
     on_event: Channel<older_wifi::Progress>,
     older: State<'_, OlderPairing>,
-) -> Result<older_wifi::Outcome, String> {
+) -> Result<older_wifi::Outcome, Problem> {
     older_wifi::check_identity(&identity)?;
     older_wifi::check_name(&name)?;
     let cancel = older.cancel.clone(); // cloned out of State before the await, not held across it
@@ -100,7 +115,10 @@ async fn register_older(
         )
     })
     .await
-    .map_err(|error| error.to_string())
+    .map_err(|error| {
+        eprintln!("older camera Wi-Fi step: {error}");
+        Problem::Failed
+    })
 }
 
 /// Stops a running register_older, which checks the flag between connection attempts and requests.
@@ -155,6 +173,38 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn problems_reach_the_page_as_words() {
+        let problems = [
+            Problem::Permission,
+            Problem::Busy,
+            Problem::NotFound,
+            Problem::NotOpen,
+            Problem::Refused,
+            Problem::BadIdentity,
+            Problem::BadName,
+            Problem::PortClosed,
+            Problem::PortFailed,
+            Problem::Failed,
+        ];
+        assert_eq!(
+            json!(problems),
+            json!([
+                "permission",
+                "busy",
+                "not-found",
+                "not-open",
+                "refused",
+                "bad-identity",
+                "bad-name",
+                "port-closed",
+                "port-failed",
+                "failed"
+            ])
+        );
+    }
 
     #[test]
     fn the_window_stays_on_the_apps_own_page() {

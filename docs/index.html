@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E
 %3Crect x='3' y='15' width='32' height='23' rx='5' fill='%235f6670'/%3E
 %3Cpath d='M10 15l3-5h12l3 5z' fill='%235f6670'/%3E
@@ -41,15 +41,20 @@
   --field-line: #848d97; /* edges of fields and secondary buttons: 3:1 against the page (WCAG 1.4.11) */
   --radius: 12px;        /* panels */
   --radius-s: 8px;       /* buttons, fields, boxes */
-  /* One scale: spacing 4/8/12/16/24, text 13/15/18 (and 24 for the name) */
+  /* One scale: spacing 4/8/12/16/24/48, text 13/15/16/18 (and 24 for the name). Inside the controls
+     and tiles the small gaps (2, 3, 6 px) and the list's indent (22 px) are their own. */
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
   --s4: 16px;
   --s5: 24px;
+  --s6: 48px;
   --fs-small: 13px;
   --fs: 15px;
+  --fs-tile: 16px;
   --fs-h2: 18px;
+  --mono: ui-monospace, Menlo, Consolas, monospace;
+  --disabled-opacity: 0.5; /* a control that cannot be used now */
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -81,19 +86,19 @@
 html { scrollbar-gutter: stable; } /* the page does not move sideways when its scroll bar comes and goes */
 body {
   margin: 0;
-  padding: var(--s5) var(--s4) 48px;
+  padding: var(--s5) var(--s4) var(--s6);
   background: var(--bg);
   color: var(--text);
   font: var(--fs)/1.45 system-ui, -apple-system, "Segoe UI", Cantarell, sans-serif;
 }
 main { max-width: 46rem; margin: 0 auto; }
-h1 { margin: 0 0 var(--s2); font-size: 24px; line-height: 1; font-weight: 400; color: var(--muted); }
+h1 { margin: 0; font-size: 24px; line-height: 1; font-weight: 400; color: var(--muted); }
 .logo { font-weight: 800; color: var(--text); }
 .logo span { color: var(--accent); }
-h2 { font-size: var(--fs-h2); font-weight: 700; margin: var(--s5) 0 var(--s2); }
+h2 { font-size: var(--fs-h2); font-weight: 700; margin: 0 0 var(--s3); }
 p { margin: var(--s2) 0; }
 a { color: var(--link); }
-code { font: var(--fs-small) ui-monospace, Menlo, Consolas, monospace; }
+code { font: var(--fs-small) var(--mono); }
 .lead, .note, small { color: var(--muted); }
 .panel {
   background: var(--panel);
@@ -107,14 +112,13 @@ code { font: var(--fs-small) ui-monospace, Menlo, Consolas, monospace; }
 .gap-top { margin-top: var(--s3); }
 /* The name and its mark */
 .top { display: flex; align-items: center; gap: var(--s3); }
-.top h1 { margin: 0; }
 .lead { margin: var(--s1) 0 0; }
 .mark { width: 44px; height: 44px; flex: none; }
 .mark-body { fill: var(--mark); }
 .mark-lens { fill: var(--panel); }
 /* Each part of the page is a card with its heading and icon */
 .section { margin-top: var(--s4); padding: var(--s4); }
-.section > h2 { display: flex; align-items: center; gap: var(--s2); margin: 0 0 var(--s3); }
+.section > h2 { display: flex; align-items: center; gap: var(--s2); }
 .icon {
   width: 20px;
   height: 20px;
@@ -125,13 +129,15 @@ code { font: var(--fs-small) ui-monospace, Menlo, Consolas, monospace; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* A question before what cannot be undone */
-.confirm {
-  padding: var(--s3);
-  border-left: 4px solid var(--accent);
+/* A box with a coloured left edge: a question before what cannot be undone (.confirm), a note worth a
+   look (.slow-note), the user's turn while the card waits (.act), an error (p.bad) */
+.confirm, .slow-note, .act, p.bad {
+  padding: var(--s2) var(--s3);
+  border-left: 4px solid var(--edge);
   border-radius: var(--radius-s);
-  background: var(--accent-tint);
+  background: var(--edge-tint);
 }
+.confirm { --edge: var(--accent); --edge-tint: var(--accent-tint); padding: var(--s3); }
 .confirm > :first-child { margin-top: 0; }
 /* What a returning reader does not need folds away */
 details.help { margin: var(--s2) 0 var(--s3); }
@@ -205,7 +211,7 @@ input.toggle::after {
 }
 input.toggle:checked { background: var(--accent); }
 input.toggle:checked::after { transform: translateX(16px); }
-input.toggle:disabled { opacity: 0.5; cursor: default; }
+input.toggle:disabled { opacity: var(--disabled-opacity); cursor: default; }
 /* A setting as one segmented choice; the chosen one stays visible (red) also when it cannot be changed */
 .segmented {
   display: inline-flex;
@@ -229,18 +235,12 @@ input.toggle:disabled { opacity: 0.5; cursor: default; }
 .segmented label:has(input:checked) { background: var(--accent); color: var(--accent-text); }
 .segmented label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .segmented label:has(input:disabled) { color: var(--disabled-text); cursor: default; }
-.segmented label:has(input:checked:disabled) { color: var(--accent-text); opacity: 0.5; }
+.segmented label:has(input:checked:disabled) { color: var(--accent-text); opacity: var(--disabled-opacity); }
 .says { min-height: 2.9em; margin: var(--s3) 0 0; } /* two lines: the page does not move between settings */
-/* A note in the colour of a tile that is worth a look: the card sends less often than chosen for a
-   while, or cannot read what it saved */
-.slow-note {
-  margin: var(--s3) 0 0;
-  padding: var(--s2) var(--s3);
-  border-left: 3px solid var(--warn);
-  border-radius: var(--radius-s);
-  background: var(--warn-tint);
-}
-fieldset:disabled { opacity: 0.55; }
+/* In the colour of a tile that is worth a look: the card sends less often than chosen for a while, or
+   cannot read what it saved */
+.slow-note { --edge: var(--warn); --edge-tint: var(--warn-tint); margin: var(--s3) 0 0; }
+fieldset:disabled { opacity: var(--disabled-opacity); }
 ol.steps { margin: var(--s2) 0; padding-left: 22px; }
 ol.steps li { margin: var(--s1) 0; }
 /* A panel of a fixed height, about four and a half results, so what follows does not move while
@@ -270,30 +270,28 @@ ol.steps li { margin: var(--s1) 0; }
 #results .name { font-weight: 600; overflow-wrap: anywhere; }
 #results .detail { color: var(--muted); font-size: var(--fs-small); overflow-wrap: anywhere; }
 #results .offset { margin-left: auto; color: var(--muted); font-size: var(--fs-small); white-space: nowrap; }
-.card-lines {
+/* The card's own lines: what it answered (.card-lines), and what 'log' or 'diag scan' gave (.diag-text) */
+.card-lines, .diag-text {
   margin: var(--s2) 0 0;
   padding: var(--s2) var(--s3);
   background: var(--field);
-  border: 1px solid var(--line);
   border-radius: var(--radius-s);
-  font: var(--fs-small)/1.45 ui-monospace, Menlo, Consolas, monospace;
+  font: var(--fs-small)/1.45 var(--mono);
+}
+.card-lines {
+  border: 1px solid var(--line);
   color: var(--muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .card-lines:empty { display: none; }
-/* What 'log' or 'diag scan' gave, to copy by hand if copying by itself did not work */
+/* To copy by hand if copying by itself did not work */
 .diag-text {
   display: block;
   width: 100%;
   min-height: 12rem;
-  margin: var(--s2) 0 0;
-  padding: var(--s2) var(--s3);
-  background: var(--field);
   border: 1px solid var(--field-line);
-  border-radius: var(--radius-s);
   color: var(--text);
-  font: var(--fs-small)/1.45 ui-monospace, Menlo, Consolas, monospace;
   resize: vertical;
 }
 .unmasked {
@@ -305,14 +303,8 @@ ol.steps li { margin: var(--s1) 0; }
 }
 progress { display: block; width: 100%; height: 8px; margin: var(--s2) 0 0; accent-color: var(--accent); }
 .good { color: var(--good); font-weight: 600; }
-/* The user's turn while the card waits: what to do now, on the camera */
-.act {
-  padding: var(--s2) var(--s3);
-  border-left: 4px solid var(--accent);
-  border-radius: var(--radius-s);
-  background: var(--accent-tint);
-  font-weight: 600;
-}
+/* What to do now, on the camera */
+.act { --edge: var(--accent); --edge-tint: var(--accent-tint); font-weight: 600; }
 /* Under way: a pulsing dot before the text (connecting, saving, pairing) */
 .busy::before {
   content: "";
@@ -339,11 +331,10 @@ button, .tile, .tile strong::before, input.toggle, input.toggle::after, .segment
 }
 /* An error is told apart from the red accent not only by its colour: a framed box headed "Error". */
 p.bad {
-  padding: var(--s2) var(--s3);
+  --edge: var(--error);
+  --edge-tint: var(--error-tint);
   border: 1px solid var(--error);
   border-left-width: 4px;
-  border-radius: var(--radius-s);
-  background: var(--error-tint);
   color: var(--text);
 }
 .panel:has(> p.bad) { padding: 0; border: 0; background: none; box-shadow: none; } /* the error's frame alone */
@@ -375,7 +366,7 @@ p.bad::before {
 }
 .tile-head { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--fs-small); }
 .tile-head .icon { width: 18px; height: 18px; stroke: var(--muted); }
-.tile strong { display: flex; align-items: baseline; gap: 6px; margin-top: var(--s2); font-size: 16px; }
+.tile strong { display: flex; align-items: baseline; gap: 6px; margin-top: var(--s2); font-size: var(--fs-tile); }
 .tile strong::before {
   content: "";
   flex: none;
@@ -519,7 +510,7 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
       <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M7 7.5l10 9-5 4.5V3l5 4.5-10 9"/>
         </svg>The camera</h2>
-      <p id="camera-note">Connect the card to pair it with your camera.</p>
+      <p id="camera-note"></p>
       <p id="camera-old" class="hidden">Pairing from this page needs gpxcam 1.3.0. With gpxcam 1.2, pair with the
          card's button, see <a href="https://github.com/TomaszBojanowski/gpxcam-t1000e#pairing-once">the README</a>.</p>
       <details id="pair-help" class="help" open>
@@ -533,9 +524,8 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
               about 30 seconds, so the card must already be looking for them.</li>
           <li>When the page says <em>Now start Bluetooth pairing on the camera</em>, start pairing in the
               camera's Bluetooth menu. The card looks for it for up to 2 minutes and tries up to 3 times.</li>
-          <li>Older cameras (the ones that pair with the older Panasonic phone app, not LUMIX Lab) then need
-              one more step, over the camera's own Wi-Fi network, which only the gpxcam card app can do: the app
-              starts it by itself and says what to do.</li>
+          <li>Older cameras (LUMIX Sync generation) then need one more step, over the camera's own Wi-Fi
+              network, which only the gpxcam card app can do: the app starts it by itself and says what to do.</li>
         </ol>
       </details>
       <div id="pair-row" class="row">
@@ -553,6 +543,29 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
           <button id="unpair-no" type="button" class="secondary">Keep</button>
         </div>
       </div>
+      <details id="older" class="help hidden">
+        <summary>Pair does not recognise your older camera?</summary>
+        <p><em>Pair</em> recognises an older camera (LUMIX Sync generation) by itself and does its extra step
+           over the camera's own Wi-Fi network. Use <em>Start</em> only when <em>Pair</em> does not recognise
+           such a camera: it pairs the card as with an older camera from the start.</p>
+        <ol class="steps">
+          <li>Put the card where its GPS gets a fix, outdoors or by a window. The app switches the GPS on
+              when it connects; the GPS tile above shows <em>Fix</em> when it is ready.</li>
+          <li>Click <em>Start</em>. Do not start pairing on the camera yet: it stays in pairing mode only about
+              30 seconds, so the card must already be looking for it.</li>
+          <li>When the app says <em>Now start Bluetooth pairing on the camera</em>, do it (the camera's
+              Bluetooth menu &rarr; Pairing). The card introduces itself; the camera then shows its Wi-Fi network
+              name (and a password, if one is set).</li>
+          <li>On this computer, join that Wi-Fi network by hand. The app finishes the pairing and tells you how
+              it went.</li>
+        </ol>
+        <p id="older-phone" class="note">Before pairing, remove the phone from the camera's Bluetooth device list
+           (Setup &rarr; Bluetooth &rarr; Delete), or at least turn the phone's Bluetooth off. A phone that is still
+           registered may grab the camera the moment it starts advertising, and the card will not get in.</p>
+        <div class="row">
+          <button id="older-start" type="button" disabled>Start</button>
+        </div>
+      </details>
     </section>
 
     <section class="panel section">
@@ -562,14 +575,14 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
         </svg>The camera's clock</h2>
       <label class="switch"><input id="clock" type="checkbox" class="toggle" disabled>
         <span>The card sets the camera's clock and time zone</span></label>
-      <p id="clock-note" class="note">Connect the card to change this setting.</p>
+      <p id="clock-note" class="note"></p>
       <p id="clock-answer" role="status"></p>
 
       <fieldset id="zones">
         <legend class="visually-hidden">Time zone</legend>
         <label for="search">Time zone: search by country, city or zone name</label>
         <input id="search" type="search" placeholder="e.g. Poland, New York, Tokyo" autocomplete="off">
-        <p id="selected" role="status">No time zone selected.</p>
+        <p id="selected" role="status"></p>
         <fieldset>
           <legend class="visually-hidden">Time zones found</legend>
           <ul id="results"></ul>
@@ -599,9 +612,9 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
         <label><input id="updates-frequent" type="radio" name="updates" value="frequent" disabled><span>Frequent</span>
         </label>
       </fieldset>
-      <p id="updates-says" class="says">How often the card sends the camera its position.</p>
+      <p id="updates-says" class="says"></p>
       <p id="updates-now" class="slow-note hidden" role="status"></p>
-      <p id="updates-note" class="note">Connect the card to change this setting.</p>
+      <p id="updates-note" class="note"></p>
       <p id="updates-answer" role="status"></p>
     </section>
 
@@ -616,43 +629,9 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
         <label><input id="sound-quiet" type="radio" name="sound" value="quiet" disabled><span>Quiet</span></label>
         <label><input id="sound-off" type="radio" name="sound" value="off" disabled><span>Off</span></label>
       </fieldset>
-      <p id="sound-says" class="says">How loud the card is.</p>
-      <p id="sound-note" class="note">Connect the card to change this setting.</p>
+      <p id="sound-says" class="says"></p>
+      <p id="sound-note" class="note"></p>
       <p id="sound-answer" role="status"></p>
-    </section>
-
-    <section id="older" class="panel section hidden">
-      <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M5 12.5a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/>
-          <circle cx="12" cy="19" r="1"/>
-        </svg>Pair an older camera</h2>
-      <p><em>Pair</em> above recognises an older LUMIX camera (one that pairs with the older Panasonic phone app,
-         not LUMIX Lab) by itself and does its extra step over the camera's own Wi-Fi network. Use this only when
-         <em>Pair</em> does not recognise such a camera: it pairs the card as with an older camera from the
-         start.</p>
-      <details class="help">
-        <summary>How it works</summary>
-        <ol class="steps">
-          <li>Put the card where its GPS gets a fix, outdoors or by a window. The app switches the GPS on
-              when it connects; the GPS tile above shows <em>Fix</em> when it is ready.</li>
-          <li>Click <em>Start</em>. Do not start pairing on the camera yet: it stays in pairing mode only about
-              30 seconds, so the card must already be looking for it.</li>
-          <li>When the app says <em>Now start Bluetooth pairing on the camera</em>, do it (the camera's
-              Bluetooth menu &rarr; Pairing). The card introduces itself; the camera then shows a Wi-Fi network
-              and a password.</li>
-          <li>On this computer, join that Wi-Fi network by hand. The app finishes the pairing and tells you how
-              it went.</li>
-        </ol>
-      </details>
-      <p id="older-phone" class="note">Before pairing, remove the phone from the camera's Bluetooth device list
-         (Setup &rarr; Bluetooth &rarr; Delete), or at least turn the phone's Bluetooth off. A phone that is still
-         registered may grab the camera the moment it starts advertising, and the card will not get in.</p>
-      <div class="row">
-        <button id="older-start" type="button" disabled>Start</button>
-        <button id="older-resume" type="button" class="hidden">Resume</button>
-        <button id="older-cancel" type="button" class="secondary hidden">Cancel</button>
-      </div>
-      <p id="older-progress" role="status"></p>
     </section>
 
     <section class="panel section">
@@ -671,7 +650,7 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
          identity.</p>
       <div id="diag-answer" class="gap-top hidden">
         <p id="diag-status" role="status"></p>
-        <progress id="diag-progress" class="hidden" max="30000" value="0"></progress>
+        <progress id="diag-progress" class="hidden" value="0"></progress>
         <textarea id="diag-text" class="diag-text" readonly rows="10" spellcheck="false"
                   aria-label="What the card sent"></textarea>
         <div class="row gap-top">
@@ -699,877 +678,18 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
   </details>
 </main>
 
-<script>
-// BEGIN TZ_DATA - generated by tools/gen_tz_table.py from the tz database 2026e, do not edit.
-// zones: [name, country codes, comment] for every zone of the card (zone1970.tab; none for Etc/...);
-// aliases: alias: zone; countries: code: [name (iso3166.tab), [[zone as named for the country,
-// comment], ...] (zone.tab)].
-const TZ_DATA = {
-"version": "2026e",
-"zones": [
-["Africa/Abidjan", ["CI", "BF", "GH", "GM", "GN", "IS", "ML", "MR", "SH", "SL", "SN", "TG"], ""],
-["Africa/Algiers", ["DZ"], ""],
-["Africa/Bissau", ["GW"], ""],
-["Africa/Cairo", ["EG"], ""],
-["Africa/Casablanca", ["MA"], ""],
-["Africa/Ceuta", ["ES"], "Ceuta, Melilla"],
-["Africa/El_Aaiun", ["EH"], ""],
-["Africa/Johannesburg", ["ZA", "LS", "SZ"], ""],
-["Africa/Juba", ["SS"], ""],
-["Africa/Khartoum", ["SD"], ""],
-["Africa/Lagos", ["NG", "AO", "BJ", "CD", "CF", "CG", "CM", "GA", "GQ", "NE"], "West Africa Time"],
-["Africa/Maputo", ["MZ", "BI", "BW", "CD", "MW", "RW", "ZM", "ZW"], "Central Africa Time"],
-["Africa/Monrovia", ["LR"], ""],
-["Africa/Nairobi", ["KE", "DJ", "ER", "ET", "KM", "MG", "SO", "TZ", "UG", "YT"], ""],
-["Africa/Ndjamena", ["TD"], ""],
-["Africa/Sao_Tome", ["ST"], ""],
-["Africa/Tripoli", ["LY"], ""],
-["Africa/Tunis", ["TN"], ""],
-["Africa/Windhoek", ["NA"], ""],
-["America/Adak", ["US"], "Alaska - western Aleutians"],
-["America/Anchorage", ["US"], "Alaska (most areas)"],
-["America/Araguaina", ["BR"], "Tocantins"],
-["America/Argentina/Buenos_Aires", ["AR"], "Buenos Aires (BA, CF)"],
-["America/Argentina/Catamarca", ["AR"], "Catamarca (CT), Chubut (CH)"],
-["America/Argentina/Cordoba", ["AR"], "most areas: CB, CC, CN, ER, FM, MN, SE, SF"],
-["America/Argentina/Jujuy", ["AR"], "Jujuy (JY)"],
-["America/Argentina/La_Rioja", ["AR"], "La Rioja (LR)"],
-["America/Argentina/Mendoza", ["AR"], "Mendoza (MZ)"],
-["America/Argentina/Rio_Gallegos", ["AR"], "Santa Cruz (SC)"],
-["America/Argentina/Salta", ["AR"], "Salta (SA, LP, NQ, RN)"],
-["America/Argentina/San_Juan", ["AR"], "San Juan (SJ)"],
-["America/Argentina/San_Luis", ["AR"], "San Luis (SL)"],
-["America/Argentina/Tucuman", ["AR"], "Tucumán (TM)"],
-["America/Argentina/Ushuaia", ["AR"], "Tierra del Fuego (TF)"],
-["America/Asuncion", ["PY"], ""],
-["America/Bahia", ["BR"], "Bahia"],
-["America/Bahia_Banderas", ["MX"], "Bahía de Banderas"],
-["America/Barbados", ["BB"], ""],
-["America/Belem", ["BR"], "Pará (east), Amapá"],
-["America/Belize", ["BZ"], ""],
-["America/Boa_Vista", ["BR"], "Roraima"],
-["America/Bogota", ["CO"], ""],
-["America/Boise", ["US"], "Mountain - ID (south), OR (east)"],
-["America/Cambridge_Bay", ["CA"], "Mountain - NU (west)"],
-["America/Campo_Grande", ["BR"], "Mato Grosso do Sul"],
-["America/Cancun", ["MX"], "Quintana Roo"],
-["America/Caracas", ["VE"], ""],
-["America/Cayenne", ["GF"], ""],
-["America/Chicago", ["US"], "Central (most areas)"],
-["America/Chihuahua", ["MX"], "Chihuahua (most areas)"],
-["America/Ciudad_Juarez", ["MX"], "Chihuahua (US border - west)"],
-["America/Costa_Rica", ["CR"], ""],
-["America/Coyhaique", ["CL"], "Aysén Region"],
-["America/Cuiaba", ["BR"], "Mato Grosso"],
-["America/Danmarkshavn", ["GL"], "National Park (east coast)"],
-["America/Dawson", ["CA"], "MST - Yukon (west)"],
-["America/Dawson_Creek", ["CA"], "MST - BC (Dawson Cr, Ft St John)"],
-["America/Denver", ["US"], "Mountain (most areas)"],
-["America/Detroit", ["US"], "Eastern - MI (most areas)"],
-["America/Edmonton", ["CA"], "CST - AB, BC(E), NT(E), SK(W)"],
-["America/Eirunepe", ["BR"], "Amazonas (west)"],
-["America/El_Salvador", ["SV"], ""],
-["America/Fort_Nelson", ["CA"], "MST - BC (Ft Nelson)"],
-["America/Fortaleza", ["BR"], "Brazil (northeast: MA, PI, CE, RN, PB)"],
-["America/Glace_Bay", ["CA"], "Atlantic - NS (Cape Breton)"],
-["America/Goose_Bay", ["CA"], "Atlantic - Labrador (most areas)"],
-["America/Grand_Turk", ["TC"], ""],
-["America/Guatemala", ["GT"], ""],
-["America/Guayaquil", ["EC"], "Ecuador (mainland)"],
-["America/Guyana", ["GY"], ""],
-["America/Halifax", ["CA"], "Atlantic - NS (most areas), PE"],
-["America/Havana", ["CU"], ""],
-["America/Hermosillo", ["MX"], "Sonora"],
-["America/Indiana/Indianapolis", ["US"], "Eastern - IN (most areas)"],
-["America/Indiana/Knox", ["US"], "Central - IN (Starke)"],
-["America/Indiana/Marengo", ["US"], "Eastern - IN (Crawford)"],
-["America/Indiana/Petersburg", ["US"], "Eastern - IN (Pike)"],
-["America/Indiana/Tell_City", ["US"], "Central - IN (Perry)"],
-["America/Indiana/Vevay", ["US"], "Eastern - IN (Switzerland)"],
-["America/Indiana/Vincennes", ["US"], "Eastern - IN (Da, Du, K, Mn)"],
-["America/Indiana/Winamac", ["US"], "Eastern - IN (Pulaski)"],
-["America/Inuvik", ["CA"], "CST - NT (west)"],
-["America/Iqaluit", ["CA"], "Eastern - NU (most areas)"],
-["America/Jamaica", ["JM"], ""],
-["America/Juneau", ["US"], "Alaska - Juneau area"],
-["America/Kentucky/Louisville", ["US"], "Eastern - KY (Louisville area)"],
-["America/Kentucky/Monticello", ["US"], "Eastern - KY (Wayne)"],
-["America/La_Paz", ["BO"], ""],
-["America/Lima", ["PE"], ""],
-["America/Los_Angeles", ["US"], "Pacific"],
-["America/Maceio", ["BR"], "Alagoas, Sergipe"],
-["America/Managua", ["NI"], ""],
-["America/Manaus", ["BR"], "Amazonas (east)"],
-["America/Martinique", ["MQ"], ""],
-["America/Matamoros", ["MX"], "Coahuila, Nuevo León, Tamaulipas (US border)"],
-["America/Mazatlan", ["MX"], "Baja California Sur, Nayarit (most areas), Sinaloa"],
-["America/Menominee", ["US"], "Central - MI (Wisconsin border)"],
-["America/Merida", ["MX"], "Campeche, Yucatán"],
-["America/Metlakatla", ["US"], "Alaska - Annette Island"],
-["America/Mexico_City", ["MX"], "Central Mexico"],
-["America/Miquelon", ["PM"], ""],
-["America/Moncton", ["CA"], "Atlantic - New Brunswick"],
-["America/Monterrey", ["MX"], "Durango; Coahuila, Nuevo León, Tamaulipas (most areas)"],
-["America/Montevideo", ["UY"], ""],
-["America/New_York", ["US"], "Eastern (most areas)"],
-["America/Nome", ["US"], "Alaska (west)"],
-["America/Noronha", ["BR"], "Atlantic islands"],
-["America/North_Dakota/Beulah", ["US"], "Central - ND (Mercer)"],
-["America/North_Dakota/Center", ["US"], "Central - ND (Oliver)"],
-["America/North_Dakota/New_Salem", ["US"], "Central - ND (Morton rural)"],
-["America/Nuuk", ["GL"], "most of Greenland"],
-["America/Ojinaga", ["MX"], "Chihuahua (US border - east)"],
-["America/Panama", ["PA", "CA", "KY"], "EST - ON (Atikokan), NU (Coral H)"],
-["America/Paramaribo", ["SR"], ""],
-["America/Phoenix", ["US", "CA"], "MST - AZ (most areas), Creston BC"],
-["America/Port-au-Prince", ["HT"], ""],
-["America/Porto_Velho", ["BR"], "Rondônia"],
-["America/Puerto_Rico", ["PR", "AG", "CA", "AI", "AW", "BL", "BQ", "CW", "DM", "GD", "GP", "KN", "LC", "MF", "MS", "SX", "TT", "VC", "VG", "VI"], "AST - QC (Lower North Shore)"],
-["America/Punta_Arenas", ["CL"], "Magallanes Region"],
-["America/Rankin_Inlet", ["CA"], "Central - NU (central)"],
-["America/Recife", ["BR"], "Pernambuco"],
-["America/Regina", ["CA"], "CST - SK (most areas)"],
-["America/Resolute", ["CA"], "Central - NU (Resolute)"],
-["America/Rio_Branco", ["BR"], "Acre"],
-["America/Santarem", ["BR"], "Pará (west)"],
-["America/Santiago", ["CL"], "most of Chile"],
-["America/Santo_Domingo", ["DO"], ""],
-["America/Sao_Paulo", ["BR"], "Brazil (southeast: GO, DF, MG, ES, RJ, SP, PR, SC, RS)"],
-["America/Scoresbysund", ["GL"], "Scoresbysund/Ittoqqortoormiit"],
-["America/Sitka", ["US"], "Alaska - Sitka area"],
-["America/St_Johns", ["CA"], "Newfoundland, Labrador (SE)"],
-["America/Swift_Current", ["CA"], "CST - SK (midwest)"],
-["America/Tegucigalpa", ["HN"], ""],
-["America/Thule", ["GL"], "Thule/Pituffik"],
-["America/Tijuana", ["MX"], "Baja California"],
-["America/Toronto", ["CA", "BS"], "Eastern - ON & QC (most areas)"],
-["America/Vancouver", ["CA"], "MST - BC (most areas)"],
-["America/Whitehorse", ["CA"], "MST - Yukon (east)"],
-["America/Winnipeg", ["CA"], "EST - Manitoba, ON (northwest)"],
-["America/Yakutat", ["US"], "Alaska - Yakutat"],
-["Antarctica/Casey", ["AQ"], "Casey"],
-["Antarctica/Davis", ["AQ"], "Davis"],
-["Antarctica/Macquarie", ["AU"], "Macquarie Island"],
-["Antarctica/Mawson", ["AQ"], "Mawson"],
-["Antarctica/Palmer", ["AQ"], "Palmer"],
-["Antarctica/Rothera", ["AQ"], "Rothera"],
-["Antarctica/Troll", ["AQ"], "Troll"],
-["Antarctica/Vostok", ["AQ"], "Vostok"],
-["Asia/Almaty", ["KZ"], "most of Kazakhstan"],
-["Asia/Amman", ["JO"], ""],
-["Asia/Anadyr", ["RU"], "MSK+09 - Bering Sea"],
-["Asia/Aqtau", ["KZ"], "Mangghystaū/Mankistau"],
-["Asia/Aqtobe", ["KZ"], "Aqtöbe/Aktobe"],
-["Asia/Ashgabat", ["TM"], ""],
-["Asia/Atyrau", ["KZ"], "Atyraū/Atirau/Gur’yev"],
-["Asia/Baghdad", ["IQ"], ""],
-["Asia/Baku", ["AZ"], ""],
-["Asia/Bangkok", ["TH", "CX", "KH", "LA", "VN"], "north Vietnam"],
-["Asia/Barnaul", ["RU"], "MSK+04 - Altai"],
-["Asia/Beirut", ["LB"], ""],
-["Asia/Bishkek", ["KG"], ""],
-["Asia/Chita", ["RU"], "MSK+06 - Zabaykalsky"],
-["Asia/Colombo", ["LK"], ""],
-["Asia/Damascus", ["SY"], ""],
-["Asia/Dhaka", ["BD"], ""],
-["Asia/Dili", ["TL"], ""],
-["Asia/Dubai", ["AE", "OM", "RE", "SC", "TF"], "Crozet"],
-["Asia/Dushanbe", ["TJ"], ""],
-["Asia/Famagusta", ["CY"], "Northern Cyprus"],
-["Asia/Gaza", ["PS"], "Gaza Strip"],
-["Asia/Hebron", ["PS"], "West Bank"],
-["Asia/Ho_Chi_Minh", ["VN"], "south Vietnam"],
-["Asia/Hong_Kong", ["HK"], ""],
-["Asia/Hovd", ["MN"], "Bayan-Ölgii, Hovd, Uvs"],
-["Asia/Irkutsk", ["RU"], "MSK+05 - Irkutsk, Buryatia"],
-["Asia/Jakarta", ["ID"], "Java, Sumatra"],
-["Asia/Jayapura", ["ID"], "New Guinea (West Papua / Irian Jaya), Malukus/Moluccas"],
-["Asia/Jerusalem", ["IL"], ""],
-["Asia/Kabul", ["AF"], ""],
-["Asia/Kamchatka", ["RU"], "MSK+09 - Kamchatka"],
-["Asia/Karachi", ["PK"], ""],
-["Asia/Kathmandu", ["NP"], ""],
-["Asia/Khandyga", ["RU"], "MSK+06 - Tomponsky, Ust-Maysky"],
-["Asia/Kolkata", ["IN"], ""],
-["Asia/Krasnoyarsk", ["RU"], "MSK+04 - Krasnoyarsk area"],
-["Asia/Kuching", ["MY", "BN"], "Sabah, Sarawak"],
-["Asia/Macau", ["MO"], ""],
-["Asia/Magadan", ["RU"], "MSK+08 - Magadan"],
-["Asia/Makassar", ["ID"], "Borneo (east, south), Sulawesi/Celebes, Bali, Nusa Tengarra, Timor (west)"],
-["Asia/Manila", ["PH"], ""],
-["Asia/Nicosia", ["CY"], "most of Cyprus"],
-["Asia/Novokuznetsk", ["RU"], "MSK+04 - Kemerovo"],
-["Asia/Novosibirsk", ["RU"], "MSK+04 - Novosibirsk"],
-["Asia/Omsk", ["RU"], "MSK+03 - Omsk"],
-["Asia/Oral", ["KZ"], "West Kazakhstan"],
-["Asia/Pontianak", ["ID"], "Borneo (west, central)"],
-["Asia/Pyongyang", ["KP"], ""],
-["Asia/Qatar", ["QA", "BH"], ""],
-["Asia/Qostanay", ["KZ"], "Qostanay/Kostanay/Kustanay"],
-["Asia/Qyzylorda", ["KZ"], "Qyzylorda/Kyzylorda/Kzyl-Orda"],
-["Asia/Riyadh", ["SA", "AQ", "KW", "YE"], "Syowa"],
-["Asia/Sakhalin", ["RU"], "MSK+08 - Sakhalin Island"],
-["Asia/Samarkand", ["UZ"], "Uzbekistan (west)"],
-["Asia/Seoul", ["KR"], ""],
-["Asia/Shanghai", ["CN"], "Beijing Time"],
-["Asia/Singapore", ["SG", "AQ", "MY"], "peninsular Malaysia, Concordia"],
-["Asia/Srednekolymsk", ["RU"], "MSK+08 - Sakha (E), N Kuril Is"],
-["Asia/Taipei", ["TW"], ""],
-["Asia/Tashkent", ["UZ"], "Uzbekistan (east)"],
-["Asia/Tbilisi", ["GE"], ""],
-["Asia/Tehran", ["IR"], ""],
-["Asia/Thimphu", ["BT"], ""],
-["Asia/Tokyo", ["JP", "AU"], "Eyre Bird Observatory"],
-["Asia/Tomsk", ["RU"], "MSK+04 - Tomsk"],
-["Asia/Ulaanbaatar", ["MN"], "most of Mongolia"],
-["Asia/Urumqi", ["CN"], "Xinjiang Time"],
-["Asia/Ust-Nera", ["RU"], "MSK+07 - Oymyakonsky"],
-["Asia/Vladivostok", ["RU"], "MSK+07 - Amur River"],
-["Asia/Yakutsk", ["RU"], "MSK+06 - Lena River"],
-["Asia/Yangon", ["MM", "CC"], ""],
-["Asia/Yekaterinburg", ["RU"], "MSK+02 - Urals"],
-["Asia/Yerevan", ["AM"], ""],
-["Atlantic/Azores", ["PT"], "Azores"],
-["Atlantic/Bermuda", ["BM"], ""],
-["Atlantic/Canary", ["ES"], "Canary Islands"],
-["Atlantic/Cape_Verde", ["CV"], ""],
-["Atlantic/Faroe", ["FO"], ""],
-["Atlantic/Madeira", ["PT"], "Madeira Islands"],
-["Atlantic/South_Georgia", ["GS"], ""],
-["Atlantic/Stanley", ["FK"], ""],
-["Australia/Adelaide", ["AU"], "South Australia"],
-["Australia/Brisbane", ["AU"], "Queensland (most areas)"],
-["Australia/Broken_Hill", ["AU"], "New South Wales (Yancowinna)"],
-["Australia/Darwin", ["AU"], "Northern Territory"],
-["Australia/Eucla", ["AU"], "Western Australia (Eucla)"],
-["Australia/Hobart", ["AU"], "Tasmania"],
-["Australia/Lindeman", ["AU"], "Queensland (Whitsunday Islands)"],
-["Australia/Lord_Howe", ["AU"], "Lord Howe Island"],
-["Australia/Melbourne", ["AU"], "Victoria"],
-["Australia/Perth", ["AU"], "Western Australia (most areas)"],
-["Australia/Sydney", ["AU"], "New South Wales (most areas)"],
-["CST6CDT", [], ""],
-["EST5EDT", [], ""],
-["Etc/GMT", [], ""],
-["Etc/GMT+1", [], ""],
-["Etc/GMT+10", [], ""],
-["Etc/GMT+11", [], ""],
-["Etc/GMT+12", [], ""],
-["Etc/GMT+2", [], ""],
-["Etc/GMT+3", [], ""],
-["Etc/GMT+4", [], ""],
-["Etc/GMT+5", [], ""],
-["Etc/GMT+6", [], ""],
-["Etc/GMT+7", [], ""],
-["Etc/GMT+8", [], ""],
-["Etc/GMT+9", [], ""],
-["Etc/GMT-1", [], ""],
-["Etc/GMT-10", [], ""],
-["Etc/GMT-11", [], ""],
-["Etc/GMT-12", [], ""],
-["Etc/GMT-13", [], ""],
-["Etc/GMT-14", [], ""],
-["Etc/GMT-2", [], ""],
-["Etc/GMT-3", [], ""],
-["Etc/GMT-4", [], ""],
-["Etc/GMT-5", [], ""],
-["Etc/GMT-6", [], ""],
-["Etc/GMT-7", [], ""],
-["Etc/GMT-8", [], ""],
-["Etc/GMT-9", [], ""],
-["Etc/UTC", [], ""],
-["Europe/Andorra", ["AD"], ""],
-["Europe/Astrakhan", ["RU"], "MSK+01 - Astrakhan"],
-["Europe/Athens", ["GR"], ""],
-["Europe/Belgrade", ["RS", "BA", "HR", "ME", "MK", "SI"], ""],
-["Europe/Berlin", ["DE", "DK", "NO", "SE", "SJ"], "most of Germany"],
-["Europe/Brussels", ["BE", "LU", "NL"], ""],
-["Europe/Bucharest", ["RO"], ""],
-["Europe/Budapest", ["HU"], ""],
-["Europe/Chisinau", ["MD"], ""],
-["Europe/Dublin", ["IE"], ""],
-["Europe/Gibraltar", ["GI"], ""],
-["Europe/Helsinki", ["FI", "AX"], ""],
-["Europe/Istanbul", ["TR"], ""],
-["Europe/Kaliningrad", ["RU"], "MSK-01 - Kaliningrad"],
-["Europe/Kirov", ["RU"], "MSK+00 - Kirov"],
-["Europe/Kyiv", ["UA"], "most of Ukraine"],
-["Europe/Lisbon", ["PT"], "Portugal (mainland)"],
-["Europe/London", ["GB", "GG", "IM", "JE"], ""],
-["Europe/Madrid", ["ES"], "Spain (mainland)"],
-["Europe/Malta", ["MT"], ""],
-["Europe/Minsk", ["BY"], ""],
-["Europe/Moscow", ["RU"], "MSK+00 - Moscow area"],
-["Europe/Paris", ["FR", "MC"], ""],
-["Europe/Prague", ["CZ", "SK"], ""],
-["Europe/Riga", ["LV"], ""],
-["Europe/Rome", ["IT", "SM", "VA"], ""],
-["Europe/Samara", ["RU"], "MSK+01 - Samara, Udmurtia"],
-["Europe/Saratov", ["RU"], "MSK+01 - Saratov"],
-["Europe/Simferopol", ["RU", "UA"], "Crimea"],
-["Europe/Sofia", ["BG"], ""],
-["Europe/Tallinn", ["EE"], ""],
-["Europe/Tirane", ["AL"], ""],
-["Europe/Ulyanovsk", ["RU"], "MSK+01 - Ulyanovsk"],
-["Europe/Vienna", ["AT"], ""],
-["Europe/Vilnius", ["LT"], ""],
-["Europe/Volgograd", ["RU"], "MSK+00 - Volgograd"],
-["Europe/Warsaw", ["PL"], ""],
-["Europe/Zurich", ["CH", "DE", "LI"], "Büsingen"],
-["Indian/Chagos", ["IO"], ""],
-["Indian/Maldives", ["MV", "TF"], "Kerguelen, St Paul I, Amsterdam I"],
-["Indian/Mauritius", ["MU"], ""],
-["MST7MDT", [], ""],
-["Pacific/Apia", ["WS"], ""],
-["Pacific/Auckland", ["NZ", "AQ"], "New Zealand time"],
-["Pacific/Bougainville", ["PG"], "Bougainville"],
-["Pacific/Chatham", ["NZ"], "Chatham Islands"],
-["Pacific/Easter", ["CL"], "Easter Island"],
-["Pacific/Efate", ["VU"], ""],
-["Pacific/Fakaofo", ["TK"], ""],
-["Pacific/Fiji", ["FJ"], ""],
-["Pacific/Galapagos", ["EC"], "Galápagos Islands"],
-["Pacific/Gambier", ["PF"], "Gambier Islands"],
-["Pacific/Guadalcanal", ["SB", "FM"], "Pohnpei"],
-["Pacific/Guam", ["GU", "MP"], ""],
-["Pacific/Honolulu", ["US"], "Hawaii"],
-["Pacific/Kanton", ["KI"], "Phoenix Islands"],
-["Pacific/Kiritimati", ["KI"], "Line Islands"],
-["Pacific/Kosrae", ["FM"], "Kosrae"],
-["Pacific/Kwajalein", ["MH"], "Kwajalein"],
-["Pacific/Marquesas", ["PF"], "Marquesas Islands"],
-["Pacific/Nauru", ["NR"], ""],
-["Pacific/Niue", ["NU"], ""],
-["Pacific/Norfolk", ["NF"], ""],
-["Pacific/Noumea", ["NC"], ""],
-["Pacific/Pago_Pago", ["AS", "UM"], "Midway"],
-["Pacific/Palau", ["PW"], ""],
-["Pacific/Pitcairn", ["PN"], ""],
-["Pacific/Port_Moresby", ["PG", "AQ", "FM"], "Papua New Guinea (most areas), Chuuk, Yap, Dumont d’Urville"],
-["Pacific/Rarotonga", ["CK"], ""],
-["Pacific/Tahiti", ["PF"], "Society Islands"],
-["Pacific/Tarawa", ["KI", "MH", "TV", "UM", "WF"], "Gilberts, Marshalls, Wake"],
-["Pacific/Tongatapu", ["TO"], ""],
-["PST8PDT", [], ""],
-],
-"aliases": {
-"Africa/Accra": "Africa/Abidjan",
-"Africa/Addis_Ababa": "Africa/Nairobi",
-"Africa/Asmara": "Africa/Nairobi",
-"Africa/Asmera": "Africa/Nairobi",
-"Africa/Bamako": "Africa/Abidjan",
-"Africa/Bangui": "Africa/Lagos",
-"Africa/Banjul": "Africa/Abidjan",
-"Africa/Blantyre": "Africa/Maputo",
-"Africa/Brazzaville": "Africa/Lagos",
-"Africa/Bujumbura": "Africa/Maputo",
-"Africa/Conakry": "Africa/Abidjan",
-"Africa/Dakar": "Africa/Abidjan",
-"Africa/Dar_es_Salaam": "Africa/Nairobi",
-"Africa/Djibouti": "Africa/Nairobi",
-"Africa/Douala": "Africa/Lagos",
-"Africa/Freetown": "Africa/Abidjan",
-"Africa/Gaborone": "Africa/Maputo",
-"Africa/Harare": "Africa/Maputo",
-"Africa/Kampala": "Africa/Nairobi",
-"Africa/Kigali": "Africa/Maputo",
-"Africa/Kinshasa": "Africa/Lagos",
-"Africa/Libreville": "Africa/Lagos",
-"Africa/Lome": "Africa/Abidjan",
-"Africa/Luanda": "Africa/Lagos",
-"Africa/Lubumbashi": "Africa/Maputo",
-"Africa/Lusaka": "Africa/Maputo",
-"Africa/Malabo": "Africa/Lagos",
-"Africa/Maseru": "Africa/Johannesburg",
-"Africa/Mbabane": "Africa/Johannesburg",
-"Africa/Mogadishu": "Africa/Nairobi",
-"Africa/Niamey": "Africa/Lagos",
-"Africa/Nouakchott": "Africa/Abidjan",
-"Africa/Ouagadougou": "Africa/Abidjan",
-"Africa/Porto-Novo": "Africa/Lagos",
-"Africa/Timbuktu": "Africa/Abidjan",
-"America/Anguilla": "America/Puerto_Rico",
-"America/Antigua": "America/Puerto_Rico",
-"America/Argentina/ComodRivadavia": "America/Argentina/Catamarca",
-"America/Aruba": "America/Puerto_Rico",
-"America/Atikokan": "America/Panama",
-"America/Atka": "America/Adak",
-"America/Blanc-Sablon": "America/Puerto_Rico",
-"America/Buenos_Aires": "America/Argentina/Buenos_Aires",
-"America/Catamarca": "America/Argentina/Catamarca",
-"America/Cayman": "America/Panama",
-"America/Coral_Harbour": "America/Panama",
-"America/Cordoba": "America/Argentina/Cordoba",
-"America/Creston": "America/Phoenix",
-"America/Curacao": "America/Puerto_Rico",
-"America/Dominica": "America/Puerto_Rico",
-"America/Ensenada": "America/Tijuana",
-"America/Fort_Wayne": "America/Indiana/Indianapolis",
-"America/Godthab": "America/Nuuk",
-"America/Grenada": "America/Puerto_Rico",
-"America/Guadeloupe": "America/Puerto_Rico",
-"America/Indianapolis": "America/Indiana/Indianapolis",
-"America/Jujuy": "America/Argentina/Jujuy",
-"America/Knox_IN": "America/Indiana/Knox",
-"America/Kralendijk": "America/Puerto_Rico",
-"America/Louisville": "America/Kentucky/Louisville",
-"America/Lower_Princes": "America/Puerto_Rico",
-"America/Marigot": "America/Puerto_Rico",
-"America/Mendoza": "America/Argentina/Mendoza",
-"America/Montreal": "America/Toronto",
-"America/Montserrat": "America/Puerto_Rico",
-"America/Nassau": "America/Toronto",
-"America/Nipigon": "America/Toronto",
-"America/Pangnirtung": "America/Iqaluit",
-"America/Port_of_Spain": "America/Puerto_Rico",
-"America/Porto_Acre": "America/Rio_Branco",
-"America/Rainy_River": "America/Winnipeg",
-"America/Rosario": "America/Argentina/Cordoba",
-"America/Santa_Isabel": "America/Tijuana",
-"America/Shiprock": "America/Denver",
-"America/St_Barthelemy": "America/Puerto_Rico",
-"America/St_Kitts": "America/Puerto_Rico",
-"America/St_Lucia": "America/Puerto_Rico",
-"America/St_Thomas": "America/Puerto_Rico",
-"America/St_Vincent": "America/Puerto_Rico",
-"America/Thunder_Bay": "America/Toronto",
-"America/Tortola": "America/Puerto_Rico",
-"America/Virgin": "America/Puerto_Rico",
-"America/Yellowknife": "America/Edmonton",
-"Antarctica/DumontDUrville": "Pacific/Port_Moresby",
-"Antarctica/McMurdo": "Pacific/Auckland",
-"Antarctica/South_Pole": "Pacific/Auckland",
-"Antarctica/Syowa": "Asia/Riyadh",
-"Arctic/Longyearbyen": "Europe/Berlin",
-"Asia/Aden": "Asia/Riyadh",
-"Asia/Ashkhabad": "Asia/Ashgabat",
-"Asia/Bahrain": "Asia/Qatar",
-"Asia/Brunei": "Asia/Kuching",
-"Asia/Calcutta": "Asia/Kolkata",
-"Asia/Choibalsan": "Asia/Ulaanbaatar",
-"Asia/Chongqing": "Asia/Shanghai",
-"Asia/Chungking": "Asia/Shanghai",
-"Asia/Dacca": "Asia/Dhaka",
-"Asia/Harbin": "Asia/Shanghai",
-"Asia/Istanbul": "Europe/Istanbul",
-"Asia/Kashgar": "Asia/Urumqi",
-"Asia/Katmandu": "Asia/Kathmandu",
-"Asia/Kuala_Lumpur": "Asia/Singapore",
-"Asia/Kuwait": "Asia/Riyadh",
-"Asia/Macao": "Asia/Macau",
-"Asia/Muscat": "Asia/Dubai",
-"Asia/Phnom_Penh": "Asia/Bangkok",
-"Asia/Rangoon": "Asia/Yangon",
-"Asia/Saigon": "Asia/Ho_Chi_Minh",
-"Asia/Tel_Aviv": "Asia/Jerusalem",
-"Asia/Thimbu": "Asia/Thimphu",
-"Asia/Ujung_Pandang": "Asia/Makassar",
-"Asia/Ulan_Bator": "Asia/Ulaanbaatar",
-"Asia/Vientiane": "Asia/Bangkok",
-"Atlantic/Faeroe": "Atlantic/Faroe",
-"Atlantic/Jan_Mayen": "Europe/Berlin",
-"Atlantic/Reykjavik": "Africa/Abidjan",
-"Atlantic/St_Helena": "Africa/Abidjan",
-"Australia/ACT": "Australia/Sydney",
-"Australia/Canberra": "Australia/Sydney",
-"Australia/Currie": "Australia/Hobart",
-"Australia/LHI": "Australia/Lord_Howe",
-"Australia/North": "Australia/Darwin",
-"Australia/NSW": "Australia/Sydney",
-"Australia/Queensland": "Australia/Brisbane",
-"Australia/South": "Australia/Adelaide",
-"Australia/Tasmania": "Australia/Hobart",
-"Australia/Victoria": "Australia/Melbourne",
-"Australia/West": "Australia/Perth",
-"Australia/Yancowinna": "Australia/Broken_Hill",
-"Brazil/Acre": "America/Rio_Branco",
-"Brazil/DeNoronha": "America/Noronha",
-"Brazil/East": "America/Sao_Paulo",
-"Brazil/West": "America/Manaus",
-"Canada/Atlantic": "America/Halifax",
-"Canada/Central": "America/Winnipeg",
-"Canada/Eastern": "America/Toronto",
-"Canada/Mountain": "America/Edmonton",
-"Canada/Newfoundland": "America/St_Johns",
-"Canada/Pacific": "America/Vancouver",
-"Canada/Saskatchewan": "America/Regina",
-"Canada/Yukon": "America/Whitehorse",
-"CET": "Europe/Brussels",
-"Chile/Continental": "America/Santiago",
-"Chile/EasterIsland": "Pacific/Easter",
-"Cuba": "America/Havana",
-"EET": "Europe/Athens",
-"Egypt": "Africa/Cairo",
-"Eire": "Europe/Dublin",
-"EST": "America/Panama",
-"Etc/GMT+0": "Etc/GMT",
-"Etc/GMT-0": "Etc/GMT",
-"Etc/GMT0": "Etc/GMT",
-"Etc/Greenwich": "Etc/GMT",
-"Etc/UCT": "Etc/UTC",
-"Etc/Universal": "Etc/UTC",
-"Etc/Zulu": "Etc/UTC",
-"Europe/Amsterdam": "Europe/Brussels",
-"Europe/Belfast": "Europe/London",
-"Europe/Bratislava": "Europe/Prague",
-"Europe/Busingen": "Europe/Zurich",
-"Europe/Copenhagen": "Europe/Berlin",
-"Europe/Guernsey": "Europe/London",
-"Europe/Isle_of_Man": "Europe/London",
-"Europe/Jersey": "Europe/London",
-"Europe/Kiev": "Europe/Kyiv",
-"Europe/Ljubljana": "Europe/Belgrade",
-"Europe/Luxembourg": "Europe/Brussels",
-"Europe/Mariehamn": "Europe/Helsinki",
-"Europe/Monaco": "Europe/Paris",
-"Europe/Nicosia": "Asia/Nicosia",
-"Europe/Oslo": "Europe/Berlin",
-"Europe/Podgorica": "Europe/Belgrade",
-"Europe/San_Marino": "Europe/Rome",
-"Europe/Sarajevo": "Europe/Belgrade",
-"Europe/Skopje": "Europe/Belgrade",
-"Europe/Stockholm": "Europe/Berlin",
-"Europe/Tiraspol": "Europe/Chisinau",
-"Europe/Uzhgorod": "Europe/Kyiv",
-"Europe/Vaduz": "Europe/Zurich",
-"Europe/Vatican": "Europe/Rome",
-"Europe/Zagreb": "Europe/Belgrade",
-"Europe/Zaporozhye": "Europe/Kyiv",
-"GB": "Europe/London",
-"GB-Eire": "Europe/London",
-"GMT": "Etc/GMT",
-"GMT+0": "Etc/GMT",
-"GMT-0": "Etc/GMT",
-"GMT0": "Etc/GMT",
-"Greenwich": "Etc/GMT",
-"Hongkong": "Asia/Hong_Kong",
-"HST": "Pacific/Honolulu",
-"Iceland": "Africa/Abidjan",
-"Indian/Antananarivo": "Africa/Nairobi",
-"Indian/Christmas": "Asia/Bangkok",
-"Indian/Cocos": "Asia/Yangon",
-"Indian/Comoro": "Africa/Nairobi",
-"Indian/Kerguelen": "Indian/Maldives",
-"Indian/Mahe": "Asia/Dubai",
-"Indian/Mayotte": "Africa/Nairobi",
-"Indian/Reunion": "Asia/Dubai",
-"Iran": "Asia/Tehran",
-"Israel": "Asia/Jerusalem",
-"Jamaica": "America/Jamaica",
-"Japan": "Asia/Tokyo",
-"Kwajalein": "Pacific/Kwajalein",
-"Libya": "Africa/Tripoli",
-"MET": "Europe/Brussels",
-"Mexico/BajaNorte": "America/Tijuana",
-"Mexico/BajaSur": "America/Mazatlan",
-"Mexico/General": "America/Mexico_City",
-"MST": "America/Phoenix",
-"Navajo": "America/Denver",
-"NZ": "Pacific/Auckland",
-"NZ-CHAT": "Pacific/Chatham",
-"Pacific/Chuuk": "Pacific/Port_Moresby",
-"Pacific/Enderbury": "Pacific/Kanton",
-"Pacific/Funafuti": "Pacific/Tarawa",
-"Pacific/Johnston": "Pacific/Honolulu",
-"Pacific/Majuro": "Pacific/Tarawa",
-"Pacific/Midway": "Pacific/Pago_Pago",
-"Pacific/Pohnpei": "Pacific/Guadalcanal",
-"Pacific/Ponape": "Pacific/Guadalcanal",
-"Pacific/Saipan": "Pacific/Guam",
-"Pacific/Samoa": "Pacific/Pago_Pago",
-"Pacific/Truk": "Pacific/Port_Moresby",
-"Pacific/Wake": "Pacific/Tarawa",
-"Pacific/Wallis": "Pacific/Tarawa",
-"Pacific/Yap": "Pacific/Port_Moresby",
-"Poland": "Europe/Warsaw",
-"Portugal": "Europe/Lisbon",
-"PRC": "Asia/Shanghai",
-"ROC": "Asia/Taipei",
-"ROK": "Asia/Seoul",
-"Singapore": "Asia/Singapore",
-"Turkey": "Europe/Istanbul",
-"UCT": "Etc/UTC",
-"Universal": "Etc/UTC",
-"US/Alaska": "America/Anchorage",
-"US/Aleutian": "America/Adak",
-"US/Arizona": "America/Phoenix",
-"US/Central": "America/Chicago",
-"US/East-Indiana": "America/Indiana/Indianapolis",
-"US/Eastern": "America/New_York",
-"US/Hawaii": "Pacific/Honolulu",
-"US/Indiana-Starke": "America/Indiana/Knox",
-"US/Michigan": "America/Detroit",
-"US/Mountain": "America/Denver",
-"US/Pacific": "America/Los_Angeles",
-"US/Samoa": "Pacific/Pago_Pago",
-"UTC": "Etc/UTC",
-"W-SU": "Europe/Moscow",
-"WET": "Europe/Lisbon",
-"Zulu": "Etc/UTC",
-},
-"countries": {
-"AD": ["Andorra", [["Europe/Andorra", ""]]],
-"AE": ["United Arab Emirates", [["Asia/Dubai", ""]]],
-"AF": ["Afghanistan", [["Asia/Kabul", ""]]],
-"AG": ["Antigua & Barbuda", [["America/Antigua", ""]]],
-"AI": ["Anguilla", [["America/Anguilla", ""]]],
-"AL": ["Albania", [["Europe/Tirane", ""]]],
-"AM": ["Armenia", [["Asia/Yerevan", ""]]],
-"AO": ["Angola", [["Africa/Luanda", ""]]],
-"AQ": ["Antarctica", [["Antarctica/McMurdo", "New Zealand time - McMurdo, South Pole"], ["Antarctica/Casey", "Casey"], ["Antarctica/Davis", "Davis"], ["Antarctica/DumontDUrville", "Dumont-d'Urville"], ["Antarctica/Mawson", "Mawson"], ["Antarctica/Palmer", "Palmer"], ["Antarctica/Rothera", "Rothera"], ["Antarctica/Syowa", "Syowa"], ["Antarctica/Troll", "Troll"], ["Antarctica/Vostok", "Vostok"]]],
-"AR": ["Argentina", [["America/Argentina/Buenos_Aires", "Buenos Aires (BA, CF)"], ["America/Argentina/Cordoba", "Argentina (most areas: CB, CC, CN, ER, FM, MN, SE, SF)"], ["America/Argentina/Salta", "Salta (SA, LP, NQ, RN)"], ["America/Argentina/Jujuy", "Jujuy (JY)"], ["America/Argentina/Tucuman", "Tucuman (TM)"], ["America/Argentina/Catamarca", "Catamarca (CT), Chubut (CH)"], ["America/Argentina/La_Rioja", "La Rioja (LR)"], ["America/Argentina/San_Juan", "San Juan (SJ)"], ["America/Argentina/Mendoza", "Mendoza (MZ)"], ["America/Argentina/San_Luis", "San Luis (SL)"], ["America/Argentina/Rio_Gallegos", "Santa Cruz (SC)"], ["America/Argentina/Ushuaia", "Tierra del Fuego (TF)"]]],
-"AS": ["Samoa (American)", [["Pacific/Pago_Pago", ""]]],
-"AT": ["Austria", [["Europe/Vienna", ""]]],
-"AU": ["Australia", [["Australia/Lord_Howe", "Lord Howe Island"], ["Antarctica/Macquarie", "Macquarie Island"], ["Australia/Hobart", "Tasmania"], ["Australia/Melbourne", "Victoria"], ["Australia/Sydney", "New South Wales (most areas)"], ["Australia/Broken_Hill", "New South Wales (Yancowinna)"], ["Australia/Brisbane", "Queensland (most areas)"], ["Australia/Lindeman", "Queensland (Whitsunday Islands)"], ["Australia/Adelaide", "South Australia"], ["Australia/Darwin", "Northern Territory"], ["Australia/Perth", "Western Australia (most areas)"], ["Australia/Eucla", "Western Australia (Eucla)"]]],
-"AW": ["Aruba", [["America/Aruba", ""]]],
-"AX": ["Åland Islands", [["Europe/Mariehamn", ""]]],
-"AZ": ["Azerbaijan", [["Asia/Baku", ""]]],
-"BA": ["Bosnia & Herzegovina", [["Europe/Sarajevo", ""]]],
-"BB": ["Barbados", [["America/Barbados", ""]]],
-"BD": ["Bangladesh", [["Asia/Dhaka", ""]]],
-"BE": ["Belgium", [["Europe/Brussels", ""]]],
-"BF": ["Burkina Faso", [["Africa/Ouagadougou", ""]]],
-"BG": ["Bulgaria", [["Europe/Sofia", ""]]],
-"BH": ["Bahrain", [["Asia/Bahrain", ""]]],
-"BI": ["Burundi", [["Africa/Bujumbura", ""]]],
-"BJ": ["Benin", [["Africa/Porto-Novo", ""]]],
-"BL": ["St Barthelemy", [["America/St_Barthelemy", ""]]],
-"BM": ["Bermuda", [["Atlantic/Bermuda", ""]]],
-"BN": ["Brunei", [["Asia/Brunei", ""]]],
-"BO": ["Bolivia", [["America/La_Paz", ""]]],
-"BQ": ["Caribbean NL", [["America/Kralendijk", ""]]],
-"BR": ["Brazil", [["America/Noronha", "Atlantic islands"], ["America/Belem", "Para (east), Amapa"], ["America/Fortaleza", "Brazil (northeast: MA, PI, CE, RN, PB)"], ["America/Recife", "Pernambuco"], ["America/Araguaina", "Tocantins"], ["America/Maceio", "Alagoas, Sergipe"], ["America/Bahia", "Bahia"], ["America/Sao_Paulo", "Brazil (southeast: GO, DF, MG, ES, RJ, SP, PR, SC, RS)"], ["America/Campo_Grande", "Mato Grosso do Sul"], ["America/Cuiaba", "Mato Grosso"], ["America/Santarem", "Para (west)"], ["America/Porto_Velho", "Rondonia"], ["America/Boa_Vista", "Roraima"], ["America/Manaus", "Amazonas (east)"], ["America/Eirunepe", "Amazonas (west)"], ["America/Rio_Branco", "Acre"]]],
-"BS": ["Bahamas", [["America/Nassau", ""]]],
-"BT": ["Bhutan", [["Asia/Thimphu", ""]]],
-"BW": ["Botswana", [["Africa/Gaborone", ""]]],
-"BY": ["Belarus", [["Europe/Minsk", ""]]],
-"BZ": ["Belize", [["America/Belize", ""]]],
-"CA": ["Canada", [["America/St_Johns", "Newfoundland, Labrador (SE)"], ["America/Halifax", "Atlantic - NS (most areas), PE"], ["America/Glace_Bay", "Atlantic - NS (Cape Breton)"], ["America/Moncton", "Atlantic - New Brunswick"], ["America/Goose_Bay", "Atlantic - Labrador (most areas)"], ["America/Blanc-Sablon", "AST - QC (Lower North Shore)"], ["America/Toronto", "Eastern - ON & QC (most areas)"], ["America/Iqaluit", "Eastern - NU (most areas)"], ["America/Atikokan", "EST - ON (Atikokan), NU (Coral H)"], ["America/Winnipeg", "EST - Manitoba, ON (northwest)"], ["America/Resolute", "Central - NU (Resolute)"], ["America/Rankin_Inlet", "Central - NU (central)"], ["America/Regina", "CST - SK (most areas)"], ["America/Swift_Current", "CST - SK (midwest)"], ["America/Edmonton", "CST - AB, BC(E), NT(E), SK(W)"], ["America/Cambridge_Bay", "Mountain - NU (west)"], ["America/Inuvik", "CST - NT (west)"], ["America/Vancouver", "MST - BC (most areas)"], ["America/Creston", "MST - BC (Creston)"], ["America/Dawson_Creek", "MST - BC (Dawson Cr, Ft St John)"], ["America/Fort_Nelson", "MST - BC (Ft Nelson)"], ["America/Whitehorse", "MST - Yukon (east)"], ["America/Dawson", "MST - Yukon (west)"]]],
-"CC": ["Cocos (Keeling) Islands", [["Indian/Cocos", ""]]],
-"CD": ["Congo (Dem. Rep.)", [["Africa/Kinshasa", "Dem. Rep. of Congo (west)"], ["Africa/Lubumbashi", "Dem. Rep. of Congo (east)"]]],
-"CF": ["Central African Rep.", [["Africa/Bangui", ""]]],
-"CG": ["Congo (Rep.)", [["Africa/Brazzaville", ""]]],
-"CH": ["Switzerland", [["Europe/Zurich", ""]]],
-"CI": ["Côte d’Ivoire", [["Africa/Abidjan", ""]]],
-"CK": ["Cook Islands", [["Pacific/Rarotonga", ""]]],
-"CL": ["Chile", [["America/Santiago", "most of Chile"], ["America/Coyhaique", "Aysen Region"], ["America/Punta_Arenas", "Magallanes Region"], ["Pacific/Easter", "Easter Island"]]],
-"CM": ["Cameroon", [["Africa/Douala", ""]]],
-"CN": ["China", [["Asia/Shanghai", "Beijing Time"], ["Asia/Urumqi", "Xinjiang Time"]]],
-"CO": ["Colombia", [["America/Bogota", ""]]],
-"CR": ["Costa Rica", [["America/Costa_Rica", ""]]],
-"CU": ["Cuba", [["America/Havana", ""]]],
-"CV": ["Cape Verde", [["Atlantic/Cape_Verde", ""]]],
-"CW": ["Curaçao", [["America/Curacao", ""]]],
-"CX": ["Christmas Island", [["Indian/Christmas", ""]]],
-"CY": ["Cyprus", [["Asia/Nicosia", "most of Cyprus"], ["Asia/Famagusta", "Northern Cyprus"]]],
-"CZ": ["Czech Republic", [["Europe/Prague", ""]]],
-"DE": ["Germany", [["Europe/Berlin", "most of Germany"], ["Europe/Busingen", "Busingen"]]],
-"DJ": ["Djibouti", [["Africa/Djibouti", ""]]],
-"DK": ["Denmark", [["Europe/Copenhagen", ""]]],
-"DM": ["Dominica", [["America/Dominica", ""]]],
-"DO": ["Dominican Republic", [["America/Santo_Domingo", ""]]],
-"DZ": ["Algeria", [["Africa/Algiers", ""]]],
-"EC": ["Ecuador", [["America/Guayaquil", "Ecuador (mainland)"], ["Pacific/Galapagos", "Galapagos Islands"]]],
-"EE": ["Estonia", [["Europe/Tallinn", ""]]],
-"EG": ["Egypt", [["Africa/Cairo", ""]]],
-"EH": ["Western Sahara", [["Africa/El_Aaiun", ""]]],
-"ER": ["Eritrea", [["Africa/Asmara", ""]]],
-"ES": ["Spain", [["Europe/Madrid", "Spain (mainland)"], ["Africa/Ceuta", "Ceuta, Melilla"], ["Atlantic/Canary", "Canary Islands"]]],
-"ET": ["Ethiopia", [["Africa/Addis_Ababa", ""]]],
-"FI": ["Finland", [["Europe/Helsinki", ""]]],
-"FJ": ["Fiji", [["Pacific/Fiji", ""]]],
-"FK": ["Falkland Islands", [["Atlantic/Stanley", ""]]],
-"FM": ["Micronesia", [["Pacific/Chuuk", "Chuuk/Truk, Yap"], ["Pacific/Pohnpei", "Pohnpei/Ponape"], ["Pacific/Kosrae", "Kosrae"]]],
-"FO": ["Faroe Islands", [["Atlantic/Faroe", ""]]],
-"FR": ["France", [["Europe/Paris", ""]]],
-"GA": ["Gabon", [["Africa/Libreville", ""]]],
-"GB": ["Britain (UK)", [["Europe/London", ""]]],
-"GD": ["Grenada", [["America/Grenada", ""]]],
-"GE": ["Georgia", [["Asia/Tbilisi", ""]]],
-"GF": ["French Guiana", [["America/Cayenne", ""]]],
-"GG": ["Guernsey", [["Europe/Guernsey", ""]]],
-"GH": ["Ghana", [["Africa/Accra", ""]]],
-"GI": ["Gibraltar", [["Europe/Gibraltar", ""]]],
-"GL": ["Greenland", [["America/Nuuk", "most of Greenland"], ["America/Danmarkshavn", "National Park (east coast)"], ["America/Scoresbysund", "Scoresbysund/Ittoqqortoormiit"], ["America/Thule", "Thule/Pituffik"]]],
-"GM": ["Gambia", [["Africa/Banjul", ""]]],
-"GN": ["Guinea", [["Africa/Conakry", ""]]],
-"GP": ["Guadeloupe", [["America/Guadeloupe", ""]]],
-"GQ": ["Equatorial Guinea", [["Africa/Malabo", ""]]],
-"GR": ["Greece", [["Europe/Athens", ""]]],
-"GS": ["South Georgia & the South Sandwich Islands", [["Atlantic/South_Georgia", ""]]],
-"GT": ["Guatemala", [["America/Guatemala", ""]]],
-"GU": ["Guam", [["Pacific/Guam", ""]]],
-"GW": ["Guinea-Bissau", [["Africa/Bissau", ""]]],
-"GY": ["Guyana", [["America/Guyana", ""]]],
-"HK": ["Hong Kong", [["Asia/Hong_Kong", ""]]],
-"HN": ["Honduras", [["America/Tegucigalpa", ""]]],
-"HR": ["Croatia", [["Europe/Zagreb", ""]]],
-"HT": ["Haiti", [["America/Port-au-Prince", ""]]],
-"HU": ["Hungary", [["Europe/Budapest", ""]]],
-"ID": ["Indonesia", [["Asia/Jakarta", "Java, Sumatra"], ["Asia/Pontianak", "Borneo (west, central)"], ["Asia/Makassar", "Borneo (east, south), Sulawesi/Celebes, Bali, Nusa Tengarra, Timor (west)"], ["Asia/Jayapura", "New Guinea (West Papua / Irian Jaya), Malukus/Moluccas"]]],
-"IE": ["Ireland", [["Europe/Dublin", ""]]],
-"IL": ["Israel", [["Asia/Jerusalem", ""]]],
-"IM": ["Isle of Man", [["Europe/Isle_of_Man", ""]]],
-"IN": ["India", [["Asia/Kolkata", ""]]],
-"IO": ["British Indian Ocean Territory", [["Indian/Chagos", ""]]],
-"IQ": ["Iraq", [["Asia/Baghdad", ""]]],
-"IR": ["Iran", [["Asia/Tehran", ""]]],
-"IS": ["Iceland", [["Atlantic/Reykjavik", ""]]],
-"IT": ["Italy", [["Europe/Rome", ""]]],
-"JE": ["Jersey", [["Europe/Jersey", ""]]],
-"JM": ["Jamaica", [["America/Jamaica", ""]]],
-"JO": ["Jordan", [["Asia/Amman", ""]]],
-"JP": ["Japan", [["Asia/Tokyo", ""]]],
-"KE": ["Kenya", [["Africa/Nairobi", ""]]],
-"KG": ["Kyrgyzstan", [["Asia/Bishkek", ""]]],
-"KH": ["Cambodia", [["Asia/Phnom_Penh", ""]]],
-"KI": ["Kiribati", [["Pacific/Tarawa", "Gilbert Islands"], ["Pacific/Kanton", "Phoenix Islands"], ["Pacific/Kiritimati", "Line Islands"]]],
-"KM": ["Comoros", [["Indian/Comoro", ""]]],
-"KN": ["St Kitts & Nevis", [["America/St_Kitts", ""]]],
-"KP": ["Korea (North)", [["Asia/Pyongyang", ""]]],
-"KR": ["Korea (South)", [["Asia/Seoul", ""]]],
-"KW": ["Kuwait", [["Asia/Kuwait", ""]]],
-"KY": ["Cayman Islands", [["America/Cayman", ""]]],
-"KZ": ["Kazakhstan", [["Asia/Almaty", "most of Kazakhstan"], ["Asia/Qyzylorda", "Qyzylorda/Kyzylorda/Kzyl-Orda"], ["Asia/Qostanay", "Qostanay/Kostanay/Kustanay"], ["Asia/Aqtobe", "Aqtobe/Aktobe"], ["Asia/Aqtau", "Mangghystau/Mankistau"], ["Asia/Atyrau", "Atyrau/Atirau/Gur'yev"], ["Asia/Oral", "West Kazakhstan"]]],
-"LA": ["Laos", [["Asia/Vientiane", ""]]],
-"LB": ["Lebanon", [["Asia/Beirut", ""]]],
-"LC": ["St Lucia", [["America/St_Lucia", ""]]],
-"LI": ["Liechtenstein", [["Europe/Vaduz", ""]]],
-"LK": ["Sri Lanka", [["Asia/Colombo", ""]]],
-"LR": ["Liberia", [["Africa/Monrovia", ""]]],
-"LS": ["Lesotho", [["Africa/Maseru", ""]]],
-"LT": ["Lithuania", [["Europe/Vilnius", ""]]],
-"LU": ["Luxembourg", [["Europe/Luxembourg", ""]]],
-"LV": ["Latvia", [["Europe/Riga", ""]]],
-"LY": ["Libya", [["Africa/Tripoli", ""]]],
-"MA": ["Morocco", [["Africa/Casablanca", ""]]],
-"MC": ["Monaco", [["Europe/Monaco", ""]]],
-"MD": ["Moldova", [["Europe/Chisinau", ""]]],
-"ME": ["Montenegro", [["Europe/Podgorica", ""]]],
-"MF": ["St Martin (French)", [["America/Marigot", ""]]],
-"MG": ["Madagascar", [["Indian/Antananarivo", ""]]],
-"MH": ["Marshall Islands", [["Pacific/Majuro", "most of Marshall Islands"], ["Pacific/Kwajalein", "Kwajalein"]]],
-"MK": ["North Macedonia", [["Europe/Skopje", ""]]],
-"ML": ["Mali", [["Africa/Bamako", ""]]],
-"MM": ["Myanmar (Burma)", [["Asia/Yangon", ""]]],
-"MN": ["Mongolia", [["Asia/Ulaanbaatar", "most of Mongolia"], ["Asia/Hovd", "Bayan-Olgii, Hovd, Uvs"]]],
-"MO": ["Macau", [["Asia/Macau", ""]]],
-"MP": ["Northern Mariana Islands", [["Pacific/Saipan", ""]]],
-"MQ": ["Martinique", [["America/Martinique", ""]]],
-"MR": ["Mauritania", [["Africa/Nouakchott", ""]]],
-"MS": ["Montserrat", [["America/Montserrat", ""]]],
-"MT": ["Malta", [["Europe/Malta", ""]]],
-"MU": ["Mauritius", [["Indian/Mauritius", ""]]],
-"MV": ["Maldives", [["Indian/Maldives", ""]]],
-"MW": ["Malawi", [["Africa/Blantyre", ""]]],
-"MX": ["Mexico", [["America/Mexico_City", "Central Mexico"], ["America/Cancun", "Quintana Roo"], ["America/Merida", "Campeche, Yucatan"], ["America/Monterrey", "Durango; Coahuila, Nuevo Leon, Tamaulipas (most areas)"], ["America/Matamoros", "Coahuila, Nuevo Leon, Tamaulipas (US border)"], ["America/Chihuahua", "Chihuahua (most areas)"], ["America/Ciudad_Juarez", "Chihuahua (US border - west)"], ["America/Ojinaga", "Chihuahua (US border - east)"], ["America/Mazatlan", "Baja California Sur, Nayarit (most areas), Sinaloa"], ["America/Bahia_Banderas", "Bahia de Banderas"], ["America/Hermosillo", "Sonora"], ["America/Tijuana", "Baja California"]]],
-"MY": ["Malaysia", [["Asia/Kuala_Lumpur", "Malaysia (peninsula)"], ["Asia/Kuching", "Sabah, Sarawak"]]],
-"MZ": ["Mozambique", [["Africa/Maputo", ""]]],
-"NA": ["Namibia", [["Africa/Windhoek", ""]]],
-"NC": ["New Caledonia", [["Pacific/Noumea", ""]]],
-"NE": ["Niger", [["Africa/Niamey", ""]]],
-"NF": ["Norfolk Island", [["Pacific/Norfolk", ""]]],
-"NG": ["Nigeria", [["Africa/Lagos", ""]]],
-"NI": ["Nicaragua", [["America/Managua", ""]]],
-"NL": ["Netherlands", [["Europe/Amsterdam", ""]]],
-"NO": ["Norway", [["Europe/Oslo", ""]]],
-"NP": ["Nepal", [["Asia/Kathmandu", ""]]],
-"NR": ["Nauru", [["Pacific/Nauru", ""]]],
-"NU": ["Niue", [["Pacific/Niue", ""]]],
-"NZ": ["New Zealand", [["Pacific/Auckland", "most of New Zealand"], ["Pacific/Chatham", "Chatham Islands"]]],
-"OM": ["Oman", [["Asia/Muscat", ""]]],
-"PA": ["Panama", [["America/Panama", ""]]],
-"PE": ["Peru", [["America/Lima", ""]]],
-"PF": ["French Polynesia", [["Pacific/Tahiti", "Society Islands"], ["Pacific/Marquesas", "Marquesas Islands"], ["Pacific/Gambier", "Gambier Islands"]]],
-"PG": ["Papua New Guinea", [["Pacific/Port_Moresby", "most of Papua New Guinea"], ["Pacific/Bougainville", "Bougainville"]]],
-"PH": ["Philippines", [["Asia/Manila", ""]]],
-"PK": ["Pakistan", [["Asia/Karachi", ""]]],
-"PL": ["Poland", [["Europe/Warsaw", ""]]],
-"PM": ["St Pierre & Miquelon", [["America/Miquelon", ""]]],
-"PN": ["Pitcairn", [["Pacific/Pitcairn", ""]]],
-"PR": ["Puerto Rico", [["America/Puerto_Rico", ""]]],
-"PS": ["Palestine", [["Asia/Gaza", "Gaza Strip"], ["Asia/Hebron", "West Bank"]]],
-"PT": ["Portugal", [["Europe/Lisbon", "Portugal (mainland)"], ["Atlantic/Madeira", "Madeira Islands"], ["Atlantic/Azores", "Azores"]]],
-"PW": ["Palau", [["Pacific/Palau", ""]]],
-"PY": ["Paraguay", [["America/Asuncion", ""]]],
-"QA": ["Qatar", [["Asia/Qatar", ""]]],
-"RE": ["Réunion", [["Indian/Reunion", ""]]],
-"RO": ["Romania", [["Europe/Bucharest", ""]]],
-"RS": ["Serbia", [["Europe/Belgrade", ""]]],
-"RU": ["Russia", [["Europe/Kaliningrad", "MSK-01 - Kaliningrad"], ["Europe/Moscow", "MSK+00 - Moscow area"], ["Europe/Kirov", "MSK+00 - Kirov"], ["Europe/Volgograd", "MSK+00 - Volgograd"], ["Europe/Astrakhan", "MSK+01 - Astrakhan"], ["Europe/Saratov", "MSK+01 - Saratov"], ["Europe/Ulyanovsk", "MSK+01 - Ulyanovsk"], ["Europe/Samara", "MSK+01 - Samara, Udmurtia"], ["Asia/Yekaterinburg", "MSK+02 - Urals"], ["Asia/Omsk", "MSK+03 - Omsk"], ["Asia/Novosibirsk", "MSK+04 - Novosibirsk"], ["Asia/Barnaul", "MSK+04 - Altai"], ["Asia/Tomsk", "MSK+04 - Tomsk"], ["Asia/Novokuznetsk", "MSK+04 - Kemerovo"], ["Asia/Krasnoyarsk", "MSK+04 - Krasnoyarsk area"], ["Asia/Irkutsk", "MSK+05 - Irkutsk, Buryatia"], ["Asia/Chita", "MSK+06 - Zabaykalsky"], ["Asia/Yakutsk", "MSK+06 - Lena River"], ["Asia/Khandyga", "MSK+06 - Tomponsky, Ust-Maysky"], ["Asia/Vladivostok", "MSK+07 - Amur River"], ["Asia/Ust-Nera", "MSK+07 - Oymyakonsky"], ["Asia/Magadan", "MSK+08 - Magadan"], ["Asia/Sakhalin", "MSK+08 - Sakhalin Island"], ["Asia/Srednekolymsk", "MSK+08 - Sakha (E), N Kuril Is"], ["Asia/Kamchatka", "MSK+09 - Kamchatka"], ["Asia/Anadyr", "MSK+09 - Bering Sea"]]],
-"RW": ["Rwanda", [["Africa/Kigali", ""]]],
-"SA": ["Saudi Arabia", [["Asia/Riyadh", ""]]],
-"SB": ["Solomon Islands", [["Pacific/Guadalcanal", ""]]],
-"SC": ["Seychelles", [["Indian/Mahe", ""]]],
-"SD": ["Sudan", [["Africa/Khartoum", ""]]],
-"SE": ["Sweden", [["Europe/Stockholm", ""]]],
-"SG": ["Singapore", [["Asia/Singapore", ""]]],
-"SH": ["St Helena", [["Atlantic/St_Helena", ""]]],
-"SI": ["Slovenia", [["Europe/Ljubljana", ""]]],
-"SJ": ["Svalbard & Jan Mayen", [["Arctic/Longyearbyen", ""]]],
-"SK": ["Slovakia", [["Europe/Bratislava", ""]]],
-"SL": ["Sierra Leone", [["Africa/Freetown", ""]]],
-"SM": ["San Marino", [["Europe/San_Marino", ""]]],
-"SN": ["Senegal", [["Africa/Dakar", ""]]],
-"SO": ["Somalia", [["Africa/Mogadishu", ""]]],
-"SR": ["Suriname", [["America/Paramaribo", ""]]],
-"SS": ["South Sudan", [["Africa/Juba", ""]]],
-"ST": ["Sao Tome & Principe", [["Africa/Sao_Tome", ""]]],
-"SV": ["El Salvador", [["America/El_Salvador", ""]]],
-"SX": ["St Maarten (Dutch)", [["America/Lower_Princes", ""]]],
-"SY": ["Syria", [["Asia/Damascus", ""]]],
-"SZ": ["Eswatini (Swaziland)", [["Africa/Mbabane", ""]]],
-"TC": ["Turks & Caicos Is", [["America/Grand_Turk", ""]]],
-"TD": ["Chad", [["Africa/Ndjamena", ""]]],
-"TF": ["French S. Terr.", [["Indian/Kerguelen", ""]]],
-"TG": ["Togo", [["Africa/Lome", ""]]],
-"TH": ["Thailand", [["Asia/Bangkok", ""]]],
-"TJ": ["Tajikistan", [["Asia/Dushanbe", ""]]],
-"TK": ["Tokelau", [["Pacific/Fakaofo", ""]]],
-"TL": ["East Timor", [["Asia/Dili", ""]]],
-"TM": ["Turkmenistan", [["Asia/Ashgabat", ""]]],
-"TN": ["Tunisia", [["Africa/Tunis", ""]]],
-"TO": ["Tonga", [["Pacific/Tongatapu", ""]]],
-"TR": ["Turkey", [["Europe/Istanbul", ""]]],
-"TT": ["Trinidad & Tobago", [["America/Port_of_Spain", ""]]],
-"TV": ["Tuvalu", [["Pacific/Funafuti", ""]]],
-"TW": ["Taiwan", [["Asia/Taipei", ""]]],
-"TZ": ["Tanzania", [["Africa/Dar_es_Salaam", ""]]],
-"UA": ["Ukraine", [["Europe/Simferopol", "Crimea"], ["Europe/Kyiv", "most of Ukraine"]]],
-"UG": ["Uganda", [["Africa/Kampala", ""]]],
-"UM": ["US minor outlying islands", [["Pacific/Midway", "Midway Islands"], ["Pacific/Wake", "Wake Island"]]],
-"US": ["United States", [["America/New_York", "Eastern (most areas)"], ["America/Detroit", "Eastern - MI (most areas)"], ["America/Kentucky/Louisville", "Eastern - KY (Louisville area)"], ["America/Kentucky/Monticello", "Eastern - KY (Wayne)"], ["America/Indiana/Indianapolis", "Eastern - IN (most areas)"], ["America/Indiana/Vincennes", "Eastern - IN (Da, Du, K, Mn)"], ["America/Indiana/Winamac", "Eastern - IN (Pulaski)"], ["America/Indiana/Marengo", "Eastern - IN (Crawford)"], ["America/Indiana/Petersburg", "Eastern - IN (Pike)"], ["America/Indiana/Vevay", "Eastern - IN (Switzerland)"], ["America/Chicago", "Central (most areas)"], ["America/Indiana/Tell_City", "Central - IN (Perry)"], ["America/Indiana/Knox", "Central - IN (Starke)"], ["America/Menominee", "Central - MI (Wisconsin border)"], ["America/North_Dakota/Center", "Central - ND (Oliver)"], ["America/North_Dakota/New_Salem", "Central - ND (Morton rural)"], ["America/North_Dakota/Beulah", "Central - ND (Mercer)"], ["America/Denver", "Mountain (most areas)"], ["America/Boise", "Mountain - ID (south), OR (east)"], ["America/Phoenix", "MST - AZ (except Navajo)"], ["America/Los_Angeles", "Pacific"], ["America/Anchorage", "Alaska (most areas)"], ["America/Juneau", "Alaska - Juneau area"], ["America/Sitka", "Alaska - Sitka area"], ["America/Metlakatla", "Alaska - Annette Island"], ["America/Yakutat", "Alaska - Yakutat"], ["America/Nome", "Alaska (west)"], ["America/Adak", "Alaska - western Aleutians"], ["Pacific/Honolulu", "Hawaii"]]],
-"UY": ["Uruguay", [["America/Montevideo", ""]]],
-"UZ": ["Uzbekistan", [["Asia/Samarkand", "Uzbekistan (west)"], ["Asia/Tashkent", "Uzbekistan (east)"]]],
-"VA": ["Vatican City", [["Europe/Vatican", ""]]],
-"VC": ["St Vincent", [["America/St_Vincent", ""]]],
-"VE": ["Venezuela", [["America/Caracas", ""]]],
-"VG": ["Virgin Islands (UK)", [["America/Tortola", ""]]],
-"VI": ["Virgin Islands (US)", [["America/St_Thomas", ""]]],
-"VN": ["Vietnam", [["Asia/Ho_Chi_Minh", ""]]],
-"VU": ["Vanuatu", [["Pacific/Efate", ""]]],
-"WF": ["Wallis & Futuna", [["Pacific/Wallis", ""]]],
-"WS": ["Samoa (western)", [["Pacific/Apia", ""]]],
-"YE": ["Yemen", [["Asia/Aden", ""]]],
-"YT": ["Mayotte", [["Indian/Mayotte", ""]]],
-"ZA": ["South Africa", [["Africa/Johannesburg", ""]]],
-"ZM": ["Zambia", [["Africa/Lusaka", ""]]],
-"ZW": ["Zimbabwe", [["Africa/Harare", ""]]],
-},
-};
-// END TZ_DATA
-</script>
+<script src="zones.js"></script>
 <script>
 "use strict";
 
 // The card's serial console (src/main.cpp). Every value is fixed: the page has no setting for it.
 const BAUD_RATE = 115200; // any rate works over USB; only the bootloader's reset rate must never be used
 const CARD_USB = { usbVendorId: 0x2886, usbProductId: 0x8057 }; // Seeed, T1000-E running gpxcam (boards/t1000-e.json)
-const VERSION_TIMEOUT_MS = 3000;
-const STATUS_TIMEOUT_MS = 3000;
+// The answers the card gives at once: 'v', 'status' and 'p' (src/main.cpp), 'pair', 'pair off' and 'pair
+// prepare' (src/pairing.cpp), 'log' with its last 64 lines (src/log.cpp dumpHistory()).
+const ANSWER_TIMEOUT_MS = 3000;
 const STATUS_PERIOD_MS = 5000; // the card's state on the page refreshes itself this often
 const PAIRING_STATUS_PERIOD_MS = 2000; // ... and this often while the card pairs
-const PAIR_TIMEOUT_MS = 3000;
 const UNPAIR_TIMEOUT_MS = 10000; // the card first puts its GPS to sleep (up to 7.5 s), then writes flash
 // 'pair older': the card may wait 2 min for a GPS fix and 2 min for the camera, then introduce.
 const OLDER_START_TIMEOUT_MS = 270000;
@@ -1583,11 +703,11 @@ const SAVE_TIMEOUT_MS = 6000;
 const SOUND_SETTINGS = ["loud", "quiet", "off"]; // src/sound_rules.cpp settingName()
 const UPDATES_SETTINGS = ["normal", "frequent"]; // src/link_policy.cpp updatesName()
 const ANSWER_QUIET_MS = 400; // an answer is complete after this long without another of its lines
-const LOG_TIMEOUT_MS = 3000; // 'log' shows the card's last 64 lines at once (src/log.cpp dumpHistory())
-const CARD_ID_TIMEOUT_MS = 3000; // 'p' shows the card's state at once (src/main.cpp)
 const SCAN_RUN_MS = 30000; // one 'diag scan' run (src/scan_dump.h DURATION_MS)
 const SCAN_TIMEOUT_MS = SCAN_RUN_MS + 10000; // the run ends with "diag scan: done"; this much is waited at most
 const MAX_RESULTS = 60;
+const NO_ANSWER_TEXT = "No answer from the card. Try again.";
+const CONNECT_TO_CHANGE_TEXT = "Connect the card to change this setting.";
 
 // ---- Zones (pure functions, tested with node --test test/web/card_page.test.mjs) ----
 
@@ -1607,6 +727,12 @@ function findZone(text) {
   const name = NAMES_LOWER.get(String(text).trim().toLowerCase());
   if (!name) return null;
   return { name, zone: TZ_DATA.aliases[name] || name };
+}
+
+// A name the card knows but the page does not offer (TZ_DATA.legacy: the old POSIX-style names, such as
+// PST8PDT), as findZone() gives a zone; null for any other text.
+function legacyZone(name) {
+  return Object.hasOwn(TZ_DATA.legacy, name) ? { name, zone: TZ_DATA.legacy[name] } : null;
 }
 
 function countryName(code) {
@@ -1726,7 +852,7 @@ const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "pair older",
 function allowedCommand(command) {
   if (FIXED_COMMANDS.has(command)) return true;
   const match = /^tz ([A-Za-z0-9/_+-]{1,40})$/.exec(command);
-  return match !== null && findZone(match[1]) !== null && findZone(match[1]).name === match[1];
+  return match !== null && findZone(match[1])?.name === match[1];
 }
 
 function tzCommand(text) {
@@ -1740,13 +866,17 @@ function parseVersion(line) {
   return match ? match[1] : null;
 }
 
-function isTzAnswer(line) {
-  return line.startsWith("tz: ") || line.startsWith("command: ");
-}
+// has(prefix) for these lines: whether one of them starts with prefix.
+const lineFinder = (lines) => (prefix) => lines.some((line) => line.startsWith(prefix));
+
+// Which lines answer a command: its own (prefix) and the console's ("command: unknown ...").
+const answerOf = (prefix) => (line) => line.startsWith(prefix) || line.startsWith("command: ");
+
+const isTzAnswer = answerOf("tz: ");
 
 // What the card answered to 'tz' or 'tz NAME' (src/main.cpp setTimeZone(), tz_store::logState()).
 function classifyTzAnswer(lines) {
-  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
+  const has = lineFinder(lines);
   if (lines.length === 0) return "none";
   if (has("command: unknown")) return "no-tz"; // firmware before 1.2.0
   if (has("command: too long")) return "unknown";
@@ -1757,32 +887,52 @@ function classifyTzAnswer(lines) {
   return "state";
 }
 
-function isClockAnswer(line) {
-  return line.startsWith("clock: ") || line.startsWith("command: ");
-}
-
-// What the card answered to 'clock on' or 'clock off' (src/main.cpp setClock()).
-function classifyClockAnswer(lines) {
-  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
-  if (lines.length === 0) return "none";
-  if (has("command: unknown")) return "no-clock";
-  if (has("clock: on saved") || has("clock: off saved")) return "saved";
-  if (has("clock: already")) return "unchanged";
-  if (has("clock: could not write")) return "not-saved";
-  return "state";
-}
-
-// [text, kind] after switching the camera's clock on or off.
-function clockAnswerText(on, answer) {
+// [text, kind] after saving the time zone `name`; for any other answer the page shows the card's lines.
+function tzAnswerText(name, answer) {
   switch (answer) {
-    case "saved": return on ?
-      ["Saved. The camera gets the time at the next connection: switch the camera off and on.", "good"] :
-      ["Saved. It counts from the next connection.", "good"];
-    case "unchanged": return ["The card already had this setting.", "good"];
-    case "not-saved": return ["The card could not save the setting. Try again.", "bad"];
-    default: return ["No answer from the card. Try again.", "bad"];
+    case "saved": return [`Saved: ${name}.`, "good"];
+    case "unchanged": return [`${name} was already set on the card.`, "good"];
+    case "unknown": return ["The card does not know this time zone. Is its firmware older than this page?", "bad"];
+    case "not-saved": return ["The card could not save the time zone. Try again.", "bad"];
+    case "none": return [NO_ANSWER_TEXT, "bad"];
+    default: return ["The card answered:", ""];
   }
 }
+
+// A setting the card saves with one command, '<name> <value>': 'clock on|off', 'sound loud|quiet|off',
+// 'updates normal|frequent' (src/main.cpp setClock(), setSound(), setUpdates()). isAnswer: the lines of
+// its answer; classify(lines): what the card answered; text(value, answer): [text, kind] for the page,
+// with savedText(value) when it was saved.
+function settingAnswers(name, values, savedText) {
+  return {
+    name,
+    isAnswer: answerOf(`${name}: `),
+    classify(lines) {
+      const has = lineFinder(lines);
+      if (lines.length === 0) return "none";
+      if (has("command: unknown")) return `no-${name}`;
+      if (values.some((value) => has(`${name}: ${value} saved`))) return "saved";
+      if (has(`${name}: already`)) return "unchanged";
+      if (has(`${name}: could not write`)) return "not-saved";
+      return "state";
+    },
+    text(value, answer) {
+      switch (answer) {
+        case "saved": return [savedText(value), "good"];
+        case "unchanged": return ["The card already had this setting.", "good"];
+        case "not-saved": return ["The card could not save the setting. Try again.", "bad"];
+        default: return [NO_ANSWER_TEXT, "bad"];
+      }
+    },
+  };
+}
+
+const CLOCK_ANSWERS = settingAnswers("clock", ["on", "off"], (value) => (value === "on"
+  ? "Saved. The camera gets the time at the next connection: switch the camera off and on."
+  : "Saved. It counts from the next connection."));
+const SOUND_ANSWERS = settingAnswers("sound", SOUND_SETTINGS, () => "Saved.");
+const UPDATES_ANSWERS = settingAnswers("updates", UPDATES_SETTINGS,
+  () => "Saved. The card uses it from the next position it sends.");
 
 // What the setting means. version: gpxcam that cannot change it (before 1.3.0), or null.
 function clockNoteText(clockOn, version = null) {
@@ -1790,31 +940,6 @@ function clockNoteText(clockOn, version = null) {
   if (clockOn) return "Each time it connects, the card sets the camera's clock from its GPS, in the time zone below.";
   return "The card leaves the camera's clock alone: set the time and the time zone in the camera's menu. " +
     "Pairing still sets the clock once.";
-}
-
-function isSoundAnswer(line) {
-  return line.startsWith("sound: ") || line.startsWith("command: ");
-}
-
-// What the card answered to 'sound loud|quiet|off' (src/main.cpp setSound()).
-function classifySoundAnswer(lines) {
-  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
-  if (lines.length === 0) return "none";
-  if (has("command: unknown")) return "no-sound";
-  if (SOUND_SETTINGS.some((setting) => has(`sound: ${setting} saved`))) return "saved";
-  if (has("sound: already")) return "unchanged";
-  if (has("sound: could not write")) return "not-saved";
-  return "state";
-}
-
-// [text, kind] after choosing how loud the card is.
-function soundAnswerText(answer) {
-  switch (answer) {
-    case "saved": return ["Saved.", "good"];
-    case "unchanged": return ["The card already had this setting.", "good"];
-    case "not-saved": return ["The card could not save the setting. Try again.", "bad"];
-    default: return ["No answer from the card. Try again.", "bad"];
-  }
 }
 
 // What a sound setting means (src/sound_rules.h); null: none shown yet.
@@ -1831,31 +956,6 @@ function soundText(setting) {
 function soundNoteText(version = null) {
   if (version) return `gpxcam ${version} always plays its sounds loud. Choosing needs version 1.3.0.`;
   return "Choosing Loud or Quiet plays two short beeps at that volume.";
-}
-
-function isUpdatesAnswer(line) {
-  return line.startsWith("updates: ") || line.startsWith("command: ");
-}
-
-// What the card answered to 'updates normal|frequent' (src/main.cpp setUpdates()).
-function classifyUpdatesAnswer(lines) {
-  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
-  if (lines.length === 0) return "none";
-  if (has("command: unknown")) return "no-updates";
-  if (UPDATES_SETTINGS.some((setting) => has(`updates: ${setting} saved`))) return "saved";
-  if (has("updates: already")) return "unchanged";
-  if (has("updates: could not write")) return "not-saved";
-  return "state";
-}
-
-// [text, kind] after choosing how often the card sends the position.
-function updatesAnswerText(answer) {
-  switch (answer) {
-    case "saved": return ["Saved. The card uses it from the next position it sends.", "good"];
-    case "unchanged": return ["The card already had this setting.", "good"];
-    case "not-saved": return ["The card could not save the setting. Try again.", "bad"];
-    default: return ["No answer from the card. Try again.", "bad"];
-  }
 }
 
 // What a setting means (src/link_policy.h NORMAL_TIMING, FREQUENT_TIMING); null: none shown yet.
@@ -1898,17 +998,15 @@ function storageNoteText(state) {
     "the saved settings; the README says how.";
 }
 
-function isPairAnswer(line) {
-  return line.startsWith("pair: ") || line.startsWith("command: ");
-}
+const isPairAnswer = answerOf("pair: ");
 
 // What the card answered to 'unpair' (src/main.cpp forgetCamera()).
 function classifyUnpairAnswer(lines) {
-  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
+  const has = lineFinder(lines);
   if (lines.length === 0) return "none";
   if (has("pair: camera forgotten")) return "forgotten";
   if (has("pair: no camera paired")) return "not-paired";
-  if (has("pair: not possible - the file system is damaged")) return "storage-damaged"; // src/main.cpp, 1.4.0
+  if (has("pair: not possible - the file system is damaged")) return "storage-damaged"; // src/main.cpp
   return "failed"; // "could not write the pairing file", "not available"
 }
 
@@ -1918,7 +1016,7 @@ function unpairAnswerText(answer) {
     case "not-paired": return ["No camera was paired.", "good"];
     case "failed": return ["The card could not forget the camera. Try again.", "bad"];
     case "storage-damaged": return [STORAGE_PAIRING_TEXT, "bad"];
-    default: return ["No answer from the card. Try again.", "bad"];
+    default: return [NO_ANSWER_TEXT, "bad"];
   }
 }
 
@@ -1934,11 +1032,16 @@ class LineSplitter {
   }
 }
 
-// Why the card did not answer 'v'. A read that fails at once while the card is plugged in comes
-// from Linux: a program using pyserial (a serial monitor such as pio device monitor) leaves the
-// port with VMIN=0, which the kernel keeps for the next program, and Chromium then takes the
-// first empty read for a lost device. Plugging the card in again resets the port's settings.
+// Why the card did not answer 'v'. In the browser, a read that fails at once while the card is plugged
+// in comes from Linux: a program using pyserial (a serial monitor such as pio device monitor) leaves the
+// port with VMIN=0, which the kernel keeps for the next program, and Chromium then takes the first empty
+// read for a lost device. Plugging the card in again resets the port's settings. The app opens the port
+// raw (app/src-tauri/src/card.rs), so its read errors get only the plain advice.
 function noAnswerText(readError) {
+  if (readError instanceof AppReadError) {
+    return `Reading from the card failed (${readErrorText(readError)}). Unplug the card, plug it in again and ` +
+      "click Connect.";
+  }
   if (readError) {
     return `Reading from the card failed (${readError.message}). On Linux this happens after another serial ` +
       "program, such as a serial monitor, used the card: unplug the card, plug it in again and click Connect.";
@@ -1953,6 +1056,13 @@ function tzProblemText(version, answer) {
   return null;
 }
 
+// What stops the page after the card's answer to 'status' when connecting (Card.status() kind), or null.
+function statusProblemText(kind) {
+  if (kind === "none") return "No answer from the card to 'status'. Unplug it, plug it in again and retry.";
+  if (kind === "newer") return "The card's gpxcam is newer than this page. Reload the page.";
+  return null;
+}
+
 // ---- The card's state (pure functions) ----
 
 // The keys of the answer to 'status' in format 1 (src/status_text.h). Not among them, as older gpxcam does
@@ -1960,9 +1070,7 @@ function tzProblemText(version, answer) {
 const STATUS_KEYS = ["format", "fw", "git", "battery_mv", "battery_pct", "charger", "gps", "gps_fix", "gps_sat",
   "paired", "link", "pair", "pair_attempt", "pair_result", "clock", "tz", "sound"];
 
-function isStatusAnswer(line) {
-  return line.startsWith("status: ") || line.startsWith("command: ");
-}
+const isStatusAnswer = answerOf("status: ");
 
 function statusAnswerDone(lines) {
   const last = lines[lines.length - 1];
@@ -2013,6 +1121,10 @@ function parseStatus(lines) {
 }
 
 // ---- The card's state as tiles: [level, word, detail] ----
+
+function satellitesText(count) {
+  return count === 1 ? "1 satellite" : `${count} satellites`;
+}
 // level: good; warn (under way, or worth a look); bad (needs you); idle (nothing to do now). The word always
 // says the state: the colour of the dot only repeats it.
 
@@ -2038,7 +1150,7 @@ function cameraTile(state) {
 
 function gpsTile(state) {
   if (!state.gpsOn) return ["idle", "Off", "Saves power"];
-  const satellites = state.gpsSatellites === 1 ? "1 satellite" : `${state.gpsSatellites} satellites`;
+  const satellites = satellitesText(state.gpsSatellites);
   if (state.gpsFix) return ["good", "Fix", satellites];
   return ["warn", "No fix yet", `${satellites}; outdoors 1\u20133 min`];
 }
@@ -2064,23 +1176,32 @@ function batteryTile(state) {
 function zoneTile(state) {
   const name = state.timeZone.replaceAll("/", "/\u200b");
   if (!state.clockOn) return ["idle", name, "Clock off: set it on the camera"];
-  const found = findZone(state.timeZone);
+  const found = findZone(state.timeZone) || legacyZone(state.timeZone);
   const offset = found ? utcOffsetText(found.zone) : "";
   return ["good", name, offset ? `Clock on \u00b7 now ${offset}` : "Clock on \u00b7 a rule given directly"];
 }
 
-// What the card does while it pairs ('status': pair, pair_attempt); inApp: the page runs in the
-// desktop app, which can do the Wi-Fi step of an older camera.
-function pairingText(state, inApp = false) {
-  const satellites = state.gpsSatellites === 1 ? "1 satellite" : `${state.gpsSatellites} satellites`;
+// What the card does while it pairs ('status': pair, pair_attempt). inApp: the page runs in the desktop
+// app, which can do the Wi-Fi step of an older camera. older: the older-camera wizard runs ('pair older'),
+// so at the Wi-Fi step the card is introducing itself; cameraSeen: the card saw the camera, but not in
+// pairing mode.
+function pairingText(state, { inApp = false, older = false, cameraSeen = false } = {}) {
+  const satellites = satellitesText(state.gpsSatellites);
   switch (state.pair) {
     case "waiting_gps": return `Waiting for GPS time, up to ${PAIR_FIX_WAIT_TEXT} (${satellites} so far). Do not ` +
       "start pairing on the camera yet...";
-    case "searching": return state.pairAttempt === 0 ? NOW_START_TEXT :
-      `Looking for the camera again (attempt ${state.pairAttempt + 1} of ${PAIR_ATTEMPTS})...`;
-    case "connecting": return `Talking to the camera (attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS})...`;
-    case "waiting_wifi": return inApp ? WAITING_WIFI_TEXT : "This is an older camera: it needs a one-time step " +
-      "over the camera's Wi-Fi network, which only the gpxcam card app can do. Cancel, then pair it in the app.";
+    case "searching":
+      if (cameraSeen) {
+        return "Now start Bluetooth pairing on the camera - the card sees it, but not in pairing mode yet " +
+          `(Bluetooth pairing, not Wi-Fi). The card looks for it for up to ${PAIR_SEARCH_TEXT}.`;
+      }
+      return state.pairAttempt === 0 ? NOW_START_TEXT :
+        `Looking for the camera again (attempt ${state.pairAttempt + 1} of ${PAIR_ATTEMPTS})...`;
+    case "connecting": return `Connecting to the camera (attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS})...`;
+    case "waiting_wifi":
+      if (older) return "Introducing the card to the camera...";
+      return inApp ? WAITING_WIFI_TEXT : "This is an older camera: it needs a one-time step over the camera's " +
+        "Wi-Fi network, which only the gpxcam card app can do. Cancel, then pair it in the app.";
     case "pausing": return `Attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS} did not work; trying again in a moment...`;
     default: return "Pairing...";
   }
@@ -2101,11 +1222,10 @@ function pairingKind(state) {
 
 // [text, kind] for how a pairing ended ('status': pair_result), or null for none. button: what
 // starts it again (Pair, or Start of older-camera pairing); gpsReady: the card keeps its GPS on
-// for another try (gpxcam 1.5.0-beta.2).
+// for another try.
 function pairResultText(result, button = "Pair", gpsReady = false) {
-  const again = `Click ${button} again, and start pairing on the camera only when this says "Now start ` +
-    "Bluetooth pairing on the camera\"." + (gpsReady ? " The GPS stays ready for 10 minutes, so the card starts " +
-    "looking at once." : "");
+  const again = `Click ${button} again and start pairing on the camera only at "Now start Bluetooth pairing".` +
+    (gpsReady ? " The GPS stays on for 10 minutes." : "");
   switch (result) {
     case "none": return null;
     case "paired": return ["Paired. From now on the card connects to the camera by itself.", "good"];
@@ -2129,34 +1249,20 @@ function parseOlderRegister(line) {
   return match ? { identity: match[1], name: match[2] } : null;
 }
 
-// How the app's Wi-Fi registration (register_older, app/src-tauri/src/older_wifi.rs) ended.
+// How the app's Wi-Fi registration (register_older, app/src-tauri/src/older_wifi.rs) ended: its outcome,
+// or the word it failed with (app/src-tauri/src/lib.rs Problem).
 function olderOutcomeText(outcome) {
   switch (outcome) {
-    case "accepted": return ["The camera accepted the card. Older pairing done.", "good"];
+    case "accepted": return ["The camera accepted the card. Pairing done.", "good"];
     case "not-confirmed": return ["The camera did not confirm. On the camera, allow the connection, then try the " +
       "Wi-Fi step again.", "bad"];
     case "not-on-network": return ["Could not reach the camera. Join the camera's Wi-Fi network on this computer, " +
       "then try the Wi-Fi step again.", "bad"];
     case "cancelled": return ["Cancelled.", ""];
+    case "bad-identity":
+    case "bad-name": return ["The app cannot register the identity this card gave. Install the newest gpxcam card " +
+      "app and gpxcam, then start again.", "bad"];
     default: return ["The Wi-Fi step failed. Try it again, or cancel.", "bad"];
-  }
-}
-
-// While 'pair older' works toward the Wi-Fi step, the card's pairing phase (status 'pair=...') as
-// wizard text, or null for a phase with nothing to add. cameraSeen: the card saw the camera, but not
-// in pairing mode. While the card looks for the camera, it is the user's turn: the camera stays in
-// pairing mode only about 30 seconds, so it must be started then, not before (shown as 'act').
-function olderStartProgress(pairPhase, cameraSeen = false) {
-  switch (pairPhase) {
-    case "waiting_gps": return "Waiting for a GPS fix - put the card outdoors or by a window; this can take a few " +
-      "minutes after a fresh start. Do not start pairing on the camera yet...";
-    case "searching": return cameraSeen
-      ? "Now start Bluetooth pairing on the camera - the card sees it, but not in pairing mode yet (Bluetooth " +
-        `pairing, not Wi-Fi). The card looks for it for up to ${PAIR_SEARCH_TEXT}.`
-      : NOW_START_TEXT;
-    case "connecting": return "Connecting to the camera...";
-    case "waiting_wifi": return "Introducing the card to the camera...";
-    default: return null;
   }
 }
 
@@ -2207,10 +1313,12 @@ function scanEnded(line) {
 
 // How a 'diag scan' run ended, from its lines: [text, kind].
 function scanResultText(lines, version) {
-  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
-  if (has("command: unknown")) return [`gpxcam ${version} cannot scan; the scan came with 1.5.0-beta.1.`, "bad"];
+  const has = lineFinder(lines);
+  if (has("command: unknown")) return [`gpxcam ${version} cannot scan. Scanning needs version 1.5.0.`, "bad"];
   if (has("diag scan: not possible")) return ["The card's Bluetooth did not start, so it cannot scan.", "bad"];
-  if (has("diag scan: already running")) return ["A scan is already running on the card. Try again in 30 s.", "bad"];
+  if (has("diag scan: already running")) {
+    return [`A scan is already running on the card. Try again in ${SCAN_RUN_MS / 1000} s.`, "bad"];
+  }
   if (!has("diag scan: done")) return ["The scan did not end in time. What came so far is below.", "bad"];
   return ["Scan done.", "good"];
 }
@@ -2220,7 +1328,7 @@ function scanResultText(lines, version) {
 // docs/PROTOCOL.md), camera serial numbers (10 hex digits, and the bytes after "ff 3a 00 <state>" in
 // a 'diag scan' line) their last 2, the camera's Wi-Fi name nothing. The card logs no position.
 const MASK_RULES = [
-  [/(register identity 4D454930-0100-1000-8001-)[0-9A-Fa-f]{8}([0-9A-Fa-f]{4})/g, "$1********$2"],
+  [new RegExp(`(register identity ${OLDER_IDENTITY_PREFIX})[0-9A-Fa-f]{8}([0-9A-Fa-f]{4})`, "g"), "$1********$2"],
   [/\b(?:[0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})\b/g, "**:**:**:**:**:$1"],
   [/\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{8}([0-9A-Fa-f]{4})\b/g,
     "********-****-****-****-********$1"],
@@ -2333,20 +1441,20 @@ class Card {
   }
 
   async version() {
-    const lines = await this.ask("v", (line) => parseVersion(line) !== null, VERSION_TIMEOUT_MS, () => true);
+    const lines = await this.ask("v", (line) => parseVersion(line) !== null, ANSWER_TIMEOUT_MS, () => true);
     return lines.length ? parseVersion(lines[0]) : null;
   }
 
   async status() {
-    return parseStatus(await this.ask("status", isStatusAnswer, STATUS_TIMEOUT_MS, statusAnswerDone));
+    return parseStatus(await this.ask("status", isStatusAnswer, ANSWER_TIMEOUT_MS, statusAnswerDone));
   }
 
   pair() {
-    return this.ask("pair", isPairAnswer, PAIR_TIMEOUT_MS, () => true);
+    return this.ask("pair", isPairAnswer, ANSWER_TIMEOUT_MS, () => true);
   }
 
   cancelPairing() {
-    return this.ask("pair off", isPairAnswer, PAIR_TIMEOUT_MS, () => true);
+    return this.ask("pair off", isPairAnswer, ANSWER_TIMEOUT_MS, () => true);
   }
 
   unpair() {
@@ -2354,17 +1462,17 @@ class Card {
   }
 
   log() {
-    return this.ask("log", isLogLine, LOG_TIMEOUT_MS);
+    return this.ask("log", isLogLine, ANSWER_TIMEOUT_MS);
   }
 
   // The card's UUID (parseCardId()) from 'p', or null.
   async cardId() {
-    const lines = await this.ask("p", (line) => parseCardId(line) !== null, CARD_ID_TIMEOUT_MS, () => true);
+    const lines = await this.ask("p", (line) => parseCardId(line) !== null, ANSWER_TIMEOUT_MS, () => true);
     return lines.length ? parseCardId(lines[0]) : null;
   }
 
   prepareGps() {
-    return this.ask("pair prepare", isPairAnswer, PAIR_TIMEOUT_MS, () => true);
+    return this.ask("pair prepare", isPairAnswer, ANSWER_TIMEOUT_MS, () => true);
   }
 
   // Calls onLine for every line the card sends, until the returned stop() is called. Unlike ask(),
@@ -2376,16 +1484,9 @@ class Card {
     return () => this.waiters.delete(onLine);
   }
 
-  clock(on) {
-    return this.ask(on ? "clock on" : "clock off", isClockAnswer, SAVE_TIMEOUT_MS);
-  }
-
-  sound(setting) {
-    return this.ask(`sound ${setting}`, isSoundAnswer, SAVE_TIMEOUT_MS);
-  }
-
-  updates(setting) {
-    return this.ask(`updates ${setting}`, isUpdatesAnswer, SAVE_TIMEOUT_MS);
+  // One of the settings saved with one command: answers is CLOCK_ANSWERS, SOUND_ANSWERS or UPDATES_ANSWERS.
+  save(answers, value) {
+    return this.ask(`${answers.name} ${value}`, answers.isAnswer, SAVE_TIMEOUT_MS);
   }
 
   timeZone(name) {
@@ -2453,7 +1554,7 @@ class AppPort {
     const channel = new this.core.Channel();
     channel.onmessage = (event) => {
       if (event.kind === "line") settle(() => lines.enqueue(encoder.encode(event.text + "\n")));
-      else if (event.kind === "closed" && event.error) settle(() => lines.error(new Error(event.error)));
+      else if (event.kind === "closed" && event.error) settle(() => lines.error(new AppReadError(event.error)));
       else if (event.kind === "closed") settle(() => lines.close());
     };
     await this.core.invoke("open_card", { path: this.path, onEvent: channel });
@@ -2469,11 +1570,24 @@ class AppPort {
   }
 }
 
+// Why the app's reading of the card ended, with the app's word as its message (app/src-tauri/src/lib.rs
+// Problem): port-closed, or port-failed when the card was unplugged.
+class AppReadError extends Error {}
+
+// Why reading from the card ended, for the page's messages: the app's word as text, or the browser's
+// own message (Web Serial).
+function readErrorText(error) {
+  if (!(error instanceof AppReadError)) return error.message;
+  if (error.message === "port-closed") return "the card's port closed";
+  if (error.message === "port-failed") return "the card's port failed";
+  return "the connection failed";
+}
+
 // Thrown when no card is plugged in: the app has no chooser that would show an empty list.
 class NoCardError extends Error {}
 
 // The app lists the cards itself (USB 2886:8057): one is taken at once; with more, choose(paths)
-// lets the user pick one and gives its path, or null.
+// lets the user pick one and gives its path, or null. It also does an older camera's Wi-Fi step.
 function appTransport(windowObject) {
   const core = windowObject.__TAURI__ && windowObject.__TAURI__.core;
   if (!core) return null;
@@ -2488,6 +1602,15 @@ function appTransport(windowObject) {
     },
     // An unplugged card ends the app's channel with an error, and with it the reading.
     onDisconnect: () => {},
+    // Registers the identity and name over the camera's Wi-Fi (app/src-tauri/src/older_wifi.rs); onStage
+    // gets each stage. Gives the outcome, or fails with the word of the app's problem.
+    registerOlder: (identity, name, onStage) => {
+      const channel = new core.Channel();
+      channel.onmessage = (event) => onStage(event.kind);
+      return core.invoke("register_older", { identity, name, onEvent: channel });
+    },
+    // Stops a running registerOlder(), which then gives "cancelled".
+    cancelOlder: () => core.invoke("cancel_older").catch(() => {}),
   };
 }
 
@@ -2539,10 +1662,7 @@ function startPage() {
     unpairYes: element("unpair-yes"),
     unpairNo: element("unpair-no"),
     olderStart: element("older-start"),
-    olderCancel: element("older-cancel"),
-    olderResume: element("older-resume"),
     pairResume: element("pair-resume"),
-    olderProgress: element("older-progress"),
     clock: element("clock"),
     clockNote: element("clock-note"),
     clockAnswer: element("clock-answer"),
@@ -2590,7 +1710,9 @@ function startPage() {
   let olderCancelled = false; // the user pressed Cancel during older-camera pairing
   let olderRunning = false; // the wizard or a resumed Wi-Fi step is under way
   let olderRetry = false; // the last Wi-Fi step failed: Resume reads "Try the Wi-Fi step again"
-  let wifiText = null; // [text, kind] of the Wi-Fi step, shown in both pairing sections until the pairing ends
+  let wifiText = null; // [text, kind] of the Wi-Fi step, shown until the pairing ends
+  let olderCameraSeen = false; // in the wizard, the card saw the camera, but not in Bluetooth pairing mode
+  let pairButton = "Pair"; // what started the pairing (Pair, or the wizard's Start): its result names it
   let wifiAccepted = false; // the camera accepted the card; the card finishes the pairing by itself
   const transport = chooseTransport(navigator, window);
   const inApp = transport !== null && transport.name === "app"; // only the app can do the Wi-Fi step
@@ -2617,31 +1739,32 @@ function startPage() {
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  const pairingUnderWay = () => lastState !== null && lastState.pair !== "idle";
+  const storageDamaged = () => lastState !== null && lastState.storage === "damaged"; // it refuses to pair
+
   const refreshButtons = () => {
     ui.connect.disabled = card !== null || busy || transport === null;
-    ui.disconnect.disabled = card === null || busy;
-    ui.save.disabled = card === null || busy || selected === null;
+    const locked = card === null || busy; // no card, or the page waits for its answer
+    ui.disconnect.disabled = locked;
+    ui.save.disabled = locked || selected === null;
     ui.refresh.disabled = card === null || refreshing;
-    ui.clock.disabled = card === null || busy || clockOn === null;
-    for (const choice of soundChoices.values()) choice.disabled = card === null || busy || soundSetting === null;
-    for (const choice of updatesChoices.values()) choice.disabled = card === null || busy || updatesSetting === null;
-    const pairing = lastState !== null && lastState.pair !== "idle";
-    const storageDamaged = lastState !== null && lastState.storage === "damaged"; // the card would refuse
-    ui.pair.disabled = card === null || busy || lastState === null || pairing || storageDamaged;
-    ui.olderStart.disabled = card === null || busy || lastState === null || pairing || storageDamaged;
-    ui.olderCancel.disabled = card === null;
-    ui.olderResume.disabled = card === null || busy;
-    ui.pairResume.disabled = card === null || busy;
+    ui.clock.disabled = locked || clockOn === null;
+    for (const choice of soundChoices.values()) choice.disabled = locked || soundSetting === null;
+    for (const choice of updatesChoices.values()) choice.disabled = locked || updatesSetting === null;
+    const canPair = !locked && lastState !== null && !pairingUnderWay() && !storageDamaged();
+    ui.pair.disabled = !canPair;
+    ui.olderStart.disabled = !canPair;
+    ui.pairResume.disabled = locked;
     ui.pairCancel.disabled = card === null || (busy && !olderRunning); // it also stops a Wi-Fi step
-    for (const button of [ui.unpair, ui.unpairYes]) button.disabled = card === null || busy || storageDamaged;
-    ui.copyLog.disabled = card === null || busy;
-    ui.scan.disabled = card === null || busy;
+    for (const button of [ui.unpair, ui.unpairYes]) button.disabled = locked || storageDamaged();
+    ui.copyLog.disabled = locked;
+    ui.scan.disabled = locked;
     ui.diagCopy.disabled = ui.diagText.value === ""; // what was collected stays after disconnecting
   };
 
   // The camera section from the card's last state: what to do, the stage or the result.
   const showPairing = () => {
-    const pairing = lastState !== null && lastState.pair !== "idle";
+    const pairing = pairingUnderWay();
     const paired = lastState !== null && lastState.paired;
     for (const part of [ui.cameraNote, ui.pairHelp, ui.pairRow]) part.classList.toggle("hidden", oldVersion !== null);
     if (paired !== shownPaired) {
@@ -2650,73 +1773,55 @@ function startPage() {
     }
     ui.cameraOld.classList.toggle("hidden", oldVersion === null);
     if (card === null) ui.cameraNote.textContent = "Connect the card to pair it with your camera.";
-    else if (lastState !== null && lastState.storage === "damaged") ui.cameraNote.textContent = STORAGE_PAIRING_TEXT;
+    else if (storageDamaged()) ui.cameraNote.textContent = STORAGE_PAIRING_TEXT;
     else ui.cameraNote.textContent = paired ? "The card is paired with a camera. Pairing again replaces it." :
       "The card is not paired with a camera yet.";
     ui.pair.textContent = paired ? "Pair again" : "Pair";
     ui.pair.classList.toggle("secondary", paired); // pairing again ends the link to the paired camera
-    ui.pairCancel.classList.toggle("hidden", !pairing);
+    ui.pairCancel.classList.toggle("hidden", !pairing && !olderRunning);
     ui.unpair.classList.toggle("hidden", !paired || pairing);
     if (!paired || pairing) ui.unpairConfirm.classList.add("hidden");
     const atWifiStep = pairing && lastState.pair === "waiting_wifi";
     ui.pairResume.classList.toggle("hidden", !inApp || !atWifiStep || olderRunning || wifiAccepted);
     ui.pairResume.textContent = olderRetry ? RETRY_WIFI_TEXT : "Resume";
+    const stage = { inApp, older: olderRunning, cameraSeen: olderRunning && olderCameraSeen };
     const [text, kind] = pairing && wifiText ? wifiText :
-      pairing ? [pairingText(lastState, inApp), pairingKind(lastState)] : pairMessage || ["", ""];
+      pairing ? [pairingText(lastState, stage), pairingKind(lastState)] : pairMessage || ["", ""];
     setStatus(ui.pairProgress, text, kind);
     refreshButtons();
-    showOlder();
   };
 
-  // The Wi-Fi step's progress goes to both sections: it may have started from either.
+  // The Wi-Fi step's progress, shown until the pairing ends; when the card has no result of its own (it
+  // never reported the pairing), it stays after.
   const showWifi = (text, kind) => {
     wifiText = [text, kind];
+    pairMessage = wifiText;
     setStatus(ui.pairProgress, text, kind);
-    setStatus(ui.olderProgress, text, kind);
   };
 
   const RETRY_WIFI_TEXT = "Try the Wi-Fi step again";
 
-  // The older-camera wizard's buttons from the card's state while no run of it is under way: a pairing
-  // left from before (the USB cable came off, the app was closed) can be cancelled, and at the Wi-Fi
-  // step resumed; after a failed Wi-Fi step the same button tries it again. Only the app shows this.
-  const showOlder = () => {
-    if (olderRunning) return;
-    const phase = card !== null && lastState !== null ? lastState.pair : "idle";
-    const pairing = phase !== "idle";
-    if (olderRetry && phase !== "waiting_wifi") { // its 300 s ran out, or its pairing was cancelled
-      olderRetry = false;
-      setStatus(ui.olderProgress, "The card no longer waits for the Wi-Fi step. Start again.", "bad");
-    }
-    ui.olderStart.classList.toggle("hidden", pairing);
-    ui.olderResume.classList.toggle("hidden", phase !== "waiting_wifi" || wifiAccepted);
-    ui.olderResume.textContent = olderRetry ? RETRY_WIFI_TEXT : "Resume";
-    ui.olderCancel.classList.toggle("hidden", !pairing);
-    if (phase === "waiting_wifi" && wifiText) {
-      setStatus(ui.olderProgress, ...wifiText);
-    } else if (phase === "waiting_wifi") {
-      setStatus(ui.olderProgress, WAITING_WIFI_TEXT, "");
-    } else if (pairing && phase !== "waiting_wifi") {
-      setStatus(ui.olderProgress, olderStartProgress(phase) || "A pairing is under way.",
-        phase === "searching" ? "busy act" : "busy");
-    }
-  };
-
   // Follows a pairing, also one started with the card's button, to its result.
   const followPairing = (state) => {
     if (state.pair !== "idle") {
+      if (!watchingPairing && !olderRunning) pairButton = "Pair"; // Pair, or one the page did not start
       watchingPairing = true;
       pairMessage = null;
     } else if (watchingPairing) {
       watchingPairing = false;
-      pairMessage = pairResultText(state.pairResult, "Pair", state.gpsHold !== null);
+      // After a failed Wi-Fi step the card waits up to 300 s for another; then it gives up. Without a
+      // result of the card's own, what the page said last stays (the Wi-Fi step's outcome).
+      pairMessage = olderRetry && state.pairResult !== "paired"
+        ? ["The card no longer waits for the Wi-Fi step. Start again.", "bad"]
+        : pairResultText(state.pairResult, pairButton, state.gpsHold !== null) ?? pairMessage;
+      olderRetry = false;
     }
   };
 
   // The switch as the card has it; the time zone can be chosen unless the clock is off.
   const showClock = () => {
     ui.clock.checked = clockOn === true || oldVersion !== null; // gpxcam 1.2 always sets it
-    ui.clockNote.textContent = card === null ? "Connect the card to change this setting." :
+    ui.clockNote.textContent = card === null ? CONNECT_TO_CHANGE_TEXT :
       clockNoteText(clockOn !== false, oldVersion);
     ui.zones.disabled = clockOn === false;
     refreshButtons();
@@ -2727,7 +1832,7 @@ function startPage() {
     const shown = oldVersion !== null ? "loud" : soundSetting; // gpxcam 1.2 always plays loud
     for (const [setting, choice] of soundChoices) choice.checked = setting === shown;
     ui.soundSays.textContent = soundText(shown);
-    ui.soundNote.textContent = card === null ? "Connect the card to change this setting." : soundNoteText(oldVersion);
+    ui.soundNote.textContent = card === null ? CONNECT_TO_CHANGE_TEXT : soundNoteText(oldVersion);
     refreshButtons();
   };
 
@@ -2744,11 +1849,17 @@ function startPage() {
     const shown = old !== null ? "normal" : updatesSetting; // before 1.4.0 always normal
     for (const [setting, choice] of updatesChoices) choice.checked = setting === shown;
     ui.updatesSays.textContent = updatesText(shown);
-    ui.updatesNote.textContent = card === null ? "Connect the card to change this setting." : updatesNoteText(old);
+    ui.updatesNote.textContent = card === null ? CONNECT_TO_CHANGE_TEXT : updatesNoteText(old);
     const slow = card !== null && lastState !== null ? updatesNowText(lastState) : null;
     ui.updatesNow.textContent = slow || "";
     ui.updatesNow.classList.toggle("hidden", slow === null);
     refreshButtons();
+  };
+
+  const showSettings = () => {
+    showClock();
+    showSound();
+    showUpdates();
   };
 
   // A tile: its level as a class (the colour of the dot), the word and the detail.
@@ -2783,9 +1894,7 @@ function startPage() {
       clockOn = state.clockOn;
       soundSetting = state.sound;
       updatesSetting = state.updates;
-      showClock();
-      showSound();
-      showUpdates();
+      showSettings();
     }
     showSelected();
     followPairing(state);
@@ -2806,8 +1915,7 @@ function startPage() {
     if (status.kind === "ok") showState(status.state);
     else ui.stateTime.textContent = `No answer from the card at ${new Date().toLocaleTimeString()}; trying again.`;
     refreshButtons();
-    const pairing = lastState !== null && lastState.pair !== "idle";
-    refreshTimer = setTimeout(refresh, pairing ? PAIRING_STATUS_PERIOD_MS : STATUS_PERIOD_MS);
+    refreshTimer = setTimeout(refresh, pairingUnderWay() ? PAIRING_STATUS_PERIOD_MS : STATUS_PERIOD_MS);
   };
 
   const hideCard = () => {
@@ -2888,9 +1996,7 @@ function startPage() {
     hideCard();
     showSelected();
     setStatus(ui.cardStatus, message, kind);
-    showClock();
-    showSound();
-    showUpdates();
+    showSettings();
     showPairing();
   };
 
@@ -2906,11 +2012,6 @@ function startPage() {
     ui.cardNote.classList.remove("hidden");
     oldVersion = version;
     return null;
-  };
-
-  const statusProblemText = {
-    none: "No answer from the card to 'status'. Unplug it, plug it in again and retry.",
-    newer: "The card's gpxcam is newer than this page. Reload the page.",
   };
 
   // With more than one card plugged in (only in the app): a button for each; the path chosen,
@@ -2965,7 +2066,8 @@ function startPage() {
       return;
     }
     const status = await opened.status().catch(() => ({ kind: "none" }));
-    const problem = status.kind === "no-status" ? await connectOldCard(opened, version) : statusProblemText[status.kind];
+    const problem = status.kind === "no-status" ? await connectOldCard(opened, version)
+      : statusProblemText(status.kind);
     if (problem) {
       await opened.close();
       disconnected(problem, "bad");
@@ -2974,7 +2076,7 @@ function startPage() {
     card = opened;
     ui.intro.classList.add("hidden");
     card.onClosed = () => {
-      const why = opened.readError ? ` (${opened.readError.message})` : "";
+      const why = opened.readError ? ` (${readErrorText(opened.readError)})` : "";
       if (card === opened) disconnected(`The connection to the card ended${why}.`, "bad");
     };
     busy = false;
@@ -2983,11 +2085,10 @@ function startPage() {
       showState(status.state);
       if (shouldPrepareGps(status.state)) opened.prepareGps().catch(() => {}); // the next refresh shows it
       refreshTimer = setTimeout(refresh, STATUS_PERIOD_MS);
+    } else { // a card before 1.3.0: showState() did not run
+      showSettings();
+      showPairing();
     }
-    showClock();
-    showSound();
-    showUpdates();
-    showPairing();
   };
 
   const disconnect = async () => {
@@ -2999,7 +2100,7 @@ function startPage() {
     disconnected("Not connected.");
   };
 
-  const save = async () => {
+  const saveZone = async () => {
     const name = selected.name; // the list may change while the card answers
     busy = true;
     refreshButtons();
@@ -3008,14 +2109,7 @@ function startPage() {
     ui.saveNote.classList.add("hidden");
     ui.saveLines.textContent = "";
     const lines = await card.timeZone(name).catch(() => []);
-    const messages = {
-      saved: [`Saved: ${name}.`, "good"],
-      unchanged: [`${name} was already set on the card.`, "good"],
-      unknown: ["The card does not know this time zone. Is its firmware older than this page?", "bad"],
-      "not-saved": ["The card could not save the time zone. Try again.", "bad"],
-      none: ["No answer from the card.", "bad"],
-    };
-    const [text, kind] = messages[classifyTzAnswer(lines)] || ["The card answered:", ""];
+    const [text, kind] = tzAnswerText(name, classifyTzAnswer(lines));
     setStatus(ui.saveStatus, text, kind);
     ui.saveNote.classList.toggle("hidden", kind !== "good");
     ui.saveLines.textContent = kind === "good" ? "" : lines.join("\n"); // "Saved: X." says it all
@@ -3024,53 +2118,20 @@ function startPage() {
     if (!ui.state.classList.contains("hidden")) refresh(); // the new zone in the card's state
   };
 
-  // The switch shows the card's setting again once the card has answered.
-  const setClock = async () => {
-    const asked = card;
-    if (!asked) return;
-    const on = ui.clock.checked;
-    busy = true;
-    refreshButtons();
-    setStatus(ui.clockAnswer, "Saving...", "busy");
-    const lines = await asked.clock(on).catch(() => []);
-    if (card !== asked) return;
-    const [text, kind] = clockAnswerText(on, classifyClockAnswer(lines));
-    setStatus(ui.clockAnswer, text, kind);
-    busy = false;
-    await refresh();
-    showClock();
-  };
-
-  // The choice shows the card's setting again once the card has answered.
-  const setSound = async (setting) => {
+  // Saves one of the settings with its command (answers: CLOCK_ANSWERS, SOUND_ANSWERS, UPDATES_ANSWERS); the
+  // choice shows the card's setting again once the card has answered (show).
+  const saveSetting = async (answers, value, answerElement, show) => {
     const asked = card;
     if (!asked) return;
     busy = true;
     refreshButtons();
-    setStatus(ui.soundAnswer, "Saving...", "busy");
-    const lines = await asked.sound(setting).catch(() => []);
+    setStatus(answerElement, "Saving...", "busy");
+    const lines = await asked.save(answers, value).catch(() => []);
     if (card !== asked) return;
-    const [text, kind] = soundAnswerText(classifySoundAnswer(lines));
-    setStatus(ui.soundAnswer, text, kind);
+    setStatus(answerElement, ...answers.text(value, answers.classify(lines)));
     busy = false;
     await refresh();
-    showSound();
-  };
-
-  // The choice shows the card's setting again once the card has answered.
-  const setUpdates = async (setting) => {
-    const asked = card;
-    if (!asked) return;
-    busy = true;
-    refreshButtons();
-    setStatus(ui.updatesAnswer, "Saving...", "busy");
-    const lines = await asked.updates(setting).catch(() => []);
-    if (card !== asked) return;
-    const [text, kind] = updatesAnswerText(classifyUpdatesAnswer(lines));
-    setStatus(ui.updatesAnswer, text, kind);
-    busy = false;
-    await refresh();
-    showUpdates();
+    show();
   };
 
   // Sends a pairing command and then shows the card's state; the stages and the result come
@@ -3085,7 +2146,7 @@ function startPage() {
     const lines = await send(asked).catch(() => []);
     if (card !== asked) return;
     busy = false;
-    if (lines.length === 0) pairMessage = ["No answer from the card. Try again.", "bad"];
+    if (lines.length === 0) pairMessage = [NO_ANSWER_TEXT, "bad"];
     else watchingPairing = true; // also when the card refused at once: the result says why
     await refresh();
     showPairing();
@@ -3106,28 +2167,19 @@ function startPage() {
     showPairing();
   };
 
-  // Registers the identity and name over the camera's Wi-Fi (the app's register_older); onStage gets
-  // each stage. Only in the app: window.__TAURI__.
-  const registerOlder = (identity, name, onStage) => {
-    const core = window.__TAURI__.core;
-    const channel = new core.Channel();
-    channel.onmessage = (event) => onStage(event.kind);
-    return core.invoke("register_older", { identity, name, onEvent: channel });
-  };
-
   // The one-time Wi-Fi step of an older camera (app only): the card has introduced itself and waits for
   // it; the app registers the same identity and name over the camera's own Wi-Fi. show(text, kind) puts
-  // the progress where the step was started from. The outcome of register_older (olderOutcomeText()),
-  // or null when the card went away meanwhile.
+  // the progress where the step was started from. The outcome of register_older, or the word it failed
+  // with (both for olderOutcomeText()), or null when the card went away meanwhile.
   const runWifiStep = async (asked, info, show) => {
     show("Join the camera's Wi-Fi network shown on its screen and keep this window open. On the S5 and similar " +
       "it has no password by default - just pick it from the list; if the camera asks for one, it is on the " +
       "camera's screen or in its Wi-Fi setup (Setup → Wi-Fi → Wi-Fi Setup → Wi-Fi Password).", "busy");
-    const outcome = await registerOlder(info.identity, info.name, (stage) => {
+    const outcome = await transport.registerOlder(info.identity, info.name, (stage) => {
       if (card !== asked || olderCancelled) return;
       if (stage === "on-network") show("On the camera's network - registering the card...", "busy");
       else if (stage === "registering") show("Registering - allow the connection on the camera if it asks...", "busy");
-    });
+    }).catch((problem) => String(problem));
     return card === asked ? outcome : null;
   };
 
@@ -3137,12 +2189,8 @@ function startPage() {
   const cancelOlder = () => {
     if (!busy) return;
     olderCancelled = true;
-    setStatus(ui.olderProgress, "Cancelling...", "busy");
-    try {
-      window.__TAURI__.core.invoke("cancel_older");
-    } catch (error) {
-      // the app is gone; nothing to stop
-    }
+    setStatus(ui.pairProgress, "Cancelling...", "busy");
+    transport.cancelOlder();
   };
 
   // A run of the wizard (Start, Resume) holds the buttons; when it ends they follow the card's state.
@@ -3152,11 +2200,8 @@ function startPage() {
     olderCancelled = false;
     wifiText = null;
     wifiAccepted = false;
-    ui.olderStart.classList.add("hidden");
-    ui.olderResume.classList.add("hidden");
-    ui.pairResume.classList.add("hidden");
-    ui.olderCancel.classList.remove("hidden");
-    refreshButtons();
+    pairMessage = null;
+    showPairing();
   };
 
   const olderEnded = () => {
@@ -3180,35 +2225,36 @@ function startPage() {
   const pairOlder = async () => {
     const asked = card;
     if (!asked || busy) return;
-    olderStarted();
+    pairButton = "Start";
     olderRetry = false;
-    setStatus(ui.olderProgress, "Starting - wait for \"Looking for the camera\" before you start pairing on the " +
-      "camera...", "busy");
+    olderCameraSeen = false;
+    olderStarted();
+    pairMessage = ["Starting - wait for \"Now start Bluetooth pairing on the camera\"...", "busy"];
+    showPairing();
     let info = null;
-    let notInPairingMode = false; // the card saw a camera, but not in Bluetooth pairing mode
     // The card prints one line with the identity and name when it reaches the Wi-Fi step; catch it
     // without the ask queue, so the status refresh keeps running and can show the card's progress.
     const stopWatch = asked.watchLines((line) => {
       const parsed = parseOlderRegister(line);
-      if (parsed) info = parsed;
-      else if (line.includes("not in pairing mode")) notInPairingMode = true;
+      if (parsed) {
+        info = parsed;
+      } else if (line.includes("not in pairing mode")) {
+        olderCameraSeen = true;
+        showPairing();
+      }
     });
     try {
       await asked.send("pair older");
-      // Wait as long as the card does (a GPS fix, then the camera, then the introduction), showing
-      // its phase; stop when it reaches the Wi-Fi step, gives up, is cancelled, or the time runs out.
+      // Wait as long as the card does (a GPS fix, then the camera, then the introduction); each status
+      // refresh shows its phase. Stop when it reaches the Wi-Fi step, gives up, is cancelled, or the
+      // time runs out.
       const deadline = Date.now() + OLDER_START_TIMEOUT_MS;
       let started = false;
       while (!info && !olderCancelled && Date.now() < deadline) {
         await sleep(400);
         if (card !== asked) return;
-        if (lastState && lastState.pair !== "idle") {
-          started = true;
-          const text = olderStartProgress(lastState.pair, notInPairingMode);
-          if (text) setStatus(ui.olderProgress, text, lastState.pair === "searching" ? "busy act" : "busy");
-        } else if (started) {
-          break; // the card ended its pairing before the Wi-Fi step
-        }
+        if (pairingUnderWay()) started = true;
+        else if (started) break; // the card ended its pairing before the Wi-Fi step
       }
       if (card !== asked) return;
       if (info && !olderCancelled) {
@@ -3217,18 +2263,17 @@ function startPage() {
         return;
       }
       if (olderCancelled) {
-        setStatus(ui.olderProgress, "Cancelled.", "");
+        pairMessage = ["Cancelled.", ""];
       } else {
         // The card gave up (or the wait ran out): show the card's own result.
         await refresh();
         const result = lastState ? pairResultText(lastState.pairResult, "Start", lastState.gpsHold !== null) : null;
-        setStatus(ui.olderProgress, result ? result[0] : "The card did not reach the Wi-Fi step. Try again.",
-          result ? result[1] : "bad");
+        pairMessage = result || ["The card did not reach the Wi-Fi step. Try again.", "bad"];
       }
       await asked.cancelPairing().catch(() => {}); // the card may still be waiting: stop it
       await refresh();
     } catch (error) {
-      if (card === asked) setStatus(ui.olderProgress, "Older pairing failed. Try again.", "bad");
+      if (card === asked) pairMessage = ["Pairing failed. Try again.", "bad"];
     } finally {
       stopWatch();
       olderEnded();
@@ -3255,25 +2300,17 @@ function startPage() {
         await finishWifiStep(asked, olderIdentity(cardId));
       }
     } catch (error) {
-      if (card === asked) showWifi("Older pairing failed. Try again.", "bad");
+      if (card === asked) showWifi("Pairing failed. Try again.", "bad");
     } finally {
       olderEnded();
     }
   };
 
-  // Cancel while no run of the wizard is under way: the pairing left from before stops.
-  const cancelLeftOver = async () => {
-    const asked = card;
-    if (!asked || busy) return;
-    busy = true;
-    refreshButtons();
-    setStatus(ui.olderProgress, "Cancelling...", "busy");
-    await asked.cancelPairing().catch(() => {});
-    if (card !== asked) return;
-    busy = false;
+  // Cancel while no run of the wizard is under way: the card's pairing stops, also one that waits for a
+  // failed Wi-Fi step to be tried again, and its result follows like any pairing's.
+  const cancelPairing = () => {
     olderRetry = false;
-    setStatus(ui.olderProgress, "Cancelled.", "");
-    await refresh();
+    return pairCommand((asked) => asked.cancelPairing());
   };
 
   // ---- Diagnostics: the card's log and a scan, shown and copied for a message ----
@@ -3331,7 +2368,7 @@ function startPage() {
     if (lines.length === 0) {
       busy = false;
       refreshButtons();
-      setStatus(ui.diagStatus, "No answer from the card. Try again.", "bad");
+      setStatus(ui.diagStatus, NO_ANSWER_TEXT, "bad");
       return;
     }
     await showDiagnostics(diagnosticsText("Card log", firmwareText(), lines),
@@ -3343,7 +2380,8 @@ function startPage() {
   const scanForCameras = async () => {
     const asked = card;
     if (!asked || busy) return;
-    startDiagnostics("Scanning for 30 seconds - keep the camera next to the card...");
+    startDiagnostics(`Scanning for ${SCAN_RUN_MS / 1000} seconds - keep the camera next to the card...`);
+    ui.diagProgress.max = SCAN_RUN_MS;
     ui.diagProgress.value = 0;
     ui.diagProgress.classList.remove("hidden");
     const lines = [];
@@ -3385,22 +2423,24 @@ function startPage() {
     refreshButtons();
   });
   ui.pair.addEventListener("click", () => pairCommand((asked) => asked.pair()));
-  ui.pairCancel.addEventListener("click", () => (olderRunning ? cancelOlder()
-    : pairCommand((asked) => asked.cancelPairing())));
+  ui.pairCancel.addEventListener("click", () => (olderRunning ? cancelOlder() : cancelPairing()));
   ui.pairResume.addEventListener("click", resumeOlder);
   ui.unpair.addEventListener("click", () => ui.unpairConfirm.classList.remove("hidden"));
   ui.unpairNo.addEventListener("click", () => ui.unpairConfirm.classList.add("hidden"));
   ui.unpairYes.addEventListener("click", forgetCamera);
   ui.olderStart.addEventListener("click", pairOlder);
-  ui.olderResume.addEventListener("click", resumeOlder);
-  ui.olderCancel.addEventListener("click", () => (olderRunning ? cancelOlder() : cancelLeftOver()));
   ui.connect.addEventListener("click", connect);
   ui.disconnect.addEventListener("click", disconnect);
-  ui.save.addEventListener("click", save);
+  ui.save.addEventListener("click", saveZone);
   ui.refresh.addEventListener("click", refresh);
-  ui.clock.addEventListener("change", setClock);
-  for (const [setting, choice] of soundChoices) choice.addEventListener("change", () => setSound(setting));
-  for (const [setting, choice] of updatesChoices) choice.addEventListener("change", () => setUpdates(setting));
+  ui.clock.addEventListener("change",
+    () => saveSetting(CLOCK_ANSWERS, ui.clock.checked ? "on" : "off", ui.clockAnswer, showClock));
+  for (const [setting, choice] of soundChoices) {
+    choice.addEventListener("change", () => saveSetting(SOUND_ANSWERS, setting, ui.soundAnswer, showSound));
+  }
+  for (const [setting, choice] of updatesChoices) {
+    choice.addEventListener("change", () => saveSetting(UPDATES_ANSWERS, setting, ui.updatesAnswer, showUpdates));
+  }
   ui.search.addEventListener("input", showResults);
   if (transport !== null) {
     transport.onDisconnect((port) => {
@@ -3409,9 +2449,7 @@ function startPage() {
   }
   showSelected();
   showResults();
-  showClock();
-  showSound();
-  showUpdates();
+  showSettings();
   showPairing();
 }
 
