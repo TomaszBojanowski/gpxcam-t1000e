@@ -41,15 +41,20 @@
   --field-line: #848d97; /* edges of fields and secondary buttons: 3:1 against the page (WCAG 1.4.11) */
   --radius: 12px;        /* panels */
   --radius-s: 8px;       /* buttons, fields, boxes */
-  /* One scale: spacing 4/8/12/16/24, text 13/15/18 (and 24 for the name) */
+  /* One scale: spacing 4/8/12/16/24/48, text 13/15/16/18 (and 24 for the name). Inside the controls
+     and tiles the small gaps (2, 3, 6 px) and the list's indent (22 px) are their own. */
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
   --s4: 16px;
   --s5: 24px;
+  --s6: 48px;
   --fs-small: 13px;
   --fs: 15px;
+  --fs-tile: 16px;
   --fs-h2: 18px;
+  --mono: ui-monospace, Menlo, Consolas, monospace;
+  --disabled-opacity: 0.5; /* a control that cannot be used now */
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -81,19 +86,19 @@
 html { scrollbar-gutter: stable; } /* the page does not move sideways when its scroll bar comes and goes */
 body {
   margin: 0;
-  padding: var(--s5) var(--s4) 48px;
+  padding: var(--s5) var(--s4) var(--s6);
   background: var(--bg);
   color: var(--text);
   font: var(--fs)/1.45 system-ui, -apple-system, "Segoe UI", Cantarell, sans-serif;
 }
 main { max-width: 46rem; margin: 0 auto; }
-h1 { margin: 0 0 var(--s2); font-size: 24px; line-height: 1; font-weight: 400; color: var(--muted); }
+h1 { margin: 0; font-size: 24px; line-height: 1; font-weight: 400; color: var(--muted); }
 .logo { font-weight: 800; color: var(--text); }
 .logo span { color: var(--accent); }
-h2 { font-size: var(--fs-h2); font-weight: 700; margin: var(--s5) 0 var(--s2); }
+h2 { font-size: var(--fs-h2); font-weight: 700; margin: 0 0 var(--s3); }
 p { margin: var(--s2) 0; }
 a { color: var(--link); }
-code { font: var(--fs-small) ui-monospace, Menlo, Consolas, monospace; }
+code { font: var(--fs-small) var(--mono); }
 .lead, .note, small { color: var(--muted); }
 .panel {
   background: var(--panel);
@@ -107,14 +112,13 @@ code { font: var(--fs-small) ui-monospace, Menlo, Consolas, monospace; }
 .gap-top { margin-top: var(--s3); }
 /* The name and its mark */
 .top { display: flex; align-items: center; gap: var(--s3); }
-.top h1 { margin: 0; }
 .lead { margin: var(--s1) 0 0; }
 .mark { width: 44px; height: 44px; flex: none; }
 .mark-body { fill: var(--mark); }
 .mark-lens { fill: var(--panel); }
 /* Each part of the page is a card with its heading and icon */
 .section { margin-top: var(--s4); padding: var(--s4); }
-.section > h2 { display: flex; align-items: center; gap: var(--s2); margin: 0 0 var(--s3); }
+.section > h2 { display: flex; align-items: center; gap: var(--s2); }
 .icon {
   width: 20px;
   height: 20px;
@@ -125,13 +129,15 @@ code { font: var(--fs-small) ui-monospace, Menlo, Consolas, monospace; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* A question before what cannot be undone */
-.confirm {
-  padding: var(--s3);
-  border-left: 4px solid var(--accent);
+/* A box with a coloured left edge: a question before what cannot be undone (.confirm), a note worth a
+   look (.slow-note), the user's turn while the card waits (.act), an error (p.bad) */
+.confirm, .slow-note, .act, p.bad {
+  padding: var(--s2) var(--s3);
+  border-left: 4px solid var(--edge);
   border-radius: var(--radius-s);
-  background: var(--accent-tint);
+  background: var(--edge-tint);
 }
+.confirm { --edge: var(--accent); --edge-tint: var(--accent-tint); padding: var(--s3); }
 .confirm > :first-child { margin-top: 0; }
 /* What a returning reader does not need folds away */
 details.help { margin: var(--s2) 0 var(--s3); }
@@ -205,7 +211,7 @@ input.toggle::after {
 }
 input.toggle:checked { background: var(--accent); }
 input.toggle:checked::after { transform: translateX(16px); }
-input.toggle:disabled { opacity: 0.5; cursor: default; }
+input.toggle:disabled { opacity: var(--disabled-opacity); cursor: default; }
 /* A setting as one segmented choice; the chosen one stays visible (red) also when it cannot be changed */
 .segmented {
   display: inline-flex;
@@ -229,18 +235,12 @@ input.toggle:disabled { opacity: 0.5; cursor: default; }
 .segmented label:has(input:checked) { background: var(--accent); color: var(--accent-text); }
 .segmented label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .segmented label:has(input:disabled) { color: var(--disabled-text); cursor: default; }
-.segmented label:has(input:checked:disabled) { color: var(--accent-text); opacity: 0.5; }
+.segmented label:has(input:checked:disabled) { color: var(--accent-text); opacity: var(--disabled-opacity); }
 .says { min-height: 2.9em; margin: var(--s3) 0 0; } /* two lines: the page does not move between settings */
-/* A note in the colour of a tile that is worth a look: the card sends less often than chosen for a
-   while, or cannot read what it saved */
-.slow-note {
-  margin: var(--s3) 0 0;
-  padding: var(--s2) var(--s3);
-  border-left: 3px solid var(--warn);
-  border-radius: var(--radius-s);
-  background: var(--warn-tint);
-}
-fieldset:disabled { opacity: 0.55; }
+/* In the colour of a tile that is worth a look: the card sends less often than chosen for a while, or
+   cannot read what it saved */
+.slow-note { --edge: var(--warn); --edge-tint: var(--warn-tint); margin: var(--s3) 0 0; }
+fieldset:disabled { opacity: var(--disabled-opacity); }
 ol.steps { margin: var(--s2) 0; padding-left: 22px; }
 ol.steps li { margin: var(--s1) 0; }
 /* A panel of a fixed height, about four and a half results, so what follows does not move while
@@ -270,30 +270,28 @@ ol.steps li { margin: var(--s1) 0; }
 #results .name { font-weight: 600; overflow-wrap: anywhere; }
 #results .detail { color: var(--muted); font-size: var(--fs-small); overflow-wrap: anywhere; }
 #results .offset { margin-left: auto; color: var(--muted); font-size: var(--fs-small); white-space: nowrap; }
-.card-lines {
+/* The card's own lines: what it answered (.card-lines), and what 'log' or 'diag scan' gave (.diag-text) */
+.card-lines, .diag-text {
   margin: var(--s2) 0 0;
   padding: var(--s2) var(--s3);
   background: var(--field);
-  border: 1px solid var(--line);
   border-radius: var(--radius-s);
-  font: var(--fs-small)/1.45 ui-monospace, Menlo, Consolas, monospace;
+  font: var(--fs-small)/1.45 var(--mono);
+}
+.card-lines {
+  border: 1px solid var(--line);
   color: var(--muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .card-lines:empty { display: none; }
-/* What 'log' or 'diag scan' gave, to copy by hand if copying by itself did not work */
+/* To copy by hand if copying by itself did not work */
 .diag-text {
   display: block;
   width: 100%;
   min-height: 12rem;
-  margin: var(--s2) 0 0;
-  padding: var(--s2) var(--s3);
-  background: var(--field);
   border: 1px solid var(--field-line);
-  border-radius: var(--radius-s);
   color: var(--text);
-  font: var(--fs-small)/1.45 ui-monospace, Menlo, Consolas, monospace;
   resize: vertical;
 }
 .unmasked {
@@ -305,14 +303,8 @@ ol.steps li { margin: var(--s1) 0; }
 }
 progress { display: block; width: 100%; height: 8px; margin: var(--s2) 0 0; accent-color: var(--accent); }
 .good { color: var(--good); font-weight: 600; }
-/* The user's turn while the card waits: what to do now, on the camera */
-.act {
-  padding: var(--s2) var(--s3);
-  border-left: 4px solid var(--accent);
-  border-radius: var(--radius-s);
-  background: var(--accent-tint);
-  font-weight: 600;
-}
+/* What to do now, on the camera */
+.act { --edge: var(--accent); --edge-tint: var(--accent-tint); font-weight: 600; }
 /* Under way: a pulsing dot before the text (connecting, saving, pairing) */
 .busy::before {
   content: "";
@@ -339,11 +331,10 @@ button, .tile, .tile strong::before, input.toggle, input.toggle::after, .segment
 }
 /* An error is told apart from the red accent not only by its colour: a framed box headed "Error". */
 p.bad {
-  padding: var(--s2) var(--s3);
+  --edge: var(--error);
+  --edge-tint: var(--error-tint);
   border: 1px solid var(--error);
   border-left-width: 4px;
-  border-radius: var(--radius-s);
-  background: var(--error-tint);
   color: var(--text);
 }
 .panel:has(> p.bad) { padding: 0; border: 0; background: none; box-shadow: none; } /* the error's frame alone */
@@ -375,7 +366,7 @@ p.bad::before {
 }
 .tile-head { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--fs-small); }
 .tile-head .icon { width: 18px; height: 18px; stroke: var(--muted); }
-.tile strong { display: flex; align-items: baseline; gap: 6px; margin-top: var(--s2); font-size: 16px; }
+.tile strong { display: flex; align-items: baseline; gap: 6px; margin-top: var(--s2); font-size: var(--fs-tile); }
 .tile strong::before {
   content: "";
   flex: none;
