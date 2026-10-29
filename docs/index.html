@@ -1724,7 +1724,7 @@ const FIXED_COMMANDS = new Set(["v", "status", "pair", "pair off", "pair older",
 function allowedCommand(command) {
   if (FIXED_COMMANDS.has(command)) return true;
   const match = /^tz ([A-Za-z0-9/_+-]{1,40})$/.exec(command);
-  return match !== null && findZone(match[1]) !== null && findZone(match[1]).name === match[1];
+  return match !== null && findZone(match[1])?.name === match[1];
 }
 
 function tzCommand(text) {
@@ -1738,13 +1738,17 @@ function parseVersion(line) {
   return match ? match[1] : null;
 }
 
-function isTzAnswer(line) {
-  return line.startsWith("tz: ") || line.startsWith("command: ");
-}
+// has(prefix) for these lines: whether one of them starts with prefix.
+const lineFinder = (lines) => (prefix) => lines.some((line) => line.startsWith(prefix));
+
+// Which lines answer a command: its own (prefix) and the console's ("command: unknown ...").
+const answerOf = (prefix) => (line) => line.startsWith(prefix) || line.startsWith("command: ");
+
+const isTzAnswer = answerOf("tz: ");
 
 // What the card answered to 'tz' or 'tz NAME' (src/main.cpp setTimeZone(), tz_store::logState()).
 function classifyTzAnswer(lines) {
-  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
+  const has = lineFinder(lines);
   if (lines.length === 0) return "none";
   if (has("command: unknown")) return "no-tz"; // firmware before 1.2.0
   if (has("command: too long")) return "unknown";
@@ -1755,32 +1759,52 @@ function classifyTzAnswer(lines) {
   return "state";
 }
 
-function isClockAnswer(line) {
-  return line.startsWith("clock: ") || line.startsWith("command: ");
-}
-
-// What the card answered to 'clock on' or 'clock off' (src/main.cpp setClock()).
-function classifyClockAnswer(lines) {
-  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
-  if (lines.length === 0) return "none";
-  if (has("command: unknown")) return "no-clock";
-  if (has("clock: on saved") || has("clock: off saved")) return "saved";
-  if (has("clock: already")) return "unchanged";
-  if (has("clock: could not write")) return "not-saved";
-  return "state";
-}
-
-// [text, kind] after switching the camera's clock on or off.
-function clockAnswerText(on, answer) {
+// [text, kind] after saving the time zone `name`; for any other answer the page shows the card's lines.
+function tzAnswerText(name, answer) {
   switch (answer) {
-    case "saved": return on ?
-      ["Saved. The camera gets the time at the next connection: switch the camera off and on.", "good"] :
-      ["Saved. It counts from the next connection.", "good"];
-    case "unchanged": return ["The card already had this setting.", "good"];
-    case "not-saved": return ["The card could not save the setting. Try again.", "bad"];
-    default: return [NO_ANSWER_TEXT, "bad"];
+    case "saved": return [`Saved: ${name}.`, "good"];
+    case "unchanged": return [`${name} was already set on the card.`, "good"];
+    case "unknown": return ["The card does not know this time zone. Is its firmware older than this page?", "bad"];
+    case "not-saved": return ["The card could not save the time zone. Try again.", "bad"];
+    case "none": return [NO_ANSWER_TEXT, "bad"];
+    default: return ["The card answered:", ""];
   }
 }
+
+// A setting the card saves with one command, '<name> <value>': 'clock on|off', 'sound loud|quiet|off',
+// 'updates normal|frequent' (src/main.cpp setClock(), setSound(), setUpdates()). isAnswer: the lines of
+// its answer; classify(lines): what the card answered; text(value, answer): [text, kind] for the page,
+// with savedText(value) when it was saved.
+function settingAnswers(name, values, savedText) {
+  return {
+    name,
+    isAnswer: answerOf(`${name}: `),
+    classify(lines) {
+      const has = lineFinder(lines);
+      if (lines.length === 0) return "none";
+      if (has("command: unknown")) return `no-${name}`;
+      if (values.some((value) => has(`${name}: ${value} saved`))) return "saved";
+      if (has(`${name}: already`)) return "unchanged";
+      if (has(`${name}: could not write`)) return "not-saved";
+      return "state";
+    },
+    text(value, answer) {
+      switch (answer) {
+        case "saved": return [savedText(value), "good"];
+        case "unchanged": return ["The card already had this setting.", "good"];
+        case "not-saved": return ["The card could not save the setting. Try again.", "bad"];
+        default: return [NO_ANSWER_TEXT, "bad"];
+      }
+    },
+  };
+}
+
+const CLOCK_ANSWERS = settingAnswers("clock", ["on", "off"], (value) => (value === "on"
+  ? "Saved. The camera gets the time at the next connection: switch the camera off and on."
+  : "Saved. It counts from the next connection."));
+const SOUND_ANSWERS = settingAnswers("sound", SOUND_SETTINGS, () => "Saved.");
+const UPDATES_ANSWERS = settingAnswers("updates", UPDATES_SETTINGS,
+  () => "Saved. The card uses it from the next position it sends.");
 
 // What the setting means. version: gpxcam that cannot change it (before 1.3.0), or null.
 function clockNoteText(clockOn, version = null) {
@@ -1788,31 +1812,6 @@ function clockNoteText(clockOn, version = null) {
   if (clockOn) return "Each time it connects, the card sets the camera's clock from its GPS, in the time zone below.";
   return "The card leaves the camera's clock alone: set the time and the time zone in the camera's menu. " +
     "Pairing still sets the clock once.";
-}
-
-function isSoundAnswer(line) {
-  return line.startsWith("sound: ") || line.startsWith("command: ");
-}
-
-// What the card answered to 'sound loud|quiet|off' (src/main.cpp setSound()).
-function classifySoundAnswer(lines) {
-  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
-  if (lines.length === 0) return "none";
-  if (has("command: unknown")) return "no-sound";
-  if (SOUND_SETTINGS.some((setting) => has(`sound: ${setting} saved`))) return "saved";
-  if (has("sound: already")) return "unchanged";
-  if (has("sound: could not write")) return "not-saved";
-  return "state";
-}
-
-// [text, kind] after choosing how loud the card is.
-function soundAnswerText(answer) {
-  switch (answer) {
-    case "saved": return ["Saved.", "good"];
-    case "unchanged": return ["The card already had this setting.", "good"];
-    case "not-saved": return ["The card could not save the setting. Try again.", "bad"];
-    default: return [NO_ANSWER_TEXT, "bad"];
-  }
 }
 
 // What a sound setting means (src/sound_rules.h); null: none shown yet.
@@ -1829,31 +1828,6 @@ function soundText(setting) {
 function soundNoteText(version = null) {
   if (version) return `gpxcam ${version} always plays its sounds loud. Choosing needs version 1.3.0.`;
   return "Choosing Loud or Quiet plays two short beeps at that volume.";
-}
-
-function isUpdatesAnswer(line) {
-  return line.startsWith("updates: ") || line.startsWith("command: ");
-}
-
-// What the card answered to 'updates normal|frequent' (src/main.cpp setUpdates()).
-function classifyUpdatesAnswer(lines) {
-  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
-  if (lines.length === 0) return "none";
-  if (has("command: unknown")) return "no-updates";
-  if (UPDATES_SETTINGS.some((setting) => has(`updates: ${setting} saved`))) return "saved";
-  if (has("updates: already")) return "unchanged";
-  if (has("updates: could not write")) return "not-saved";
-  return "state";
-}
-
-// [text, kind] after choosing how often the card sends the position.
-function updatesAnswerText(answer) {
-  switch (answer) {
-    case "saved": return ["Saved. The card uses it from the next position it sends.", "good"];
-    case "unchanged": return ["The card already had this setting.", "good"];
-    case "not-saved": return ["The card could not save the setting. Try again.", "bad"];
-    default: return [NO_ANSWER_TEXT, "bad"];
-  }
 }
 
 // What a setting means (src/link_policy.h NORMAL_TIMING, FREQUENT_TIMING); null: none shown yet.
@@ -1896,13 +1870,11 @@ function storageNoteText(state) {
     "the saved settings; the README says how.";
 }
 
-function isPairAnswer(line) {
-  return line.startsWith("pair: ") || line.startsWith("command: ");
-}
+const isPairAnswer = answerOf("pair: ");
 
 // What the card answered to 'unpair' (src/main.cpp forgetCamera()).
 function classifyUnpairAnswer(lines) {
-  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
+  const has = lineFinder(lines);
   if (lines.length === 0) return "none";
   if (has("pair: camera forgotten")) return "forgotten";
   if (has("pair: no camera paired")) return "not-paired";
@@ -1956,6 +1928,13 @@ function tzProblemText(version, answer) {
   return null;
 }
 
+// What stops the page after the card's answer to 'status' when connecting (Card.status() kind), or null.
+function statusProblemText(kind) {
+  if (kind === "none") return "No answer from the card to 'status'. Unplug it, plug it in again and retry.";
+  if (kind === "newer") return "The card's gpxcam is newer than this page. Reload the page.";
+  return null;
+}
+
 // ---- The card's state (pure functions) ----
 
 // The keys of the answer to 'status' in format 1 (src/status_text.h). Not among them, as older gpxcam does
@@ -1963,9 +1942,7 @@ function tzProblemText(version, answer) {
 const STATUS_KEYS = ["format", "fw", "git", "battery_mv", "battery_pct", "charger", "gps", "gps_fix", "gps_sat",
   "paired", "link", "pair", "pair_attempt", "pair_result", "clock", "tz", "sound"];
 
-function isStatusAnswer(line) {
-  return line.startsWith("status: ") || line.startsWith("command: ");
-}
+const isStatusAnswer = answerOf("status: ");
 
 function statusAnswerDone(lines) {
   const last = lines[lines.length - 1];
@@ -2016,6 +1993,10 @@ function parseStatus(lines) {
 }
 
 // ---- The card's state as tiles: [level, word, detail] ----
+
+function satellitesText(count) {
+  return count === 1 ? "1 satellite" : `${count} satellites`;
+}
 // level: good; warn (under way, or worth a look); bad (needs you); idle (nothing to do now). The word always
 // says the state: the colour of the dot only repeats it.
 
@@ -2041,7 +2022,7 @@ function cameraTile(state) {
 
 function gpsTile(state) {
   if (!state.gpsOn) return ["idle", "Off", "Saves power"];
-  const satellites = state.gpsSatellites === 1 ? "1 satellite" : `${state.gpsSatellites} satellites`;
+  const satellites = satellitesText(state.gpsSatellites);
   if (state.gpsFix) return ["good", "Fix", satellites];
   return ["warn", "No fix yet", `${satellites}; outdoors 1\u20133 min`];
 }
@@ -2075,7 +2056,7 @@ function zoneTile(state) {
 // What the card does while it pairs ('status': pair, pair_attempt); inApp: the page runs in the
 // desktop app, which can do the Wi-Fi step of an older camera.
 function pairingText(state, inApp = false) {
-  const satellites = state.gpsSatellites === 1 ? "1 satellite" : `${state.gpsSatellites} satellites`;
+  const satellites = satellitesText(state.gpsSatellites);
   switch (state.pair) {
     case "waiting_gps": return `Waiting for GPS time, up to ${PAIR_FIX_WAIT_TEXT} (${satellites} so far). Do not ` +
       "start pairing on the camera yet...";
@@ -2213,7 +2194,7 @@ function scanEnded(line) {
 
 // How a 'diag scan' run ended, from its lines: [text, kind].
 function scanResultText(lines, version) {
-  const has = (prefix) => lines.some((line) => line.startsWith(prefix));
+  const has = lineFinder(lines);
   if (has("command: unknown")) return [`gpxcam ${version} cannot scan. Scanning needs version 1.5.0.`, "bad"];
   if (has("diag scan: not possible")) return ["The card's Bluetooth did not start, so it cannot scan.", "bad"];
   if (has("diag scan: already running")) {
@@ -2228,7 +2209,7 @@ function scanResultText(lines, version) {
 // docs/PROTOCOL.md), camera serial numbers (10 hex digits, and the bytes after "ff 3a 00 <state>" in
 // a 'diag scan' line) their last 2, the camera's Wi-Fi name nothing. The card logs no position.
 const MASK_RULES = [
-  [/(register identity 4D454930-0100-1000-8001-)[0-9A-Fa-f]{8}([0-9A-Fa-f]{4})/g, "$1********$2"],
+  [new RegExp(`(register identity ${OLDER_IDENTITY_PREFIX})[0-9A-Fa-f]{8}([0-9A-Fa-f]{4})`, "g"), "$1********$2"],
   [/\b(?:[0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})\b/g, "**:**:**:**:**:$1"],
   [/\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{8}([0-9A-Fa-f]{4})\b/g,
     "********-****-****-****-********$1"],
@@ -2384,16 +2365,9 @@ class Card {
     return () => this.waiters.delete(onLine);
   }
 
-  clock(on) {
-    return this.ask(on ? "clock on" : "clock off", isClockAnswer, SAVE_TIMEOUT_MS);
-  }
-
-  sound(setting) {
-    return this.ask(`sound ${setting}`, isSoundAnswer, SAVE_TIMEOUT_MS);
-  }
-
-  updates(setting) {
-    return this.ask(`updates ${setting}`, isUpdatesAnswer, SAVE_TIMEOUT_MS);
+  // One of the settings saved with one command: answers is CLOCK_ANSWERS, SOUND_ANSWERS or UPDATES_ANSWERS.
+  save(answers, value) {
+    return this.ask(`${answers.name} ${value}`, answers.isAnswer, SAVE_TIMEOUT_MS);
   }
 
   timeZone(name) {
@@ -2639,31 +2613,34 @@ function startPage() {
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  const pairingUnderWay = () => lastState !== null && lastState.pair !== "idle";
+  const storageDamaged = () => lastState !== null && lastState.storage === "damaged"; // it refuses to pair
+
   const refreshButtons = () => {
     ui.connect.disabled = card !== null || busy || transport === null;
-    ui.disconnect.disabled = card === null || busy;
-    ui.save.disabled = card === null || busy || selected === null;
+    const locked = card === null || busy; // no card, or the page waits for its answer
+    ui.disconnect.disabled = locked;
+    ui.save.disabled = locked || selected === null;
     ui.refresh.disabled = card === null || refreshing;
-    ui.clock.disabled = card === null || busy || clockOn === null;
-    for (const choice of soundChoices.values()) choice.disabled = card === null || busy || soundSetting === null;
-    for (const choice of updatesChoices.values()) choice.disabled = card === null || busy || updatesSetting === null;
-    const pairing = lastState !== null && lastState.pair !== "idle";
-    const storageDamaged = lastState !== null && lastState.storage === "damaged"; // the card would refuse
-    ui.pair.disabled = card === null || busy || lastState === null || pairing || storageDamaged;
-    ui.olderStart.disabled = card === null || busy || lastState === null || pairing || storageDamaged;
+    ui.clock.disabled = locked || clockOn === null;
+    for (const choice of soundChoices.values()) choice.disabled = locked || soundSetting === null;
+    for (const choice of updatesChoices.values()) choice.disabled = locked || updatesSetting === null;
+    const canPair = !locked && lastState !== null && !pairingUnderWay() && !storageDamaged();
+    ui.pair.disabled = !canPair;
+    ui.olderStart.disabled = !canPair;
     ui.olderCancel.disabled = card === null;
-    ui.olderResume.disabled = card === null || busy;
-    ui.pairResume.disabled = card === null || busy;
+    ui.olderResume.disabled = locked;
+    ui.pairResume.disabled = locked;
     ui.pairCancel.disabled = card === null || (busy && !olderRunning); // it also stops a Wi-Fi step
-    for (const button of [ui.unpair, ui.unpairYes]) button.disabled = card === null || busy || storageDamaged;
-    ui.copyLog.disabled = card === null || busy;
-    ui.scan.disabled = card === null || busy;
+    for (const button of [ui.unpair, ui.unpairYes]) button.disabled = locked || storageDamaged();
+    ui.copyLog.disabled = locked;
+    ui.scan.disabled = locked;
     ui.diagCopy.disabled = ui.diagText.value === ""; // what was collected stays after disconnecting
   };
 
   // The camera section from the card's last state: what to do, the stage or the result.
   const showPairing = () => {
-    const pairing = lastState !== null && lastState.pair !== "idle";
+    const pairing = pairingUnderWay();
     const paired = lastState !== null && lastState.paired;
     for (const part of [ui.cameraNote, ui.pairHelp, ui.pairRow]) part.classList.toggle("hidden", oldVersion !== null);
     if (paired !== shownPaired) {
@@ -2672,7 +2649,7 @@ function startPage() {
     }
     ui.cameraOld.classList.toggle("hidden", oldVersion === null);
     if (card === null) ui.cameraNote.textContent = "Connect the card to pair it with your camera.";
-    else if (lastState !== null && lastState.storage === "damaged") ui.cameraNote.textContent = STORAGE_PAIRING_TEXT;
+    else if (storageDamaged()) ui.cameraNote.textContent = STORAGE_PAIRING_TEXT;
     else ui.cameraNote.textContent = paired ? "The card is paired with a camera. Pairing again replaces it." :
       "The card is not paired with a camera yet.";
     ui.pair.textContent = paired ? "Pair again" : "Pair";
@@ -2782,6 +2759,12 @@ function startPage() {
     refreshButtons();
   };
 
+  const showSettings = () => {
+    showClock();
+    showSound();
+    showUpdates();
+  };
+
   // A tile: its level as a class (the colour of the dot), the word and the detail.
   const showTile = (name, [level, word, detail]) => {
     element(`tile-${name}`).className = `tile level-${level}`;
@@ -2814,9 +2797,7 @@ function startPage() {
       clockOn = state.clockOn;
       soundSetting = state.sound;
       updatesSetting = state.updates;
-      showClock();
-      showSound();
-      showUpdates();
+      showSettings();
     }
     showSelected();
     followPairing(state);
@@ -2837,8 +2818,7 @@ function startPage() {
     if (status.kind === "ok") showState(status.state);
     else ui.stateTime.textContent = `No answer from the card at ${new Date().toLocaleTimeString()}; trying again.`;
     refreshButtons();
-    const pairing = lastState !== null && lastState.pair !== "idle";
-    refreshTimer = setTimeout(refresh, pairing ? PAIRING_STATUS_PERIOD_MS : STATUS_PERIOD_MS);
+    refreshTimer = setTimeout(refresh, pairingUnderWay() ? PAIRING_STATUS_PERIOD_MS : STATUS_PERIOD_MS);
   };
 
   const hideCard = () => {
@@ -2919,9 +2899,7 @@ function startPage() {
     hideCard();
     showSelected();
     setStatus(ui.cardStatus, message, kind);
-    showClock();
-    showSound();
-    showUpdates();
+    showSettings();
     showPairing();
   };
 
@@ -2937,11 +2915,6 @@ function startPage() {
     ui.cardNote.classList.remove("hidden");
     oldVersion = version;
     return null;
-  };
-
-  const statusProblemText = {
-    none: "No answer from the card to 'status'. Unplug it, plug it in again and retry.",
-    newer: "The card's gpxcam is newer than this page. Reload the page.",
   };
 
   // With more than one card plugged in (only in the app): a button for each; the path chosen,
@@ -2996,7 +2969,8 @@ function startPage() {
       return;
     }
     const status = await opened.status().catch(() => ({ kind: "none" }));
-    const problem = status.kind === "no-status" ? await connectOldCard(opened, version) : statusProblemText[status.kind];
+    const problem = status.kind === "no-status" ? await connectOldCard(opened, version)
+      : statusProblemText(status.kind);
     if (problem) {
       await opened.close();
       disconnected(problem, "bad");
@@ -3014,11 +2988,10 @@ function startPage() {
       showState(status.state);
       if (shouldPrepareGps(status.state)) opened.prepareGps().catch(() => {}); // the next refresh shows it
       refreshTimer = setTimeout(refresh, STATUS_PERIOD_MS);
+    } else { // a card before 1.3.0: showState() did not run
+      showSettings();
+      showPairing();
     }
-    showClock();
-    showSound();
-    showUpdates();
-    showPairing();
   };
 
   const disconnect = async () => {
@@ -3030,7 +3003,7 @@ function startPage() {
     disconnected("Not connected.");
   };
 
-  const save = async () => {
+  const saveZone = async () => {
     const name = selected.name; // the list may change while the card answers
     busy = true;
     refreshButtons();
@@ -3039,14 +3012,7 @@ function startPage() {
     ui.saveNote.classList.add("hidden");
     ui.saveLines.textContent = "";
     const lines = await card.timeZone(name).catch(() => []);
-    const messages = {
-      saved: [`Saved: ${name}.`, "good"],
-      unchanged: [`${name} was already set on the card.`, "good"],
-      unknown: ["The card does not know this time zone. Is its firmware older than this page?", "bad"],
-      "not-saved": ["The card could not save the time zone. Try again.", "bad"],
-      none: [NO_ANSWER_TEXT, "bad"],
-    };
-    const [text, kind] = messages[classifyTzAnswer(lines)] || ["The card answered:", ""];
+    const [text, kind] = tzAnswerText(name, classifyTzAnswer(lines));
     setStatus(ui.saveStatus, text, kind);
     ui.saveNote.classList.toggle("hidden", kind !== "good");
     ui.saveLines.textContent = kind === "good" ? "" : lines.join("\n"); // "Saved: X." says it all
@@ -3055,53 +3021,20 @@ function startPage() {
     if (!ui.state.classList.contains("hidden")) refresh(); // the new zone in the card's state
   };
 
-  // The switch shows the card's setting again once the card has answered.
-  const setClock = async () => {
-    const asked = card;
-    if (!asked) return;
-    const on = ui.clock.checked;
-    busy = true;
-    refreshButtons();
-    setStatus(ui.clockAnswer, "Saving...", "busy");
-    const lines = await asked.clock(on).catch(() => []);
-    if (card !== asked) return;
-    const [text, kind] = clockAnswerText(on, classifyClockAnswer(lines));
-    setStatus(ui.clockAnswer, text, kind);
-    busy = false;
-    await refresh();
-    showClock();
-  };
-
-  // The choice shows the card's setting again once the card has answered.
-  const setSound = async (setting) => {
+  // Saves one of the settings with its command (answers: CLOCK_ANSWERS, SOUND_ANSWERS, UPDATES_ANSWERS); the
+  // choice shows the card's setting again once the card has answered (show).
+  const saveSetting = async (answers, value, answerElement, show) => {
     const asked = card;
     if (!asked) return;
     busy = true;
     refreshButtons();
-    setStatus(ui.soundAnswer, "Saving...", "busy");
-    const lines = await asked.sound(setting).catch(() => []);
+    setStatus(answerElement, "Saving...", "busy");
+    const lines = await asked.save(answers, value).catch(() => []);
     if (card !== asked) return;
-    const [text, kind] = soundAnswerText(classifySoundAnswer(lines));
-    setStatus(ui.soundAnswer, text, kind);
+    setStatus(answerElement, ...answers.text(value, answers.classify(lines)));
     busy = false;
     await refresh();
-    showSound();
-  };
-
-  // The choice shows the card's setting again once the card has answered.
-  const setUpdates = async (setting) => {
-    const asked = card;
-    if (!asked) return;
-    busy = true;
-    refreshButtons();
-    setStatus(ui.updatesAnswer, "Saving...", "busy");
-    const lines = await asked.updates(setting).catch(() => []);
-    if (card !== asked) return;
-    const [text, kind] = updatesAnswerText(classifyUpdatesAnswer(lines));
-    setStatus(ui.updatesAnswer, text, kind);
-    busy = false;
-    await refresh();
-    showUpdates();
+    show();
   };
 
   // Sends a pairing command and then shows the card's state; the stages and the result come
@@ -3436,11 +3369,16 @@ function startPage() {
   ui.olderCancel.addEventListener("click", cancel);
   ui.connect.addEventListener("click", connect);
   ui.disconnect.addEventListener("click", disconnect);
-  ui.save.addEventListener("click", save);
+  ui.save.addEventListener("click", saveZone);
   ui.refresh.addEventListener("click", refresh);
-  ui.clock.addEventListener("change", setClock);
-  for (const [setting, choice] of soundChoices) choice.addEventListener("change", () => setSound(setting));
-  for (const [setting, choice] of updatesChoices) choice.addEventListener("change", () => setUpdates(setting));
+  ui.clock.addEventListener("change",
+    () => saveSetting(CLOCK_ANSWERS, ui.clock.checked ? "on" : "off", ui.clockAnswer, showClock));
+  for (const [setting, choice] of soundChoices) {
+    choice.addEventListener("change", () => saveSetting(SOUND_ANSWERS, setting, ui.soundAnswer, showSound));
+  }
+  for (const [setting, choice] of updatesChoices) {
+    choice.addEventListener("change", () => saveSetting(UPDATES_ANSWERS, setting, ui.updatesAnswer, showUpdates));
+  }
   ui.search.addEventListener("input", showResults);
   if (transport !== null) {
     transport.onDisconnect((port) => {
@@ -3449,9 +3387,7 @@ function startPage() {
   }
   showSelected();
   showResults();
-  showClock();
-  showSound();
-  showUpdates();
+  showSettings();
   showPairing();
 }
 

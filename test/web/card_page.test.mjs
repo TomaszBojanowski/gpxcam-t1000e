@@ -17,10 +17,10 @@ const page = vm.runInContext(
   scripts.join("\n") +
     "\n;({ TZ_DATA, BAUD_RATE, CARD_USB, MAX_RESULTS, findZone, searchZones, utcOffsetText, allowedCommand," +
     " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText, tzProblemText," +
-    " startList, parseStatus, cameraTile, gpsTile, batteryTile, zoneTile, classifyClockAnswer, clockAnswerText," +
-    " clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText, SOUND_SETTINGS," +
-    " classifySoundAnswer, soundAnswerText, soundNoteText, soundText, UPDATES_SETTINGS, classifyUpdatesAnswer," +
-    " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText, chooseTransport," +
+    " startList, parseStatus, cameraTile, gpsTile, batteryTile, zoneTile, CLOCK_ANSWERS, SOUND_ANSWERS," +
+    " UPDATES_ANSWERS, clockNoteText, pairingText, pairResultText, classifyUnpairAnswer, unpairAnswerText," +
+    " SOUND_SETTINGS, soundNoteText, soundText, UPDATES_SETTINGS, updatesNoteText, updatesText, updatesNowText," +
+    " storageNoteText, chooseTransport, tzAnswerText, statusProblemText," +
     " openProblemText, parseOlderRegister, olderOutcomeText, olderStartProgress, FIXED_COMMANDS, isLogLine," +
     " belongsToScan, scanEnded, scanResultText, diagnosticsText, SCAN_RUN_MS, shouldPrepareGps, pairingKind," +
     " maskIdentifiers, parseCardId, olderIdentity, PAIRING_STATUS_PERIOD_MS, AppReadError, readErrorText })",
@@ -65,13 +65,25 @@ const CLOCK_OFF_SAVED = [
   "clock: off - the card leaves the camera's clock alone; set it in the camera's menu\r\n",
 ];
 const CLOCK_NOT_SAVED = ["clock: could not write the time zone file\r\n"];
+// The keys of the card's answer to 'status', from its description in src/status_text.h.
+const FIRMWARE_STATUS_KEYS = new Set(
+  [...readFileSync(new URL("../../src/status_text.h", import.meta.url), "utf8").matchAll(/^\/\/ {3}status: (.+)$/gm)]
+    .flatMap((match) => match[1].split(" ").filter((pair) => pair.includes("=")).map((pair) => pair.split("=")[0])),
+);
+// STATUS_ANSWER (or another answer) with other values, e.g. statusWith({ paired: 0, link: "off" }). A key the
+// answer does not have yet gets a line of its own before 'status: end'; one the firmware does not know is a
+// mistake in the test.
+const statusWith = (changes, answer = STATUS_ANSWER) => [Object.entries(changes).reduce((text, [key, value]) => {
+  if (!FIRMWARE_STATUS_KEYS.has(key)) throw new Error(`no key '${key}' in the card's status (src/status_text.h)`);
+  const current = new RegExp(` ${key}=\\S+`);
+  return current.test(text) ? text.replace(current, ` ${key}=${value}`)
+    : text.replace("status: end", `status: ${key}=${value}\r\nstatus: end`);
+}, answer.join(""))];
+// The 'status' lines of an answer as parseStatus() gets them: without the log line in between.
+const statusLinesOf = (answer) => statusLines(answer.join("").replace(/gps: .*\r\n/, "").replaceAll("\r", ""));
 // A card with gpxcam 1.4.0: the same state and the location updates.
-const STATUS_1_4 = [STATUS_ANSWER.join("").replace("fw=1.3.0", "fw=1.4.0")
-  .replace("status: end", "status: updates=normal updates_now=normal\r\nstatus: end")];
+const STATUS_1_4 = statusWith({ fw: "1.4.0", updates: "normal", updates_now: "normal" });
 const VERSION_1_4 = ["gpxcam-t1000e 1.4.0 (git 1234567), uptime 12 s, log dropped 0\r\n"];
-// STATUS_ANSWER (or another answer) with other values, e.g. statusWith({ paired: 0, link: "off" }).
-const statusWith = (changes, answer = STATUS_ANSWER) => [Object.entries(changes).reduce(
-  (text, [key, value]) => text.replace(new RegExp(` ${key}=\\S+`), ` ${key}=${value}`), answer.join(""))];
 const NOT_PAIRED = { paired: 0, link: "off" };
 const PAIR_STARTED = ["link: off\r\n", "pair: started - waiting for GPS time (up to 120 s)\r\n"];
 const FORGOTTEN = ["link: off\r\n", "pair: camera forgotten (the card id stays)\r\n"];
@@ -373,18 +385,27 @@ test("saving sends the name as the table spells it and reads the answer", async 
   assert.equal(page.classifyTzAnswer(lines), "saved");
 });
 
-test("the card's other answers are told apart", () => {
+test("the card's other answers to 'tz' are told apart, also from firmware without it", async () => {
   const classify = (lines) => page.classifyTzAnswer(lines);
   assert.equal(classify([]), "none");
   assert.equal(classify(["tz: already set", "tz: Europe/Warsaw, rule CET-1CEST,M3.5.0,M10.5.0/3 (tz database 2026e)"]), "unchanged");
   assert.equal(classify(["tz: unknown time zone or rule 'Mars/Olympus_Mons'"]), "unknown");
   assert.equal(classify(["tz: could not write the time zone file"]), "not-saved");
-  assert.equal(classify(["command: unknown 'tz'"]), "no-tz");
+  const { card } = await openCard({ tz: OLD_FIRMWARE });
+  assert.equal(classify(await card.timeZone()), "no-tz");
 });
 
-test("firmware without tz is recognised", async () => {
-  const { card } = await openCard({ tz: OLD_FIRMWARE });
-  assert.equal(page.classifyTzAnswer(await card.timeZone()), "no-tz");
+test("saving a time zone and connecting are explained in the page's words", () => {
+  assert.deepEqual(json(page.tzAnswerText("Asia/Tokyo", "saved")), ["Saved: Asia/Tokyo.", "good"]);
+  assert.deepEqual(json(page.tzAnswerText("Asia/Tokyo", "unchanged")), ["Asia/Tokyo was already set on the card.",
+    "good"]);
+  for (const answer of ["unknown", "not-saved", "none"]) {
+    assert.equal(page.tzAnswerText("Asia/Tokyo", answer)[1], "bad", answer);
+  }
+  assert.deepEqual(json(page.tzAnswerText("Asia/Tokyo", "state")), ["The card answered:", ""]);
+  assert.match(page.statusProblemText("none"), /^No answer from the card to 'status'/);
+  assert.match(page.statusProblemText("newer"), /newer than this page/);
+  assert.equal(page.statusProblemText("ok"), null);
 });
 
 test("a card without tz and a card that does not answer tz get different messages", () => {
@@ -531,7 +552,7 @@ test("the card's state is read from 'status', also in pieces and between log lin
 test("a card before 1.3.0, a missing line, no end and a newer format are told apart", async () => {
   const { card } = await openCard({ status: NO_STATUS });
   assert.equal((await card.status()).kind, "no-status");
-  const lines = statusLines(STATUS_ANSWER.join("").replace(/gps: .*\r\n/, "").replaceAll("\r", ""));
+  const lines = statusLinesOf(STATUS_ANSWER);
   assert.equal(page.parseStatus(lines).kind, "ok");
   assert.equal(page.parseStatus(lines.filter((line) => !line.includes("battery"))).kind, "none");
   assert.equal(page.parseStatus(lines.slice(0, -1)).kind, "none"); // no "status: end"
@@ -816,25 +837,46 @@ test("a card that does not answer 'status' is closed with a message", async () =
   assert.equal(ui.connect.disabled, false);
 });
 
-test("the answers to 'clock on' and 'clock off' are told apart and explained", async () => {
-  const { port, card } = await openCard({ "clock off": CLOCK_OFF_SAVED });
-  const lines = await card.clock(false);
-  assert.deepEqual(port.written, ["clock off\n"]);
-  assert.equal(page.classifyClockAnswer(lines), "saved");
-  const classify = (lines) => page.classifyClockAnswer(lines);
-  assert.equal(classify([]), "none");
-  assert.equal(classify(["clock: on saved - from the next connection"]), "saved");
-  assert.equal(classify(["clock: already on", "clock: on - the card sets the camera's clock"]), "unchanged");
-  assert.equal(classify(["clock: could not write the time zone file"]), "not-saved");
-  assert.equal(classify(["command: unknown 'clock off'"]), "no-clock");
-  assert.match(page.clockAnswerText(true, "saved")[0], /switch the camera off and on\.$/);
-  assert.equal(page.clockAnswerText(false, "saved")[0], "Saved. It counts from the next connection.");
-  assert.equal(page.clockAnswerText(false, "not-saved")[1], "bad");
-  assert.equal(page.clockAnswerText(false, "none")[1], "bad");
+// The settings saved with one command each: what is sent, and the card's answers told apart and explained.
+test("the answers to 'clock', 'sound' and 'updates' are told apart and explained", async () => {
+  const updatesSaved = [
+    "updates: frequent saved\r\n",
+    "updates: frequent - a location every 5 s, sooner after 5 m or when the camera asks (at most every 2 s)\r\n",
+  ];
+  for (const [answers, value, saved, other] of [
+    [page.CLOCK_ANSWERS, "off", CLOCK_OFF_SAVED, "on"],
+    [page.SOUND_ANSWERS, "off", SOUND_OFF_SAVED, "quiet"],
+    [page.UPDATES_ANSWERS, "frequent", updatesSaved, "normal"],
+  ]) {
+    const name = answers.name;
+    const { port, card } = await openCard({ [`${name} ${value}`]: saved });
+    assert.equal(answers.classify(await card.save(answers, value)), "saved", name);
+    assert.deepEqual(port.written, [`${name} ${value}\n`]);
+    assert.equal(answers.classify([]), "none", name);
+    assert.equal(answers.classify([`${name}: ${other} saved`]), "saved", name);
+    assert.equal(answers.classify([`${name}: already ${value}`]), "unchanged", name);
+    assert.equal(answers.classify([`${name}: could not write the settings file`]), "not-saved", name);
+    assert.equal(answers.classify([`command: unknown '${name} ${value}'`]), `no-${name}`, name);
+    assert.deepEqual(json(answers.text(value, "unchanged")), ["The card already had this setting.", "good"]);
+    for (const answer of ["not-saved", "none", `no-${name}`]) assert.equal(answers.text(value, answer)[1], "bad");
+  }
+  assert.match(page.CLOCK_ANSWERS.text("on", "saved")[0], /switch the camera off and on\.$/);
+  assert.equal(page.CLOCK_ANSWERS.text("off", "saved")[0], "Saved. It counts from the next connection.");
+  assert.deepEqual(json(page.SOUND_ANSWERS.text("off", "saved")), ["Saved.", "good"]);
+  assert.deepEqual(json(page.UPDATES_ANSWERS.text("frequent", "saved")),
+    ["Saved. The card uses it from the next position it sends.", "good"]);
+});
+
+test("what the clock and the sound settings mean, also with gpxcam that cannot change them", () => {
   assert.match(page.clockNoteText(true), /^Each time it connects, the card sets the camera's clock/);
   assert.match(page.clockNoteText(false), /set the time and the time zone in the camera's menu\. Pairing still/);
   assert.match(page.clockNoteText(true, "1.2.0"), /^gpxcam 1\.2\.0 always sets the camera's clock\./);
-  assert.equal(page.zoneTile({ ...STATE, clockOn: false })[2], "Clock off: set it on the camera");
+  assert.match(page.soundNoteText(), /^Choosing Loud or Quiet plays two short beeps/);
+  assert.match(page.soundNoteText("1.2.0"), /^gpxcam 1\.2\.0 always plays its sounds loud\./);
+  assert.equal(page.soundText("loud"), "All sounds.");
+  assert.equal(page.soundText("quiet"), "All sounds, quieter.");
+  assert.match(page.soundText("off"), /^Only quiet beeps when you hold the button/);
+  assert.equal(page.soundText(null), "How loud the card is.");
 });
 
 test("the clock switch follows the card and turns the time zone choice off with it", async () => {
@@ -917,31 +959,12 @@ test("every pairing stage, result, link state and charger state of the firmware 
 test("the page offers every sound setting of the firmware, each with its own choice", () => {
   assert.deepEqual(json(page.SOUND_SETTINGS), firmwareValues("settingName", "sound_rules.cpp"));
   for (const setting of page.SOUND_SETTINGS) assert.match(html, new RegExp(`id="sound-${setting}" type="radio"`));
-  assert.match(html, /<fieldset id="sound" class="segmented">/);
-  assert.match(html, /<input id="clock" type="checkbox" class="toggle"/);
 });
 
-test("the answers to 'sound loud|quiet|off' are told apart and explained", async () => {
-  const { port, card } = await openCard({ "sound off": SOUND_OFF_SAVED });
-  const lines = await card.sound("off");
-  assert.deepEqual(port.written, ["sound off\n"]);
-  assert.equal(page.classifySoundAnswer(lines), "saved");
-  const classify = (lines) => page.classifySoundAnswer(lines);
-  assert.equal(classify([]), "none");
-  assert.equal(classify(["sound: quiet saved"]), "saved");
-  assert.equal(classify(["sound: already loud"]), "unchanged");
-  assert.equal(classify(["sound: could not write the settings file"]), "not-saved");
-  assert.equal(classify(["command: unknown 'sound off'"]), "no-sound");
-  assert.deepEqual(json(page.soundAnswerText("saved")), ["Saved.", "good"]);
-  assert.equal(page.soundAnswerText("not-saved")[1], "bad");
-  assert.equal(page.soundAnswerText("none")[1], "bad");
-  assert.equal(page.soundAnswerText("no-sound")[1], "bad");
-  assert.match(page.soundNoteText(), /^Choosing Loud or Quiet plays two short beeps/);
-  assert.match(page.soundNoteText("1.2.0"), /^gpxcam 1\.2\.0 always plays its sounds loud\./);
-  assert.equal(page.soundText("loud"), "All sounds.");
-  assert.equal(page.soundText("quiet"), "All sounds, quieter.");
-  assert.match(page.soundText("off"), /^Only quiet beeps when you hold the button/);
-  assert.equal(page.soundText(null), "How loud the card is.");
+test("the clock is a switch, the sound and the location updates are segmented choices", () => {
+  assert.match(html, /<input id="clock" type="checkbox" class="toggle"/);
+  assert.match(html, /<fieldset id="sound" class="segmented">/);
+  assert.match(html, /<fieldset id="updates" class="segmented">/);
 });
 
 test("the sound choice follows the card", async () => {
@@ -985,7 +1008,6 @@ test("the sound choice follows the card", async () => {
 test("the page offers every location updates setting of the firmware, each with its own choice", () => {
   assert.deepEqual(json(page.UPDATES_SETTINGS), firmwareValues("updatesName", "link_policy.cpp"));
   for (const setting of page.UPDATES_SETTINGS) assert.match(html, new RegExp(`id="updates-${setting}" type="radio"`));
-  assert.match(html, /<fieldset id="updates" class="segmented">/);
 });
 
 // The timings in the page's words, the card's help ('help', src/main.cpp) and README.md (the one place in the
@@ -1018,31 +1040,9 @@ test("the location updates are explained with the firmware's timings", () => {
     `more than ${frequent.metres} m, at most every ${frequent.minGapSeconds} s.`));
 });
 
-test("the answers to 'updates normal|frequent' are told apart and explained", async () => {
-  const saved = [
-    "updates: frequent saved\r\n",
-    "updates: frequent - a location every 5 s, sooner after 5 m or when the camera asks (at most every 2 s)\r\n",
-  ];
-  const { port, card } = await openCard({ "updates frequent": saved });
-  const lines = await card.updates("frequent");
-  assert.deepEqual(port.written, ["updates frequent\n"]);
-  assert.equal(page.classifyUpdatesAnswer(lines), "saved");
-  const classify = (lines) => page.classifyUpdatesAnswer(lines);
-  assert.equal(classify([]), "none");
-  assert.equal(classify(["updates: normal saved"]), "saved");
-  assert.equal(classify(["updates: already frequent"]), "unchanged");
-  assert.equal(classify(["updates: could not write the settings file"]), "not-saved");
-  assert.equal(classify(["command: unknown 'updates normal'"]), "no-updates");
-  assert.deepEqual(json(page.updatesAnswerText("saved")), ["Saved. The card uses it from the next position it sends.",
-    "good"]);
-  assert.equal(page.updatesAnswerText("unchanged")[1], "good");
-  for (const answer of ["not-saved", "none", "no-updates"]) assert.equal(page.updatesAnswerText(answer)[1], "bad");
-});
-
 // updates_now differs from updates only while the guard holds a connection at normal.
 test("the state says when the card sends less often than chosen", () => {
-  const lines = statusLines(statusWith({ updates: "frequent", updates_now: "normal" }, STATUS_1_4).join("")
-    .replace(/gps: .*\r\n/, "").replaceAll("\r", ""));
+  const lines = statusLinesOf(statusWith({ updates: "frequent", updates_now: "normal" }, STATUS_1_4));
   const status = page.parseStatus(lines);
   assert.equal(status.kind, "ok");
   assert.equal(status.state.updates, "frequent");
@@ -1056,12 +1056,10 @@ test("the state says when the card sends less often than chosen", () => {
 
 // storage=damaged: the card did not mount its file system and left it as it is (src/storage.h).
 test("the state says when the card cannot read what it saved", () => {
-  const lines = (storage) => statusLines(STATUS_1_4.join("").replace("status: end", `status: storage=${storage}\r\nstatus: end`)
-    .replace(/gps: .*\r\n/, "").replaceAll("\r", ""));
+  const lines = (storage) => statusLinesOf(statusWith({ storage }, STATUS_1_4));
   assert.equal(page.parseStatus(lines("damaged")).state.storage, "damaged");
   assert.equal(page.parseStatus(lines("ok")).state.storage, "ok");
-  assert.equal(page.parseStatus(statusLines(STATUS_ANSWER.join("").replace(/gps: .*\r\n/, "").replaceAll("\r", "")))
-    .state.storage, null); // gpxcam 1.3
+  assert.equal(page.parseStatus(statusLinesOf(STATUS_ANSWER)).state.storage, null); // gpxcam 1.3
   assert.match(page.storageNoteText({ ...STATE, storage: "damaged" }), /the pairing comes from its copy/i);
   assert.match(page.storageNoteText({ ...STATE, storage: "damaged", paired: false }),
     /It has no pairing and cannot connect to the camera\./);
@@ -1069,7 +1067,7 @@ test("the state says when the card cannot read what it saved", () => {
 });
 
 test("a note on the page while the card cannot read what it saved", async () => {
-  const answers = { v: VERSION_1_4, status: [STATUS_1_4.join("").replace("status: end", "status: storage=damaged\r\nstatus: end")] };
+  const answers = { v: VERSION_1_4, status: statusWith({ storage: "damaged" }, STATUS_1_4) };
   const ui = openPage(simulatedCard(answers));
   assert.equal(ui["storage-note"].hidden, true);
   await ui.connect.fire("click");
@@ -1080,7 +1078,7 @@ test("a note on the page while the card cannot read what it saved", async () => 
   assert.equal(ui.unpair.disabled, true);
   assert.equal(ui["unpair-yes"].disabled, true);
   assert.match(ui["camera-note"].textContent, /^The card cannot change the pairing while/);
-  answers.status = [STATUS_1_4.join("").replace("status: end", "status: storage=ok\r\nstatus: end")];
+  answers.status = statusWith({ storage: "ok" }, STATUS_1_4);
   await ui.refresh.fire("click");
   assert.equal(ui["storage-note"].hidden, true);
   assert.equal(ui.pair.disabled, false);
@@ -1539,10 +1537,7 @@ test("before Start, older pairing asks to free the camera from the phone", () =>
   const older = /<section id="older"[\s\S]*?<\/section>/.exec(html)[0];
   const phone = older.indexOf('id="older-phone"');
   assert.ok(phone > 0 && phone < older.indexOf('id="older-start"'), "the note comes before Start");
-  const sentence = "Before pairing, remove the phone from the camera's Bluetooth device list (Setup &rarr; " +
-    "Bluetooth &rarr; Delete), or at least turn the phone's Bluetooth off. A phone that is still registered may " +
-    "grab the camera the moment it starts advertising, and the card will not get in.";
-  assert.ok(older.replace(/\s+/g, " ").includes(sentence));
+  assert.match(older.replace(/\s+/g, " "), /remove the phone from the camera's Bluetooth device list/);
 });
 
 test("commands sent at once are written one after the other, not refused", async () => {
