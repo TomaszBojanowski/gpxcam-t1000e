@@ -519,7 +519,7 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
       <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M7 7.5l10 9-5 4.5V3l5 4.5-10 9"/>
         </svg>The camera</h2>
-      <p id="camera-note">Connect the card to pair it with your camera.</p>
+      <p id="camera-note"></p>
       <p id="camera-old" class="hidden">Pairing from this page needs gpxcam 1.3.0. With gpxcam 1.2, pair with the
          card's button, see <a href="https://github.com/TomaszBojanowski/gpxcam-t1000e#pairing-once">the README</a>.</p>
       <details id="pair-help" class="help" open>
@@ -561,14 +561,14 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
         </svg>The camera's clock</h2>
       <label class="switch"><input id="clock" type="checkbox" class="toggle" disabled>
         <span>The card sets the camera's clock and time zone</span></label>
-      <p id="clock-note" class="note">Connect the card to change this setting.</p>
+      <p id="clock-note" class="note"></p>
       <p id="clock-answer" role="status"></p>
 
       <fieldset id="zones">
         <legend class="visually-hidden">Time zone</legend>
         <label for="search">Time zone: search by country, city or zone name</label>
         <input id="search" type="search" placeholder="e.g. Poland, New York, Tokyo" autocomplete="off">
-        <p id="selected" role="status">No time zone selected.</p>
+        <p id="selected" role="status"></p>
         <fieldset>
           <legend class="visually-hidden">Time zones found</legend>
           <ul id="results"></ul>
@@ -598,9 +598,9 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
         <label><input id="updates-frequent" type="radio" name="updates" value="frequent" disabled><span>Frequent</span>
         </label>
       </fieldset>
-      <p id="updates-says" class="says">How often the card sends the camera its position.</p>
+      <p id="updates-says" class="says"></p>
       <p id="updates-now" class="slow-note hidden" role="status"></p>
-      <p id="updates-note" class="note">Connect the card to change this setting.</p>
+      <p id="updates-note" class="note"></p>
       <p id="updates-answer" role="status"></p>
     </section>
 
@@ -615,8 +615,8 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
         <label><input id="sound-quiet" type="radio" name="sound" value="quiet" disabled><span>Quiet</span></label>
         <label><input id="sound-off" type="radio" name="sound" value="off" disabled><span>Off</span></label>
       </fieldset>
-      <p id="sound-says" class="says">How loud the card is.</p>
-      <p id="sound-note" class="note">Connect the card to change this setting.</p>
+      <p id="sound-says" class="says"></p>
+      <p id="sound-note" class="note"></p>
       <p id="sound-answer" role="status"></p>
     </section>
 
@@ -669,7 +669,7 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
          identity.</p>
       <div id="diag-answer" class="gap-top hidden">
         <p id="diag-status" role="status"></p>
-        <progress id="diag-progress" class="hidden" max="30000" value="0"></progress>
+        <progress id="diag-progress" class="hidden" value="0"></progress>
         <textarea id="diag-text" class="diag-text" readonly rows="10" spellcheck="false"
                   aria-label="What the card sent"></textarea>
         <div class="row gap-top">
@@ -1563,11 +1563,11 @@ const TZ_DATA = {
 // The card's serial console (src/main.cpp). Every value is fixed: the page has no setting for it.
 const BAUD_RATE = 115200; // any rate works over USB; only the bootloader's reset rate must never be used
 const CARD_USB = { usbVendorId: 0x2886, usbProductId: 0x8057 }; // Seeed, T1000-E running gpxcam (boards/t1000-e.json)
-const VERSION_TIMEOUT_MS = 3000;
-const STATUS_TIMEOUT_MS = 3000;
+// The answers the card gives at once: 'v', 'status' and 'p' (src/main.cpp), 'pair', 'pair off' and 'pair
+// prepare' (src/pairing.cpp), 'log' with its last 64 lines (src/log.cpp dumpHistory()).
+const ANSWER_TIMEOUT_MS = 3000;
 const STATUS_PERIOD_MS = 5000; // the card's state on the page refreshes itself this often
 const PAIRING_STATUS_PERIOD_MS = 2000; // ... and this often while the card pairs
-const PAIR_TIMEOUT_MS = 3000;
 const UNPAIR_TIMEOUT_MS = 10000; // the card first puts its GPS to sleep (up to 7.5 s), then writes flash
 // 'pair older': the card may wait 2 min for a GPS fix and 2 min for the camera, then introduce.
 const OLDER_START_TIMEOUT_MS = 270000;
@@ -1581,11 +1581,11 @@ const SAVE_TIMEOUT_MS = 6000;
 const SOUND_SETTINGS = ["loud", "quiet", "off"]; // src/sound_rules.cpp settingName()
 const UPDATES_SETTINGS = ["normal", "frequent"]; // src/link_policy.cpp updatesName()
 const ANSWER_QUIET_MS = 400; // an answer is complete after this long without another of its lines
-const LOG_TIMEOUT_MS = 3000; // 'log' shows the card's last 64 lines at once (src/log.cpp dumpHistory())
-const CARD_ID_TIMEOUT_MS = 3000; // 'p' shows the card's state at once (src/main.cpp)
 const SCAN_RUN_MS = 30000; // one 'diag scan' run (src/scan_dump.h DURATION_MS)
 const SCAN_TIMEOUT_MS = SCAN_RUN_MS + 10000; // the run ends with "diag scan: done"; this much is waited at most
 const MAX_RESULTS = 60;
+const NO_ANSWER_TEXT = "No answer from the card. Try again.";
+const CONNECT_TO_CHANGE_TEXT = "Connect the card to change this setting.";
 
 // ---- Zones (pure functions, tested with node --test test/web/card_page.test.mjs) ----
 
@@ -1778,7 +1778,7 @@ function clockAnswerText(on, answer) {
       ["Saved. It counts from the next connection.", "good"];
     case "unchanged": return ["The card already had this setting.", "good"];
     case "not-saved": return ["The card could not save the setting. Try again.", "bad"];
-    default: return ["No answer from the card. Try again.", "bad"];
+    default: return [NO_ANSWER_TEXT, "bad"];
   }
 }
 
@@ -1811,7 +1811,7 @@ function soundAnswerText(answer) {
     case "saved": return ["Saved.", "good"];
     case "unchanged": return ["The card already had this setting.", "good"];
     case "not-saved": return ["The card could not save the setting. Try again.", "bad"];
-    default: return ["No answer from the card. Try again.", "bad"];
+    default: return [NO_ANSWER_TEXT, "bad"];
   }
 }
 
@@ -1852,7 +1852,7 @@ function updatesAnswerText(answer) {
     case "saved": return ["Saved. The card uses it from the next position it sends.", "good"];
     case "unchanged": return ["The card already had this setting.", "good"];
     case "not-saved": return ["The card could not save the setting. Try again.", "bad"];
-    default: return ["No answer from the card. Try again.", "bad"];
+    default: return [NO_ANSWER_TEXT, "bad"];
   }
 }
 
@@ -1906,7 +1906,7 @@ function classifyUnpairAnswer(lines) {
   if (lines.length === 0) return "none";
   if (has("pair: camera forgotten")) return "forgotten";
   if (has("pair: no camera paired")) return "not-paired";
-  if (has("pair: not possible - the file system is damaged")) return "storage-damaged"; // src/main.cpp, 1.4.0
+  if (has("pair: not possible - the file system is damaged")) return "storage-damaged"; // src/main.cpp
   return "failed"; // "could not write the pairing file", "not available"
 }
 
@@ -1916,7 +1916,7 @@ function unpairAnswerText(answer) {
     case "not-paired": return ["No camera was paired.", "good"];
     case "failed": return ["The card could not forget the camera. Try again.", "bad"];
     case "storage-damaged": return [STORAGE_PAIRING_TEXT, "bad"];
-    default: return ["No answer from the card. Try again.", "bad"];
+    default: return [NO_ANSWER_TEXT, "bad"];
   }
 }
 
@@ -2104,11 +2104,10 @@ function pairingKind(state) {
 
 // [text, kind] for how a pairing ended ('status': pair_result), or null for none. button: what
 // starts it again (Pair, or Start of older-camera pairing); gpsReady: the card keeps its GPS on
-// for another try (gpxcam 1.5.0-beta.2).
+// for another try.
 function pairResultText(result, button = "Pair", gpsReady = false) {
-  const again = `Click ${button} again, and start pairing on the camera only when this says "Now start ` +
-    "Bluetooth pairing on the camera\"." + (gpsReady ? " The GPS stays ready for 10 minutes, so the card starts " +
-    "looking at once." : "");
+  const again = `Click ${button} again and start pairing on the camera only at "Now start Bluetooth pairing".` +
+    (gpsReady ? " The GPS stays on for 10 minutes." : "");
   switch (result) {
     case "none": return null;
     case "paired": return ["Paired. From now on the card connects to the camera by itself.", "good"];
@@ -2215,9 +2214,11 @@ function scanEnded(line) {
 // How a 'diag scan' run ended, from its lines: [text, kind].
 function scanResultText(lines, version) {
   const has = (prefix) => lines.some((line) => line.startsWith(prefix));
-  if (has("command: unknown")) return [`gpxcam ${version} cannot scan; the scan came with 1.5.0-beta.1.`, "bad"];
+  if (has("command: unknown")) return [`gpxcam ${version} cannot scan. Scanning needs version 1.5.0.`, "bad"];
   if (has("diag scan: not possible")) return ["The card's Bluetooth did not start, so it cannot scan.", "bad"];
-  if (has("diag scan: already running")) return ["A scan is already running on the card. Try again in 30 s.", "bad"];
+  if (has("diag scan: already running")) {
+    return [`A scan is already running on the card. Try again in ${SCAN_RUN_MS / 1000} s.`, "bad"];
+  }
   if (!has("diag scan: done")) return ["The scan did not end in time. What came so far is below.", "bad"];
   return ["Scan done.", "good"];
 }
@@ -2340,20 +2341,20 @@ class Card {
   }
 
   async version() {
-    const lines = await this.ask("v", (line) => parseVersion(line) !== null, VERSION_TIMEOUT_MS, () => true);
+    const lines = await this.ask("v", (line) => parseVersion(line) !== null, ANSWER_TIMEOUT_MS, () => true);
     return lines.length ? parseVersion(lines[0]) : null;
   }
 
   async status() {
-    return parseStatus(await this.ask("status", isStatusAnswer, STATUS_TIMEOUT_MS, statusAnswerDone));
+    return parseStatus(await this.ask("status", isStatusAnswer, ANSWER_TIMEOUT_MS, statusAnswerDone));
   }
 
   pair() {
-    return this.ask("pair", isPairAnswer, PAIR_TIMEOUT_MS, () => true);
+    return this.ask("pair", isPairAnswer, ANSWER_TIMEOUT_MS, () => true);
   }
 
   cancelPairing() {
-    return this.ask("pair off", isPairAnswer, PAIR_TIMEOUT_MS, () => true);
+    return this.ask("pair off", isPairAnswer, ANSWER_TIMEOUT_MS, () => true);
   }
 
   unpair() {
@@ -2361,17 +2362,17 @@ class Card {
   }
 
   log() {
-    return this.ask("log", isLogLine, LOG_TIMEOUT_MS);
+    return this.ask("log", isLogLine, ANSWER_TIMEOUT_MS);
   }
 
   // The card's UUID (parseCardId()) from 'p', or null.
   async cardId() {
-    const lines = await this.ask("p", (line) => parseCardId(line) !== null, CARD_ID_TIMEOUT_MS, () => true);
+    const lines = await this.ask("p", (line) => parseCardId(line) !== null, ANSWER_TIMEOUT_MS, () => true);
     return lines.length ? parseCardId(lines[0]) : null;
   }
 
   prepareGps() {
-    return this.ask("pair prepare", isPairAnswer, PAIR_TIMEOUT_MS, () => true);
+    return this.ask("pair prepare", isPairAnswer, ANSWER_TIMEOUT_MS, () => true);
   }
 
   // Calls onLine for every line the card sends, until the returned stop() is called. Unlike ask(),
@@ -2611,6 +2612,7 @@ function startPage() {
   let olderRunning = false; // the wizard or a resumed Wi-Fi step is under way
   let olderRetry = false; // the last Wi-Fi step failed: Resume reads "Try the Wi-Fi step again"
   let wifiText = null; // [text, kind] of the Wi-Fi step, shown in both pairing sections until the pairing ends
+  let olderTransient = false; // the older-camera section shows only a stage of a pairing under way
   let wifiAccepted = false; // the camera accepted the card; the card finishes the pairing by itself
   const transport = chooseTransport(navigator, window);
   const inApp = transport !== null && transport.name === "app"; // only the app can do the Wi-Fi step
@@ -2688,11 +2690,18 @@ function startPage() {
     showOlder();
   };
 
+  // The older-camera section's progress. A transient one (a stage of a pairing) goes when no pairing
+  // is under way any more (showOlder()); a result stays.
+  const showOlderProgress = (text, kind, transient = false) => {
+    olderTransient = transient;
+    setStatus(ui.olderProgress, text, kind);
+  };
+
   // The Wi-Fi step's progress goes to both sections: it may have started from either.
   const showWifi = (text, kind) => {
     wifiText = [text, kind];
     setStatus(ui.pairProgress, text, kind);
-    setStatus(ui.olderProgress, text, kind);
+    showOlderProgress(text, kind);
   };
 
   const RETRY_WIFI_TEXT = "Try the Wi-Fi step again";
@@ -2704,21 +2713,23 @@ function startPage() {
     if (olderRunning) return;
     const phase = card !== null && lastState !== null ? lastState.pair : "idle";
     const pairing = phase !== "idle";
-    if (olderRetry && phase !== "waiting_wifi") { // its 300 s ran out, or its pairing was cancelled
+    if (olderRetry && phase !== "waiting_wifi") { // its 300 s ran out, or its pairing was cancelled on the card
       olderRetry = false;
-      setStatus(ui.olderProgress, "The card no longer waits for the Wi-Fi step. Start again.", "bad");
+      showOlderProgress("The card no longer waits for the Wi-Fi step. Start again.", "bad");
     }
     ui.olderStart.classList.toggle("hidden", pairing);
     ui.olderResume.classList.toggle("hidden", phase !== "waiting_wifi" || wifiAccepted);
     ui.olderResume.textContent = olderRetry ? RETRY_WIFI_TEXT : "Resume";
     ui.olderCancel.classList.toggle("hidden", !pairing);
     if (phase === "waiting_wifi" && wifiText) {
-      setStatus(ui.olderProgress, ...wifiText);
+      showOlderProgress(...wifiText);
     } else if (phase === "waiting_wifi") {
-      setStatus(ui.olderProgress, WAITING_WIFI_TEXT, "");
-    } else if (pairing && phase !== "waiting_wifi") {
-      setStatus(ui.olderProgress, olderStartProgress(phase) || "A pairing is under way.",
-        phase === "searching" ? "busy act" : "busy");
+      showOlderProgress(WAITING_WIFI_TEXT, "", true);
+    } else if (pairing) {
+      showOlderProgress(olderStartProgress(phase) || "A pairing is under way.",
+        phase === "searching" ? "busy act" : "busy", true);
+    } else if (olderTransient) {
+      showOlderProgress("", ""); // the pairing whose stage it showed has ended
     }
   };
 
@@ -2736,7 +2747,7 @@ function startPage() {
   // The switch as the card has it; the time zone can be chosen unless the clock is off.
   const showClock = () => {
     ui.clock.checked = clockOn === true || oldVersion !== null; // gpxcam 1.2 always sets it
-    ui.clockNote.textContent = card === null ? "Connect the card to change this setting." :
+    ui.clockNote.textContent = card === null ? CONNECT_TO_CHANGE_TEXT :
       clockNoteText(clockOn !== false, oldVersion);
     ui.zones.disabled = clockOn === false;
     refreshButtons();
@@ -2747,7 +2758,7 @@ function startPage() {
     const shown = oldVersion !== null ? "loud" : soundSetting; // gpxcam 1.2 always plays loud
     for (const [setting, choice] of soundChoices) choice.checked = setting === shown;
     ui.soundSays.textContent = soundText(shown);
-    ui.soundNote.textContent = card === null ? "Connect the card to change this setting." : soundNoteText(oldVersion);
+    ui.soundNote.textContent = card === null ? CONNECT_TO_CHANGE_TEXT : soundNoteText(oldVersion);
     refreshButtons();
   };
 
@@ -2764,7 +2775,7 @@ function startPage() {
     const shown = old !== null ? "normal" : updatesSetting; // before 1.4.0 always normal
     for (const [setting, choice] of updatesChoices) choice.checked = setting === shown;
     ui.updatesSays.textContent = updatesText(shown);
-    ui.updatesNote.textContent = card === null ? "Connect the card to change this setting." : updatesNoteText(old);
+    ui.updatesNote.textContent = card === null ? CONNECT_TO_CHANGE_TEXT : updatesNoteText(old);
     const slow = card !== null && lastState !== null ? updatesNowText(lastState) : null;
     ui.updatesNow.textContent = slow || "";
     ui.updatesNow.classList.toggle("hidden", slow === null);
@@ -3033,7 +3044,7 @@ function startPage() {
       unchanged: [`${name} was already set on the card.`, "good"],
       unknown: ["The card does not know this time zone. Is its firmware older than this page?", "bad"],
       "not-saved": ["The card could not save the time zone. Try again.", "bad"],
-      none: ["No answer from the card.", "bad"],
+      none: [NO_ANSWER_TEXT, "bad"],
     };
     const [text, kind] = messages[classifyTzAnswer(lines)] || ["The card answered:", ""];
     setStatus(ui.saveStatus, text, kind);
@@ -3105,7 +3116,7 @@ function startPage() {
     const lines = await send(asked).catch(() => []);
     if (card !== asked) return;
     busy = false;
-    if (lines.length === 0) pairMessage = ["No answer from the card. Try again.", "bad"];
+    if (lines.length === 0) pairMessage = [NO_ANSWER_TEXT, "bad"];
     else watchingPairing = true; // also when the card refused at once: the result says why
     await refresh();
     showPairing();
@@ -3157,7 +3168,7 @@ function startPage() {
   const cancelOlder = () => {
     if (!busy) return;
     olderCancelled = true;
-    setStatus(ui.olderProgress, "Cancelling...", "busy");
+    showOlderProgress("Cancelling...", "busy", true);
     try {
       window.__TAURI__.core.invoke("cancel_older");
     } catch (error) {
@@ -3202,8 +3213,7 @@ function startPage() {
     if (!asked || busy) return;
     olderStarted();
     olderRetry = false;
-    setStatus(ui.olderProgress, "Starting - wait for \"Looking for the camera\" before you start pairing on the " +
-      "camera...", "busy");
+    showOlderProgress("Starting - wait for \"Now start Bluetooth pairing on the camera\"...", "busy", true);
     let info = null;
     let notInPairingMode = false; // the card saw a camera, but not in Bluetooth pairing mode
     // The card prints one line with the identity and name when it reaches the Wi-Fi step; catch it
@@ -3225,7 +3235,7 @@ function startPage() {
         if (lastState && lastState.pair !== "idle") {
           started = true;
           const text = olderStartProgress(lastState.pair, notInPairingMode);
-          if (text) setStatus(ui.olderProgress, text, lastState.pair === "searching" ? "busy act" : "busy");
+          if (text) showOlderProgress(text, lastState.pair === "searching" ? "busy act" : "busy", true);
         } else if (started) {
           break; // the card ended its pairing before the Wi-Fi step
         }
@@ -3237,18 +3247,18 @@ function startPage() {
         return;
       }
       if (olderCancelled) {
-        setStatus(ui.olderProgress, "Cancelled.", "");
+        showOlderProgress("Cancelled.", "");
       } else {
         // The card gave up (or the wait ran out): show the card's own result.
         await refresh();
         const result = lastState ? pairResultText(lastState.pairResult, "Start", lastState.gpsHold !== null) : null;
-        setStatus(ui.olderProgress, result ? result[0] : "The card did not reach the Wi-Fi step. Try again.",
+        showOlderProgress(result ? result[0] : "The card did not reach the Wi-Fi step. Try again.",
           result ? result[1] : "bad");
       }
       await asked.cancelPairing().catch(() => {}); // the card may still be waiting: stop it
       await refresh();
     } catch (error) {
-      if (card === asked) setStatus(ui.olderProgress, "Pairing failed. Try again.", "bad");
+      if (card === asked) showOlderProgress("Pairing failed. Try again.", "bad");
     } finally {
       stopWatch();
       olderEnded();
@@ -3281,18 +3291,27 @@ function startPage() {
     }
   };
 
-  // Cancel while no run of the wizard is under way: the pairing left from before stops.
-  const cancelLeftOver = async () => {
+  // Cancel while no run of the wizard is under way, from either section: the card's pairing stops, also
+  // one that waits for a failed Wi-Fi step to be tried again. The camera section shows the card's result
+  // (followPairing()), the older-camera section "Cancelled.".
+  const cancelPairing = async () => {
     const asked = card;
     if (!asked || busy) return;
     busy = true;
+    olderRetry = false;
+    pairMessage = null;
     refreshButtons();
-    setStatus(ui.olderProgress, "Cancelling...", "busy");
-    await asked.cancelPairing().catch(() => {});
+    showOlderProgress("Cancelling...", "busy", true);
+    const lines = await asked.cancelPairing().catch(() => []);
     if (card !== asked) return;
     busy = false;
-    olderRetry = false;
-    setStatus(ui.olderProgress, "Cancelled.", "");
+    if (lines.length === 0) {
+      pairMessage = [NO_ANSWER_TEXT, "bad"];
+      showOlderProgress(NO_ANSWER_TEXT, "bad");
+    } else {
+      watchingPairing = true; // the camera section shows the card's result
+      showOlderProgress("Cancelled.", "");
+    }
     await refresh();
   };
 
@@ -3351,7 +3370,7 @@ function startPage() {
     if (lines.length === 0) {
       busy = false;
       refreshButtons();
-      setStatus(ui.diagStatus, "No answer from the card. Try again.", "bad");
+      setStatus(ui.diagStatus, NO_ANSWER_TEXT, "bad");
       return;
     }
     await showDiagnostics(diagnosticsText("Card log", firmwareText(), lines),
@@ -3363,7 +3382,8 @@ function startPage() {
   const scanForCameras = async () => {
     const asked = card;
     if (!asked || busy) return;
-    startDiagnostics("Scanning for 30 seconds - keep the camera next to the card...");
+    startDiagnostics(`Scanning for ${SCAN_RUN_MS / 1000} seconds - keep the camera next to the card...`);
+    ui.diagProgress.max = SCAN_RUN_MS;
     ui.diagProgress.value = 0;
     ui.diagProgress.classList.remove("hidden");
     const lines = [];
@@ -3405,15 +3425,15 @@ function startPage() {
     refreshButtons();
   });
   ui.pair.addEventListener("click", () => pairCommand((asked) => asked.pair()));
-  ui.pairCancel.addEventListener("click", () => (olderRunning ? cancelOlder()
-    : pairCommand((asked) => asked.cancelPairing())));
+  const cancel = () => (olderRunning ? cancelOlder() : cancelPairing()); // the Cancel of either section
+  ui.pairCancel.addEventListener("click", cancel);
   ui.pairResume.addEventListener("click", resumeOlder);
   ui.unpair.addEventListener("click", () => ui.unpairConfirm.classList.remove("hidden"));
   ui.unpairNo.addEventListener("click", () => ui.unpairConfirm.classList.add("hidden"));
   ui.unpairYes.addEventListener("click", forgetCamera);
   ui.olderStart.addEventListener("click", pairOlder);
   ui.olderResume.addEventListener("click", resumeOlder);
-  ui.olderCancel.addEventListener("click", () => (olderRunning ? cancelOlder() : cancelLeftOver()));
+  ui.olderCancel.addEventListener("click", cancel);
   ui.connect.addEventListener("click", connect);
   ui.disconnect.addEventListener("click", disconnect);
   ui.save.addEventListener("click", save);

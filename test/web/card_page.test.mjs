@@ -1359,6 +1359,9 @@ test("diagnostics: log lines, scan lines and the end of a scan are told apart", 
   }
   assert.equal(page.scanEnded("diag scan: on 30 s, radio 50 ms of every 100 ms"), false);
   assert.equal(page.SCAN_RUN_MS, 30000); // src/scan_dump.h DURATION_MS
+  assert.match(html, new RegExp(`listens for ${page.SCAN_RUN_MS / 1000} seconds`)); // the Diagnostics text
+  assert.equal(page.scanResultText(["diag scan: already running"], "1.5.0")[0],
+    "A scan is already running on the card. Try again in 30 s.");
 });
 
 test("diagnostics: how a scan ended, and the heading of what is copied", () => {
@@ -1426,14 +1429,14 @@ test("Scan for cameras collects the run without the page's status answers; copy 
   await ui.disconnect.fire("click");
 });
 
-test("Scan for cameras on a card without it says which gpxcam brought it", async () => {
+test("Scan for cameras on a card without it says which gpxcam it needs", async () => {
   const port = simulatedCard({
     v: VERSION_1_4, status: STATUS_1_4, "diag scan": ["command: unknown 'diag scan'\r\n", ...OLD_FIRMWARE.slice(1)],
   });
   const ui = openPage(port, { clipboard: simulatedClipboard() });
   await ui.connect.fire("click");
   await ui.scan.fire("click");
-  assert.match(ui["diag-status"].textContent, /^gpxcam 1\.4\.0 cannot scan; the scan came with 1\.5\.0-beta\.1\./);
+  assert.match(ui["diag-status"].textContent, /^gpxcam 1\.4\.0 cannot scan\. Scanning needs version 1\.5\.0\./);
   assert.equal(ui["diag-status"].className, "bad");
   await ui.disconnect.fire("click");
 });
@@ -1478,11 +1481,11 @@ test("connecting to an unpaired card switches its GPS on for pairing; a paired o
 test("a pairing that found no camera asks for the order that works, with the button that starts it", () => {
   for (const result of ["no_camera", "not_in_pairing_mode", "failed"]) {
     const [text, kind] = page.pairResultText(result, "Start", true);
-    assert.match(text, /Click Start again, and start pairing on the camera only when this says "Now start Bluetooth/);
-    assert.match(text, /The GPS stays ready for 10 minutes/);
+    assert.match(text, / Click Start again and start pairing on the camera only at "Now start Bluetooth pairing"\. /);
+    assert.match(text, /The GPS stays on for 10 minutes\.$/);
     assert.equal(kind, "bad");
     assert.match(page.pairResultText(result)[0], /Click Pair again/);
-    assert.doesNotMatch(page.pairResultText(result)[0], /GPS stays ready/); // before 1.5.0-beta.2
+    assert.doesNotMatch(page.pairResultText(result)[0], /GPS stays on/); // a card that does not keep its GPS on
   }
   assert.equal(page.pairingKind({ ...STATE, pair: "searching", pairAttempt: 0 }), "busy act");
   for (const [pair, pairAttempt] of [["searching", 1], ["waiting_gps", 0], ["connecting", 1]]) {
@@ -1634,6 +1637,36 @@ test("in the app: an identity the app refuses is explained, and the card keeps w
   assert.equal(ui["older-progress"].className, "bad");
   assert.equal(app.calls.includes("send pair off"), false);
   assert.equal(ui["older-resume"].hidden, false);
+  await ui.disconnect.fire("click");
+});
+
+test("in the app: after a failed Wi-Fi step, Cancel in the camera section cancels without a red message", async () => {
+  const cancelledWhenAsked = (app) => (app.calls.includes("send pair off")
+    ? statusWith({ ...NOT_PAIRED, pair_result: "cancelled" }, STATUS_GPS_HOLD) : WAITING_WIFI);
+  const { app, ui } = await olderWizard("not-on-network", cancelledWhenAsked);
+  assert.equal(ui["older-resume"].textContent, "Try the Wi-Fi step again");
+  await ui["pair-cancel"].fire("click");
+  assert.equal(app.calls.includes("send pair off"), true);
+  assert.equal(ui["pair-progress"].textContent, "Pairing cancelled.");
+  assert.equal(ui["older-progress"].textContent, "Cancelled.");
+  assert.equal(ui["older-progress"].className, "");
+  assert.equal(ui["older-start"].hidden, false);
+  await ui.disconnect.fire("click");
+});
+
+test("in the app: after Pair again, the older-camera section keeps no stage of that pairing", async () => {
+  const answers = { v: VERSION_1_4, status: STATUS_GPS_HOLD, pair: PAIR_STARTED };
+  const app = simulatedApp(["/dev/ttyACM0"], answers);
+  const ui = openPage(null, { app });
+  await ui.connect.fire("click");
+  answers.status = statusWith({ link: "off", pair: "connecting", pair_attempt: 1 }, STATUS_GPS_HOLD);
+  await ui.pair.fire("click"); // Pair again: the page asks for the card's state at once
+  assert.equal(ui["older-start"].hidden, true); // a pairing is under way
+  answers.status = statusWith({ pair_result: "paired" }, STATUS_GPS_HOLD);
+  await ui.refresh.fire("click");
+  assert.equal(ui["pair-progress"].textContent, "Paired. From now on the card connects to the camera by itself.");
+  assert.equal(ui["older-progress"].textContent, "");
+  assert.equal(ui["older-start"].hidden, false);
   await ui.disconnect.fire("click");
 });
 
