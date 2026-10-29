@@ -154,7 +154,7 @@ void startRead(camera_link::OlderCharacteristic which, Step next)
     enter(next, camera_link::REQUEST_TIMEOUT_MS);
 }
 
-// The time of this moment with the zone of 'tz', into txData (as camera_session.cpp); without a fresh GPS
+// The time of this moment with the zone of 'tz', into txData (as newer_session.cpp); without a fresh GPS
 // time the time of the last fix (TIME_FROM_FIX_MAX_MS). False without either.
 bool makeTimePacket()
 {
@@ -465,7 +465,7 @@ void handleEvent(const camera_link::Event &event)
         break;
     case Step::Time:
         if (event.type == EventType::WriteDone && writeAccepted(event, camera_link::OLDER_TIME)) {
-            // As camera_session: in a lasting connection the camera takes the zone from the packet before.
+            // As newer_session: in a lasting connection the camera takes the zone from the packet before.
             if (keepOpen)
                 writeTime(Step::TimeAgain);
             else

@@ -1,4 +1,4 @@
-// How a session of either dialect (camera_session, older_session) ends: pairing and link_control
+// How a session of either dialect (newer_session, older_session) ends: pairing and link_control
 // take both dialects in one place. No hardware dependencies.
 #pragma once
 

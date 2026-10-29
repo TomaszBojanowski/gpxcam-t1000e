@@ -6,7 +6,7 @@
 #include <string.h>
 
 #include "bluetooth.h"
-#include "camera_session.h"
+#include "newer_session.h"
 #include "fake.h"
 #include "gps.h"
 #include "link_control.h"
@@ -126,9 +126,9 @@ void reset()
 {
     pairing::stop(false);
     link_control::stop(false);
-    camera_session::cancel();
+    newer_session::cancel();
     older_session::cancel();
-    camera_session::forgetHandles("test reset");
+    newer_session::forgetHandles("test reset");
     nowMs += 3600000; // past every hold and pause of the last test
     pairing::poll();  // releases a GPS hold
     logLines.clear();

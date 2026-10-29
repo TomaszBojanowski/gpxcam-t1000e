@@ -1,6 +1,6 @@
 // The camera's characteristic handles kept between connections, without hardware
 // dependencies (tested on the PC). RAM only, so after a restart the card always looks the
-// handles up once. camera_session keeps them after an introduction the camera accepted and
+// handles up once. newer_session keeps them after an introduction the camera accepted and
 // skips the service and characteristic discovery in the next session with the same camera
 // (about 2.6 s of the 3.7 s introduction at the 48.75 ms interval).
 #pragma once
@@ -12,7 +12,7 @@
 
 namespace handle_cache {
 
-// The characteristics the card uses (camera_link::CHARACTERISTIC_COUNT, checked in camera_session.cpp).
+// The characteristics the card uses (camera_link::NEWER_CHARACTERISTIC_COUNT, checked in newer_session.cpp).
 constexpr size_t CHARACTERISTIC_COUNT = 8;
 
 struct Handles {

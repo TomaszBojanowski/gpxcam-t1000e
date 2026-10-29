@@ -86,7 +86,7 @@ uint16_t status(Request request, uint16_t handle)
     return matches(camera.refuse, request, handle) ? camera.refuseStatus : BLE_GATT_STATUS_SUCCESS;
 }
 
-void addNewer(camera_link::Event *event, camera_link::Characteristic which, uint16_t handle, uint8_t properties)
+void addNewer(camera_link::Event *event, camera_link::NewerCharacteristic which, uint16_t handle, uint8_t properties)
 {
     event->characteristics.list[event->characteristics.count++] = {which, properties, handle};
 }
@@ -249,7 +249,7 @@ bool findService()
     return accepted;
 }
 
-bool findCharacteristics(uint16_t, uint16_t)
+bool findNewerCharacteristics(uint16_t, uint16_t)
 {
     fake::ask("characteristics");
     bool accepted = false;

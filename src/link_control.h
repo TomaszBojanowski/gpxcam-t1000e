@@ -1,6 +1,6 @@
 // Normal work with the paired camera, 'link on' / 'link off': looks for it in the search modes of
 // link_policy.h, connects once the GPS has UTC time, introduces the card in the camera's dialect
-// (camera_session, older_session) and sends the locations by the timing of 'updates' (link_policy.h);
+// (newer_session, older_session) and sends the locations by the timing of 'updates' (link_policy.h);
 // pauses after a failure and stops when the camera refuses the card, until 'link on' or a new pairing.
 // In detail: docs/HARDWARE.md, "Normal work". (Not named "link": that is a C library function.)
 // Loop task only.

@@ -1,5 +1,5 @@
 // Fake of the Arduino core header for the host tests of the state machines (test/test_sessions):
-// only what camera_session, older_session, pairing and link_control use. millis() is the test clock
+// only what newer_session, older_session, pairing and link_control use. millis() is the test clock
 // (fake.h).
 #pragma once
 

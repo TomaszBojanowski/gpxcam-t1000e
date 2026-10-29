@@ -233,7 +233,7 @@ void forgetCamera()
         logger::line("pair: could not write the pairing file");
 }
 
-// The camera gets the time zone with the time when the card connects to it (camera_session, older_session).
+// The camera gets the time zone with the time when the card connects to it (newer_session, older_session).
 void setTimeZone(const char *nameOrRule)
 {
     switch (tz_store::set(nameOrRule)) {

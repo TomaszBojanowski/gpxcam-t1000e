@@ -12,7 +12,7 @@
 #include "lumix.h"
 #include "session_end.h"
 
-namespace camera_session {
+namespace newer_session {
 
 // Rejected: a refusal that means the camera does not know the card (session_end::Reason::Refused).
 using Result = session_end::Result;
@@ -21,8 +21,8 @@ using Result = session_end::Result;
 struct Discovered {
     uint16_t mtu;
     uint16_t serviceEnd;
-    uint16_t valueHandle[camera_link::CHARACTERISTIC_COUNT]; // 0 = not found
-    uint8_t properties[camera_link::CHARACTERISTIC_COUNT];
+    uint16_t valueHandle[camera_link::NEWER_CHARACTERISTIC_COUNT]; // 0 = not found
+    uint8_t properties[camera_link::NEWER_CHARACTERISTIC_COUNT];
 };
 
 // Starts with a camera seen in the scan; scanning must be off. Never connects to a camera
@@ -59,4 +59,4 @@ void forgetHandles(const char *why);
 // Ends a running session at once: stops connecting or disconnects without waiting.
 void cancel();
 
-} // namespace camera_session
+} // namespace newer_session

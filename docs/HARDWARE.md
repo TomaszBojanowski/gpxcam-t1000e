@@ -311,7 +311,7 @@ about 1 s – released after 836 ms, the card starts.
   (`BLE_GENERIC_TIMEOUT`, cannot be changed), create a semaphore on the heap at every call, and a late response
   would land in a stale buffer (`AdaMsg`). Connection, MTU, discovery of the service and characteristics, read and write
   with response go directly through the SoftDevice API (`src/camera_link.cpp`), with our own timeouts
-  (`src/camera_session.cpp`). We do not register Bluefruit client objects, so its procedures ignore our responses.
+  (`src/newer_session.cpp`). We do not register Bluefruit client objects, so its procedures ignore our responses.
   Bluefruit answers the camera's requests for us: PHY, packet length, connection parameters, the MTU from the camera.
 - **MTU:** the SoftDevice is configured for 185 (`configCentralConn` before start; there is enough RAM). The S5II grants 57 –
   writes of up to 54 bytes; 32 are needed.

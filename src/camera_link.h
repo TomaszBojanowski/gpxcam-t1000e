@@ -16,7 +16,7 @@ namespace camera_link {
 
 // The characteristics the card uses (lumix.h, docs/PROTOCOL.md). The first five are needed
 // to introduce the card (pairing), the others for the normal work.
-enum Characteristic : uint8_t {
+enum NewerCharacteristic : uint8_t {
     KEY,
     DEVICE_ID,
     APP_NAME,
@@ -25,7 +25,7 @@ enum Characteristic : uint8_t {
     GPS_MODE,
     GPS_NOTIFY,
     LOCATION,
-    CHARACTERISTIC_COUNT
+    NEWER_CHARACTERISTIC_COUNT
 };
 constexpr uint8_t INTRODUCTION_CHARACTERISTICS = TIME + 1;
 
@@ -65,8 +65,8 @@ constexpr size_t MAX_READ_LENGTH = 8;
 // configured for it in bluetooth::begin(), the session asks the camera for it.
 constexpr uint16_t MAX_MTU = 185;
 
-struct FoundCharacteristic {
-    Characteristic which;
+struct FoundNewerCharacteristic {
+    NewerCharacteristic which;
     uint8_t properties; // PROPERTY_* bits
     uint16_t valueHandle;
 };
@@ -93,7 +93,7 @@ struct Event {
     } service;
     struct {
         uint8_t count; // ours among those in this response
-        FoundCharacteristic list[CHARACTERISTIC_COUNT];
+        FoundNewerCharacteristic list[NEWER_CHARACTERISTIC_COUNT];
         uint8_t olderCount; // older-dialect ones in this response (only after findOlderCharacteristics)
         FoundOlderCharacteristic olderList[OLDER_CHARACTERISTIC_COUNT];
         uint16_t lastHandle; // the last value handle in this response
@@ -151,8 +151,8 @@ bool close();
 // The requests below need a connection; false if the SoftDevice refused.
 bool exchangeMtu(uint16_t mtu);
 bool findService();
-bool findCharacteristics(uint16_t startHandle, uint16_t endHandle);
-// Like findCharacteristics, but the CharacteristicsFound events match the older dialect into
+bool findNewerCharacteristics(uint16_t startHandle, uint16_t endHandle);
+// Like findNewerCharacteristics, but the CharacteristicsFound events match the older dialect into
 // Event::characteristics::olderList instead. For the older-dialect session, which has no service
 // to search within and so reads across the whole handle range. Reset by connect().
 bool findOlderCharacteristics(uint16_t startHandle, uint16_t endHandle);

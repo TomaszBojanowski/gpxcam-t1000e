@@ -4,7 +4,7 @@
 
 #include "fake.h"
 
-void runCameraSessionTests();
+void runNewerSessionTests();
 void runLinkTests();
 void runPairingTests();
 void runOlderSessionTests();
@@ -26,7 +26,7 @@ void tearDown()
 int main(int, char **)
 {
     UNITY_BEGIN();
-    runCameraSessionTests();
+    runNewerSessionTests();
     runLinkTests();
     runPairingTests();
     runOlderSessionTests();

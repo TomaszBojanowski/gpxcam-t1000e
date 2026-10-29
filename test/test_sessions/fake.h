@@ -1,7 +1,7 @@
 // The fakes of the host tests of the state machines (pio test -e native_sessions): the test clock and
 // loop, the log, the GPS, the sounds, the scanner, the stores, and a camera behind camera_link that
 // answers as the S5II does (docs/PROTOCOL.md), or as an older-dialect camera. The real
-// camera_session, older_session, pairing and link_control run against them.
+// newer_session, older_session, pairing and link_control run against them.
 // Made-up values only: the camera serial 12 34 56 78 9a, the card UUID of
 // test/device_identity_vectors.txt, the position 5436.0000N 01900.0000E.
 #pragma once
@@ -44,7 +44,7 @@ template <class Poll> void pollFor(uint32_t ms, Poll poll)
     }
 }
 
-// Polls a session (camera_session::poll, older_session::poll) on the test clock until it is not
+// Polls a session (newer_session::poll, older_session::poll) on the test clock until it is not
 // Running, at most 60 s; *tookMs: how long it ran.
 template <class Poll> auto runSession(Poll poll, uint32_t *tookMs = nullptr) -> decltype(poll())
 {

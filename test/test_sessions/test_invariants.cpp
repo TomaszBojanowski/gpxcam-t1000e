@@ -4,7 +4,7 @@
 #include <string.h>
 #include <unity.h>
 
-#include "camera_session.h"
+#include "newer_session.h"
 #include "fake.h"
 #include "link_control.h"
 #include "older_session.h"
@@ -60,24 +60,24 @@ void startLink(uint8_t dialect)
 
 } // namespace
 
-void test_camera_session_cancel_closes_the_connection_in_every_step()
+void test_newer_session_cancel_closes_the_connection_in_every_step()
 {
     for (const StepCase &step : NEWER_STEPS) {
         fake::reset();
         fake::camera.silent = {step.request, step.handle};
         withGps();
-        TEST_ASSERT_TRUE(camera_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
-        fake::pollFor(50, [] { camera_session::poll(); });
+        TEST_ASSERT_TRUE(newer_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
+        fake::pollFor(50, [] { newer_session::poll(); });
         TEST_ASSERT_TRUE_MESSAGE(fake::linkUp(), step.name);
-        camera_session::cancel();
+        newer_session::cancel();
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), step.name);
         TEST_ASSERT_FALSE_MESSAGE(fake::connectionWanted(), step.name);
     }
     fake::reset(); // and while connecting: a connection that comes up now is closed at once
     fake::camera.answer = fake::Answer::NoAnswer;
     withGps();
-    TEST_ASSERT_TRUE(camera_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
-    camera_session::cancel();
+    TEST_ASSERT_TRUE(newer_session::start(fake::cameraIn(lumix::STATE_ON), fake::record.uuid, true));
+    newer_session::cancel();
     TEST_ASSERT_FALSE(fake::connectionWanted());
 }
 
@@ -193,7 +193,7 @@ void test_pairing_closes_the_connection_when_cancelled_or_done()
 
 void runInvariantTests()
 {
-    RUN_TEST(test_camera_session_cancel_closes_the_connection_in_every_step);
+    RUN_TEST(test_newer_session_cancel_closes_the_connection_in_every_step);
     RUN_TEST(test_older_session_cancel_closes_the_connection_in_every_step);
     RUN_TEST(test_link_off_closes_the_connection_in_every_phase);
     RUN_TEST(test_pairing_closes_the_connection_when_cancelled_or_done);

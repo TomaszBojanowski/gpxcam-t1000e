@@ -6,7 +6,7 @@
 
 #include "bluetooth.h"
 #include "camera_list.h"
-#include "camera_session.h"
+#include "newer_session.h"
 #include "gps.h"
 #include "log.h"
 #include "link_control.h"
@@ -92,7 +92,7 @@ void releaseGpsHold(uint32_t now)
 // on for the session stays on for another try (not before System OFF: resumeLink false).
 void finish(bool resumeLink = true)
 {
-    camera_session::cancel(); // does nothing when no session runs
+    newer_session::cancel(); // does nothing when no session runs
     older_session::cancel();
     phase = Phase::Idle;
     if (resumeLink && (linkWasOn || paired)) {
@@ -185,9 +185,9 @@ void introduce(const camera_list::Entry &camera)
     logger::line("pair: attempt %d/%d - camera %s in pairing mode, %d dBm, connecting", attempt, MAX_ATTEMPTS, serial,
                  camera.last.rssi);
     const bool ok = olderMode ? older_session::start(camera.last, pairing_store::record().uuid, false)
-                              : camera_session::start(camera.last, pairing_store::record().uuid, false);
+                              : newer_session::start(camera.last, pairing_store::record().uuid, false);
     if (!ok) {
-        attemptFailed(olderMode ? older_session::failure() : camera_session::failure());
+        attemptFailed(olderMode ? older_session::failure() : newer_session::failure());
         return;
     }
     enter(olderMode ? Phase::WaitingForWifi : Phase::Introducing);
@@ -269,10 +269,10 @@ void switchToOlder()
 // refusal: a failed attempt with its pause.
 void introducing()
 {
-    if ((olderMode ? older_session::poll() : camera_session::poll()) == session_end::Result::Running)
+    if ((olderMode ? older_session::poll() : newer_session::poll()) == session_end::Result::Running)
         return;
-    const char *failure = olderMode ? older_session::failure() : camera_session::failure();
-    const session_end::Reason reason = olderMode ? older_session::endReason() : camera_session::endReason();
+    const char *failure = olderMode ? older_session::failure() : newer_session::failure();
+    const session_end::Reason reason = olderMode ? older_session::endReason() : newer_session::endReason();
     switch (reason) {
     case session_end::Reason::Accepted:
         succeed();

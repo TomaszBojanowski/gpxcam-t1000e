@@ -1,4 +1,4 @@
-#include "camera_session.h"
+#include "newer_session.h"
 
 #include <Arduino.h>
 #include <ble_gatt.h>
@@ -19,7 +19,7 @@
 
 namespace {
 
-using camera_link::Characteristic;
+using camera_link::NewerCharacteristic;
 
 // The other time limits are camera_link's (CONNECT_TIMEOUT_MS, MTU_TIMEOUT_MS, REQUEST_TIMEOUT_MS).
 constexpr uint32_t DISCONNECT_MS = 5000;
@@ -45,10 +45,10 @@ session_end::Reason ending = session_end::Reason::Failed; // endReason(); Accept
 char failureText[80] = "";
 
 uint8_t cardUuid[lumix::UUID_LENGTH];
-camera_session::Discovered info = {}; // MTU, service end, handles and properties
+newer_session::Discovered info = {}; // MTU, service end, handles and properties
 
-// The handles kept from the last introduction (handle_cache, camera_session::forgetHandles()).
-static_assert(handle_cache::CHARACTERISTIC_COUNT == camera_link::CHARACTERISTIC_COUNT, "same characteristics");
+// The handles kept from the last introduction (handle_cache, newer_session::forgetHandles()).
+static_assert(handle_cache::CHARACTERISTIC_COUNT == camera_link::NEWER_CHARACTERISTIC_COUNT, "same characteristics");
 uint8_t sessionSerial[lumix::SERIAL_LENGTH]; // the camera of this session
 handle_cache::Handles keptHandles = {};       // valid when usingKept
 bool usingKept = false;                       // this session skips the discovery
@@ -131,21 +131,21 @@ void keepHandles()
 void fail(session_end::Reason reason = session_end::Reason::Failed)
 {
     if (handle_cache::forgetAfterFailure(step != Step::Connecting, false))
-        camera_session::forgetHandles(failureText);
+        newer_session::forgetHandles(failureText);
     ending = reason;
     closeLink();
 }
 
 void requestCharacteristics(uint16_t fromHandle)
 {
-    if (!camera_link::findCharacteristics(fromHandle, info.serviceEnd)) {
+    if (!camera_link::findNewerCharacteristics(fromHandle, info.serviceEnd)) {
         setFailure("characteristics: request refused");
         fail();
     }
 }
 
 // Starts a write of txData[0..length) to the characteristic and moves to the next step.
-void startWrite(Characteristic which, size_t length, Step next)
+void startWrite(NewerCharacteristic which, size_t length, Step next)
 {
     if (length + ATT_WRITE_HEADER > info.mtu) {
         setFailure("%s: %u bytes do not fit MTU %u", stepName(next), (unsigned)length, info.mtu);
@@ -257,7 +257,7 @@ void readKey()
         count += handle != 0;
     logger::transient(usingKept ? "camera: %u of %u characteristics from the last connection"
                                 : "camera: service and %u of %u characteristics found",
-                      count, (unsigned)camera_link::CHARACTERISTIC_COUNT);
+                      count, (unsigned)camera_link::NEWER_CHARACTERISTIC_COUNT);
     if (!camera_link::read(info.valueHandle[camera_link::KEY])) {
         setFailure("key: read refused by the SoftDevice");
         fail();
@@ -269,7 +269,7 @@ void readKey()
 void onCharacteristics(const camera_link::Event &event)
 {
     for (uint8_t i = 0; i < event.characteristics.count; i++) {
-        const camera_link::FoundCharacteristic &entry = event.characteristics.list[i];
+        const camera_link::FoundNewerCharacteristic &entry = event.characteristics.list[i];
         info.valueHandle[entry.which] = entry.valueHandle;
         info.properties[entry.which] = entry.properties;
     }
@@ -416,7 +416,7 @@ bool handleCommonEvent(const camera_link::Event &event)
             const session_end::Reason reason = disconnectedReason(event.status);
             if (ending != session_end::Reason::Accepted &&
                 handle_cache::forgetAfterFailure(true, reason == session_end::Reason::NotEstablished))
-                camera_session::forgetHandles(failureText);
+                newer_session::forgetHandles(failureText);
             ending = reason; // the link is gone, also after an accepted time
         }
         step = Step::Done;
@@ -507,7 +507,7 @@ void handleTimeout()
 
 } // namespace
 
-namespace camera_session {
+namespace newer_session {
 
 bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LENGTH], bool keepConnection)
 {
@@ -594,4 +594,4 @@ void cancel()
     step = Step::Idle;
 }
 
-} // namespace camera_session
+} // namespace newer_session

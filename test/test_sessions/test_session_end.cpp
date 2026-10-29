@@ -4,7 +4,7 @@
 
 #include <ble_hci.h>
 
-#include "camera_session.h"
+#include "newer_session.h"
 #include "fake.h"
 #include "link_control.h"
 #include "older_session.h"
@@ -141,12 +141,12 @@ void test_each_session_end_has_its_reason()
         const bool older = end.session == fake::Dialect::Older;
         const camera_list::Report camera = fake::cameraIn(lumix::STATE_ON);
         TEST_ASSERT_TRUE_MESSAGE(older ? older_session::start(camera, fake::record.uuid, true)
-                                       : camera_session::start(camera, fake::record.uuid, true),
+                                       : newer_session::start(camera, fake::record.uuid, true),
                                  end.name);
         const session_end::Result result =
-            older ? fake::runSession(older_session::poll) : fake::runSession(camera_session::poll);
+            older ? fake::runSession(older_session::poll) : fake::runSession(newer_session::poll);
         TEST_ASSERT_EQUAL_MESSAGE(session_end::resultOf(end.reason), result, end.name);
-        TEST_ASSERT_EQUAL_MESSAGE(end.reason, older ? older_session::endReason() : camera_session::endReason(),
+        TEST_ASSERT_EQUAL_MESSAGE(end.reason, older ? older_session::endReason() : newer_session::endReason(),
                                   end.name);
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), end.name);
     }
