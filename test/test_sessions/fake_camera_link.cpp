@@ -168,6 +168,16 @@ void loseNextEvent()
     dropNext = true;
 }
 
+void askForEncryption()
+{
+    queue(made(camera_link::EventType::SecurityRequest));
+}
+
+void gattTimeout()
+{
+    queue(made(camera_link::EventType::GattTimeout));
+}
+
 } // namespace fake
 
 namespace camera_link {

@@ -10,6 +10,7 @@ void runPairingTests();
 void runOlderSessionTests();
 void runInvariantTests();
 void runSessionEndTests();
+void runCameraConnectionTests();
 
 void setUp()
 {
@@ -32,5 +33,6 @@ int main(int, char **)
     runOlderSessionTests();
     runInvariantTests();
     runSessionEndTests();
+    runCameraConnectionTests();
     return UNITY_END();
 }

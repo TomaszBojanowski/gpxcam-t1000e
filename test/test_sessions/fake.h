@@ -175,5 +175,8 @@ bool connectionWanted();
 void notify(uint16_t handle, uint8_t value);
 void endConnection(uint8_t reason);
 void loseNextEvent();
+// The camera asks for encryption (SecurityRequest), or a request gets no ATT answer for 30 s (GattTimeout).
+void askForEncryption();
+void gattTimeout();
 
 } // namespace fake

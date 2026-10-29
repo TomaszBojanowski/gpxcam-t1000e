@@ -1,20 +1,16 @@
 #include "newer_session.h"
 
-#include <Arduino.h>
 #include <ble_gatt.h>
-#include <ble_hci.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "camera_connection.h"
 #include "camera_link.h"
-#include "gps.h"
 #include "handle_cache.h"
 #include "link_policy.h"
 #include "log.h"
-#include "posix_tz.h"
 #include "tz_store.h"
-#include "utc.h"
 #include "version.h"
 
 namespace {
@@ -25,7 +21,6 @@ using camera_link::NewerCharacteristic;
 constexpr uint32_t DISCONNECT_MS = 5000;
 
 // A write request carries 3 bytes of ATT header; the longest write is the 32-byte app name.
-constexpr uint16_t MTU_REQUEST = camera_link::MAX_MTU;
 constexpr uint16_t ATT_WRITE_HEADER = 3;
 constexpr uint16_t MTU_NEEDED = lumix::APP_NAME_LENGTH + ATT_WRITE_HEADER;
 
@@ -36,9 +31,7 @@ constexpr const char *APP_NAME = "gpxcam T1000-E " FW_VERSION;
 enum class Step { Idle, Connecting, Mtu, Service, Characteristics, Key, DeviceId, AppName, DeviceName, Time,
                   TimeAgain, Disconnecting, Done };
 
-Step step = Step::Idle;
-uint32_t stepStart = 0;
-uint32_t stepLimit = 0;
+Step step = Step::Idle; // the time limit of each step: camera_connection
 bool keepOpen = false;
 bool timeWritten = true; // set at the start: false only with the clock off in a lasting connection
 session_end::Reason ending = session_end::Reason::Failed; // endReason(); Accepted once the camera took the card
@@ -95,8 +88,7 @@ const char *stepName(Step s)
 void enter(Step next, uint32_t limitMs)
 {
     step = next;
-    stepStart = millis();
-    stepLimit = limitMs;
+    camera_connection::enter(limitMs);
 }
 
 void setFailure(const char *format, ...) __attribute__((format(printf, 1, 2)));
@@ -178,28 +170,23 @@ void writeDeviceName()
     startWrite(camera_link::DEVICE_NAME, length, Step::DeviceName);
 }
 
-// Puts the time of this moment with the time zone set by 'tz' (tz_store) into txData, as the
-// camera expects (docs/PROTOCOL.md). False without GPS time.
-bool makeTimePacket(posix_tz::CameraZone *zone)
+// The time of this moment with the time zone set by 'tz' into txData, as the camera expects
+// (docs/PROTOCOL.md). False without a fresh GPS time.
+bool makeTimePacket(camera_connection::TimeSource *source)
 {
-    int64_t now = 0;
-    if (!gps::utcNow(&now))
-        return false;
-    *zone = posix_tz::cameraZone(tz_store::rule(), now);
-    lumix::timeData(utc::fromUnixSeconds(now), zone->standardOffsetMinutes, zone->summerTime, txData);
-    return true;
+    return camera_connection::timePacket(camera_connection::FRESH_TIME_ONLY, txData, source);
 }
 
 void writeTime()
 {
-    posix_tz::CameraZone zone;
-    if (!makeTimePacket(&zone)) {
+    camera_connection::TimeSource source;
+    if (!makeTimePacket(&source)) {
         setFailure("time: no GPS time any more");
         fail();
         return;
     }
-    logger::transient("camera: time zone %d min%s", zone.standardOffsetMinutes,
-                      zone.summerTime ? " + summer time" : "");
+    logger::transient("camera: time zone %d min%s", source.zone.standardOffsetMinutes,
+                      source.zone.summerTime ? " + summer time" : "");
     startWrite(camera_link::TIME, lumix::TIME_LENGTH, Step::Time);
 }
 
@@ -227,8 +214,8 @@ void endTimeAgain(const char *what)
 // SoftDevice, which then refuses the link's next write.
 void writeTimeAgain()
 {
-    posix_tz::CameraZone zone;
-    if (!makeTimePacket(&zone))
+    camera_connection::TimeSource source;
+    if (!makeTimePacket(&source))
         endTimeAgain("not sent: no GPS time any more");
     else if (!camera_link::write(info.valueHandle[camera_link::TIME], txData, lumix::TIME_LENGTH))
         endTimeAgain("not sent: write refused by the SoftDevice");
@@ -338,7 +325,7 @@ void onTimeAgainWritten(const camera_link::Event &event)
 
 void onMtu(const camera_link::Event &event)
 {
-    info.mtu = event.status == BLE_GATT_STATUS_SUCCESS ? min(MTU_REQUEST, event.mtu) : BLE_GATT_ATT_MTU_DEFAULT;
+    info.mtu = camera_connection::mtu(event);
     logger::transient("camera: MTU %u", info.mtu);
     if (info.mtu < MTU_NEEDED) {
         setFailure("MTU: %u, writes of 32 bytes need %u", info.mtu, MTU_NEEDED);
@@ -390,7 +377,7 @@ void onKey(const camera_link::Event &event)
 void onConnected()
 {
     logger::transient("camera: connected");
-    if (!camera_link::exchangeMtu(MTU_REQUEST)) {
+    if (!camera_connection::requestMtu()) {
         setFailure("MTU: request refused");
         fail();
         return;
@@ -398,22 +385,17 @@ void onConnected()
     enter(Step::Mtu, camera_link::MTU_TIMEOUT_MS);
 }
 
-// Why the camera's disconnect ends the session.
-session_end::Reason disconnectedReason(uint16_t hciReason)
-{
-    if (hciReason == BLE_HCI_CONN_FAILED_TO_BE_ESTABLISHED)
-        return session_end::Reason::NotEstablished;
-    return step == Step::Connecting ? session_end::Reason::Failed : session_end::Reason::EndedEarly;
-}
-
 // Events that may come in any step.
 bool handleCommonEvent(const camera_link::Event &event)
 {
+    if (camera_connection::securityRequest(event))
+        return true;
     switch (event.type) {
     case camera_link::EventType::Disconnected:
         if (step != Step::Disconnecting) {
             setFailure("%s: the camera disconnected (HCI 0x%02x)", stepName(step), event.status);
-            const session_end::Reason reason = disconnectedReason(event.status);
+            const session_end::Reason reason =
+                camera_connection::disconnectedReason(event.status, step == Step::Connecting);
             if (ending != session_end::Reason::Accepted &&
                 handle_cache::forgetAfterFailure(true, reason == session_end::Reason::NotEstablished))
                 newer_session::forgetHandles(failureText);
@@ -424,9 +406,6 @@ bool handleCommonEvent(const camera_link::Event &event)
     case camera_link::EventType::GattTimeout:
         setFailure("%s: no ATT answer for 30 s", stepName(step));
         fail();
-        return true;
-    case camera_link::EventType::SecurityRequest:
-        logger::line("%s", camera_link::SECURITY_REQUEST_LINE);
         return true;
     default:
         return false;
@@ -495,11 +474,11 @@ void handleTimeout()
         step = Step::Done;
         break;
     case Step::Connecting:
-        setFailure("connect: no answer in %lu s", (unsigned long)(stepLimit / 1000));
+        setFailure("connect: no answer in %lu s", (unsigned long)camera_connection::limitSeconds());
         fail(session_end::Reason::NoAnswer); // closes a connection that came up just now
         break;
     default:
-        setFailure("%s: no answer in %lu s", stepName(step), (unsigned long)(stepLimit / 1000));
+        setFailure("%s: no answer in %lu s", stepName(step), (unsigned long)camera_connection::limitSeconds());
         fail();
         break;
     }
@@ -511,19 +490,12 @@ namespace newer_session {
 
 bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LENGTH], bool keepConnection)
 {
-    if (step != Step::Idle) {
-        setFailure("a session is running");
+    const char *refusal = camera_connection::start(camera);
+    if (refusal != nullptr) {
+        setFailure("%s", refusal);
         return false;
     }
-    if (camera.camera.state == lumix::STATE_STANDBY) { // connecting would wake the camera
-        setFailure("the camera is in standby");
-        return false;
-    }
-    if (camera_link::connected()) {
-        camera_link::close();
-        setFailure("an earlier connection was still open - closed now");
-        return false;
-    }
+    step = Step::Connecting; // camera_connection::start() began its time limit
     memcpy(cardUuid, uuid, sizeof(cardUuid));
     memcpy(sessionSerial, camera.camera.serial, sizeof(sessionSerial));
     const handle_cache::Lookup lookup = handle_cache::find(sessionSerial, &keptHandles);
@@ -536,11 +508,6 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     timeWritten = !keepConnection || tz_store::clockOn();
     ending = session_end::Reason::Failed;
     failureText[0] = '\0';
-    if (!camera_link::connect(camera)) {
-        setFailure("connect: refused by the SoftDevice");
-        return false;
-    }
-    enter(Step::Connecting, camera_link::CONNECT_TIMEOUT_MS);
     return true;
 }
 
@@ -551,11 +518,12 @@ Result poll()
     camera_link::Event event;
     while (step != Step::Done && camera_link::nextEvent(&event))
         handleEvent(event);
-    if (step != Step::Done && millis() - stepStart >= stepLimit)
+    if (step != Step::Done && camera_connection::overLimit())
         handleTimeout();
     if (step != Step::Done)
         return Result::Running;
     step = Step::Idle;
+    camera_connection::release();
     return session_end::resultOf(ending);
 }
 
@@ -589,7 +557,7 @@ void cancel()
 {
     if (step == Step::Idle)
         return;
-    camera_link::close();
+    camera_connection::cancel();
     ending = session_end::Reason::Failed;
     step = Step::Idle;
 }

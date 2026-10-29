@@ -1,20 +1,16 @@
 #include "older_session.h"
 
-#include <Arduino.h>
 #include <ble_gatt.h>
-#include <ble_hci.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "camera_connection.h"
 #include "camera_link.h"
 #include "device_identity.h"
-#include "gps.h"
 #include "log.h"
 #include "lumix.h"
-#include "posix_tz.h"
 #include "tz_store.h"
-#include "utc.h"
 
 // The order and byte formats come from a capture of the older Panasonic app with the S5II (lumix.h).
 
@@ -25,14 +21,12 @@ namespace {
 // connection: the camera that already knows the card sends 01 right after the device name.
 constexpr uint32_t KNOWN_WAIT_PAIR_MS = 300000;
 constexpr uint32_t KNOWN_WAIT_CONNECT_MS = 15000;
-constexpr uint32_t NO_LIMIT = 0;
 // A camera that waits for the Wi-Fi step takes its time up to KNOWN_WAIT_PAIR_MS after the card introduced
 // itself, when the user may have carried the card indoors to the computer and the GPS lost its fix. The
 // time of the last fix then counts (gps::utcSinceFix(): millis() on the 32 kHz crystal, a few ms in 10 min)
 // for at most this long.
 constexpr uint32_t TIME_FROM_FIX_MAX_MS = 600000;
 
-constexpr uint16_t MTU_REQUEST = camera_link::MAX_MTU;
 constexpr uint16_t FIRST_HANDLE = 0x0001;
 constexpr uint16_t LAST_HANDLE = 0xFFFF;
 
@@ -42,9 +36,7 @@ constexpr const char *DEVICE_NAME = "T1000-E";
 enum class Step { Idle, Connecting, Mtu, Characteristics, Key, DeviceId, DeviceName, CameraName, CameraText,
                   WaitKnown, Time, TimeAgain, Done };
 
-Step step = Step::Idle;
-uint32_t stepStart = 0;
-uint32_t stepLimit = NO_LIMIT;
+Step step = Step::Idle; // the time limit of each step: camera_connection
 bool keepOpen = false; // true: the connection goes to the caller once the camera accepts (the link)
 session_end::Reason ending = session_end::Reason::Failed; // endReason(); Accepted once the camera took the card
 uint8_t cardUuid[lumix::UUID_LENGTH];
@@ -99,8 +91,7 @@ const char *stepName(Step s)
 void enter(Step next, uint32_t limitMs)
 {
     step = next;
-    stepStart = millis();
-    stepLimit = limitMs;
+    camera_connection::enter(limitMs);
 }
 
 // Ends the session for this reason, with the failure text. Disconnects; the pending event is ignored.
@@ -110,6 +101,7 @@ void end(session_end::Reason reason, const char *format, va_list args)
     ending = reason;
     camera_link::close();
     step = Step::Idle;
+    camera_connection::release();
 }
 
 void endWith(session_end::Reason reason, const char *format, ...) __attribute__((format(printf, 2, 3)));
@@ -154,21 +146,18 @@ void startRead(camera_link::OlderCharacteristic which, Step next)
     enter(next, camera_link::REQUEST_TIMEOUT_MS);
 }
 
-// The time of this moment with the zone of 'tz', into txData (as newer_session.cpp); without a fresh GPS
-// time the time of the last fix (TIME_FROM_FIX_MAX_MS). False without either.
+// The time of this moment with the zone of 'tz', into txData; without a fresh GPS time the time of the
+// last fix (TIME_FROM_FIX_MAX_MS). False without either.
 bool makeTimePacket()
 {
-    int64_t now = 0;
-    if (!gps::utcNow(&now)) {
-        uint32_t ageMs = 0;
-        if (!gps::utcSinceFix(TIME_FROM_FIX_MAX_MS, &now, &ageMs))
-            return false;
-        if (!timeFromFixLogged)
-            logger::line("older: no fresh GPS time - the time of the fix %lu s ago", (unsigned long)(ageMs / 1000));
+    camera_connection::TimeSource source;
+    if (!camera_connection::timePacket(TIME_FROM_FIX_MAX_MS, txData, &source))
+        return false;
+    if (source.fromLastFix && !timeFromFixLogged) {
+        logger::line("older: no fresh GPS time - the time of the fix %lu s ago",
+                     (unsigned long)(source.fixAgeMs / 1000));
         timeFromFixLogged = true;
     }
-    const posix_tz::CameraZone zone = posix_tz::cameraZone(tz_store::rule(), now);
-    lumix::timeData(utc::fromUnixSeconds(now), zone.standardOffsetMinutes, zone.summerTime, txData);
     return true;
 }
 
@@ -178,7 +167,7 @@ void accept()
 {
     logger::line("older: the camera took the card");
     ending = session_end::Reason::Accepted;
-    enter(Step::Done, NO_LIMIT);
+    enter(Step::Done, camera_connection::NO_LIMIT);
 }
 
 void writeTime(Step next)
@@ -371,7 +360,7 @@ void onNotified(const camera_link::Event &event)
 void onConnected()
 {
     logger::line("older: connected");
-    if (!camera_link::exchangeMtu(MTU_REQUEST)) {
+    if (!camera_connection::requestMtu()) {
         fail("MTU: request refused");
         return;
     }
@@ -380,38 +369,28 @@ void onConnected()
 
 void onMtu(const camera_link::Event &event)
 {
-    const uint16_t mtu =
-        event.status == BLE_GATT_STATUS_SUCCESS ? min(MTU_REQUEST, event.mtu) : BLE_GATT_ATT_MTU_DEFAULT;
-    logger::line("older: MTU %u - looking for the characteristics in all handles", mtu);
+    logger::line("older: MTU %u - looking for the characteristics in all handles", camera_connection::mtu(event));
     if (!camera_link::findOlderCharacteristics(FIRST_HANDLE, LAST_HANDLE))
         fail("characteristics: request refused");
     else
         enter(Step::Characteristics, camera_link::REQUEST_TIMEOUT_MS);
 }
 
-// Why the camera's disconnect ends the session.
-session_end::Reason disconnectedReason(uint16_t hciReason)
-{
-    if (hciReason == BLE_HCI_CONN_FAILED_TO_BE_ESTABLISHED)
-        return session_end::Reason::NotEstablished;
-    return step == Step::Connecting ? session_end::Reason::Failed : session_end::Reason::EndedEarly;
-}
-
 // Events that may come in any step of a connection. Returns true if it handled the event.
 bool handleCommonEvent(const camera_link::Event &event)
 {
+    if (camera_connection::securityRequest(event))
+        return true;
     using camera_link::EventType;
     switch (event.type) {
     case EventType::Disconnected:
         if (step == Step::Done)
             return true; // already accepted; the caller cancels
-        endWith(disconnectedReason(event.status), "the camera disconnected (HCI 0x%02x)", event.status);
+        endWith(camera_connection::disconnectedReason(event.status, step == Step::Connecting),
+                "the camera disconnected (HCI 0x%02x)", event.status);
         return true;
     case EventType::GattTimeout:
         fail("no ATT answer for 30 s");
-        return true;
-    case EventType::SecurityRequest:
-        logger::line("%s", camera_link::SECURITY_REQUEST_LINE);
         return true;
     case EventType::Notified:
         onNotified(event);
@@ -486,11 +465,12 @@ void handleEvent(const camera_link::Event &event)
 void handleTimeout()
 {
     if (step == Step::WaitKnown) { // a camera may be slow; the link counts it (link_policy)
-        endWith(session_end::Reason::NotTaken, "no 01 from the camera in %lu s", (unsigned long)(stepLimit / 1000));
+        endWith(session_end::Reason::NotTaken, "no 01 from the camera in %lu s",
+                (unsigned long)camera_connection::limitSeconds());
         return;
     }
     endWith(step == Step::Connecting ? session_end::Reason::NoAnswer : session_end::Reason::Failed,
-            "no answer in step '%s' in %lu s", stepName(step), (unsigned long)(stepLimit / 1000));
+            "no answer in step '%s' in %lu s", stepName(step), (unsigned long)camera_connection::limitSeconds());
 }
 
 } // namespace
@@ -499,19 +479,12 @@ namespace older_session {
 
 bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LENGTH], bool keepConnection)
 {
-    if (step != Step::Idle) {
-        snprintf(failureText, sizeof(failureText), "a session is running");
+    const char *refusal = camera_connection::start(camera);
+    if (refusal != nullptr) {
+        snprintf(failureText, sizeof(failureText), "%s", refusal);
         return false;
     }
-    if (camera.camera.state == lumix::STATE_STANDBY) { // connecting would wake the camera
-        snprintf(failureText, sizeof(failureText), "the camera is in standby");
-        return false;
-    }
-    if (camera_link::connected()) {
-        camera_link::close();
-        snprintf(failureText, sizeof(failureText), "an earlier connection was still open - closed now");
-        return false;
-    }
+    step = Step::Connecting; // camera_connection::start() began its time limit
     memcpy(cardUuid, uuid, sizeof(cardUuid));
     keepOpen = keepConnection;
     ending = session_end::Reason::Failed;
@@ -520,11 +493,6 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     knownByTimeNotify = false;
     memset(handles, 0, sizeof(handles));
     failureText[0] = '\0';
-    if (!camera_link::connect(camera)) {
-        snprintf(failureText, sizeof(failureText), "connect: refused by the SoftDevice");
-        return false;
-    }
-    enter(Step::Connecting, camera_link::CONNECT_TIMEOUT_MS);
     return true;
 }
 
@@ -540,8 +508,10 @@ Result poll()
     while (step != Step::Idle && step != Step::Done && camera_link::nextEvent(&event))
         handleEvent(event);
     if (step == Step::Done) {
-        if (keepOpen)
-            step = Step::Idle; // the connection is the caller's now; its events too
+        if (keepOpen) { // the connection is the caller's now; its events too
+            step = Step::Idle;
+            camera_connection::release();
+        }
         return Result::Accepted; // pairing: again at every poll until the caller cancels
     }
     if (step == Step::Idle)
@@ -550,7 +520,7 @@ Result poll()
         fail("the connection ended without its event");
         return Result::Failed;
     }
-    if (stepLimit != NO_LIMIT && millis() - stepStart >= stepLimit) {
+    if (camera_connection::overLimit()) {
         handleTimeout();
         if (step == Step::Idle)
             return session_end::resultOf(ending);
@@ -582,7 +552,7 @@ void cancel()
 {
     if (step == Step::Idle)
         return;
-    camera_link::close();
+    camera_connection::cancel();
     ending = session_end::Reason::Failed;
     step = Step::Idle;
 }

@@ -149,6 +149,12 @@ void test_each_session_end_has_its_reason()
         TEST_ASSERT_EQUAL_MESSAGE(end.reason, older ? older_session::endReason() : newer_session::endReason(),
                                   end.name);
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), end.name);
+        // The ended session no longer has the connection (camera_connection): one of the other dialect starts.
+        TEST_ASSERT_TRUE_MESSAGE(older ? newer_session::start(camera, fake::record.uuid, true)
+                                       : older_session::start(camera, fake::record.uuid, true),
+                                 end.name);
+        newer_session::cancel();
+        older_session::cancel();
     }
 }
 
