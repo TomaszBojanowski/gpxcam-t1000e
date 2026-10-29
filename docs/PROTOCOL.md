@@ -127,8 +127,7 @@ id was the same).
 just the same. It accepted the GPS mode and the locations, showed its GPS icon, and the photo had the time zone set
 by hand in the camera's menu (−04:00) with the right GPS time and position. Since the time write is where the
 camera refuses an unknown card, the card then treats a refusal of any other step, or three connections in a row
-that end before a location, as "the camera does not know the card" (`docs/HARDWARE.md`, "Card page and clock
-setting").
+that end before a location, as "the camera does not know the card" (`docs/HARDWARE.md`, "Clock off").
 
 ## Byte formats
 
