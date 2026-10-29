@@ -1590,7 +1590,7 @@ function readErrorText(error) {
 class NoCardError extends Error {}
 
 // The app lists the cards itself (USB 2886:8057): one is taken at once; with more, choose(paths)
-// lets the user pick one and gives its path, or null.
+// lets the user pick one and gives its path, or null. It also does an older camera's Wi-Fi step.
 function appTransport(windowObject) {
   const core = windowObject.__TAURI__ && windowObject.__TAURI__.core;
   if (!core) return null;
@@ -1605,6 +1605,15 @@ function appTransport(windowObject) {
     },
     // An unplugged card ends the app's channel with an error, and with it the reading.
     onDisconnect: () => {},
+    // Registers the identity and name over the camera's Wi-Fi (app/src-tauri/src/older_wifi.rs); onStage
+    // gets each stage. Gives the outcome, or fails with the word of the app's problem.
+    registerOlder: (identity, name, onStage) => {
+      const channel = new core.Channel();
+      channel.onmessage = (event) => onStage(event.kind);
+      return core.invoke("register_older", { identity, name, onEvent: channel });
+    },
+    // Stops a running registerOlder(), which then gives "cancelled".
+    cancelOlder: () => core.invoke("cancel_older").catch(() => {}),
   };
 }
 
@@ -2161,15 +2170,6 @@ function startPage() {
     showPairing();
   };
 
-  // Registers the identity and name over the camera's Wi-Fi (the app's register_older); onStage gets
-  // each stage. Only in the app: window.__TAURI__.
-  const registerOlder = (identity, name, onStage) => {
-    const core = window.__TAURI__.core;
-    const channel = new core.Channel();
-    channel.onmessage = (event) => onStage(event.kind);
-    return core.invoke("register_older", { identity, name, onEvent: channel });
-  };
-
   // The one-time Wi-Fi step of an older camera (app only): the card has introduced itself and waits for
   // it; the app registers the same identity and name over the camera's own Wi-Fi. show(text, kind) puts
   // the progress where the step was started from. The outcome of register_older, or the word it failed
@@ -2178,7 +2178,7 @@ function startPage() {
     show("Join the camera's Wi-Fi network shown on its screen and keep this window open. On the S5 and similar " +
       "it has no password by default - just pick it from the list; if the camera asks for one, it is on the " +
       "camera's screen or in its Wi-Fi setup (Setup → Wi-Fi → Wi-Fi Setup → Wi-Fi Password).", "busy");
-    const outcome = await registerOlder(info.identity, info.name, (stage) => {
+    const outcome = await transport.registerOlder(info.identity, info.name, (stage) => {
       if (card !== asked || olderCancelled) return;
       if (stage === "on-network") show("On the camera's network - registering the card...", "busy");
       else if (stage === "registering") show("Registering - allow the connection on the camera if it asks...", "busy");
@@ -2193,11 +2193,7 @@ function startPage() {
     if (!busy) return;
     olderCancelled = true;
     setStatus(ui.pairProgress, "Cancelling...", "busy");
-    try {
-      window.__TAURI__.core.invoke("cancel_older");
-    } catch (error) {
-      // the app is gone; nothing to stop
-    }
+    transport.cancelOlder();
   };
 
   // A run of the wizard (Start, Resume) holds the buttons; when it ends they follow the card's state.
