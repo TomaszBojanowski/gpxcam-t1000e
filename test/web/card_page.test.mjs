@@ -236,9 +236,31 @@ async function openCard(answers, readFails = false) {
 
 test("the data holds the card's zones, aliases and countries", () => {
   assert.equal(page.TZ_DATA.version, "2026e");
-  assert.equal(page.TZ_DATA.zones.length, 344);
+  assert.equal(page.TZ_DATA.zones.length, 340); // the card's 344 but 4 old POSIX-style ones
+  assert.equal(Object.keys(page.TZ_DATA.aliases).length, 246); // the card's 253 but 7 old POSIX-style ones
   assert.equal(page.TZ_DATA.aliases["Europe/Copenhagen"], "Europe/Berlin");
   assert.deepEqual(json(page.TZ_DATA.countries.DK), ["Denmark", [["Europe/Copenhagen", ""]]]);
+});
+
+// The card's table keeps the old POSIX-style names (tools/gen_tz_table.py LEGACY_NAMES); the page does not
+// offer them, but shows one the card was set to as its zone, with the time it gives.
+test("the old POSIX-style names are not offered, but a card set to one shows it as its zone", async () => {
+  assert.deepEqual(json(Object.keys(page.TZ_DATA.legacy)),
+    ["CET", "CST6CDT", "EET", "EST", "EST5EDT", "HST", "MET", "MST", "MST7MDT", "PST8PDT", "WET"]);
+  for (const name of Object.keys(page.TZ_DATA.legacy)) {
+    assert.equal(page.findZone(name), null, name);
+    assert.equal(page.allowedCommand(`tz ${name}`), false, name);
+    assert.ok(page.searchZones(name).every((result) => result.name !== name), name);
+  }
+  const zone = (timeZone) => json(page.zoneTile({ ...STATE, timeZone }));
+  assert.deepEqual(zone("PST8PDT").slice(0, 2), ["good", "PST8PDT"]);
+  assert.match(zone("PST8PDT")[2], /^Clock on \u00b7 now UTC-0[78]:00$/); // summer or winter time
+  assert.equal(zone("EST")[2], "Clock on \u00b7 now UTC-05:00"); // as America/Panama
+  const { ui } = await connected({ ...CARD_1_3, status: statusWith({ tz: "PST8PDT" }) });
+  assert.equal(ui["tile-zone"].className, "tile level-good");
+  assert.equal(ui["state-zone"].textContent, "PST8PDT");
+  assert.match(ui["state-zone-detail"].textContent, /^Clock on \u00b7 now UTC-0[78]:00$/);
+  await ui.disconnect.fire("click");
 });
 
 test("names are found in any case, as the table spells them", () => {

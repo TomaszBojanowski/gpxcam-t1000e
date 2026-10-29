@@ -729,6 +729,12 @@ function findZone(text) {
   return { name, zone: TZ_DATA.aliases[name] || name };
 }
 
+// A name the card knows but the page does not offer (TZ_DATA.legacy: the old POSIX-style names, such as
+// PST8PDT), as findZone() gives a zone; null for any other text.
+function legacyZone(name) {
+  return Object.hasOwn(TZ_DATA.legacy, name) ? { name, zone: TZ_DATA.legacy[name] } : null;
+}
+
 function countryName(code) {
   const country = TZ_DATA.countries[code];
   return country ? country[0] : code;
@@ -1170,7 +1176,7 @@ function batteryTile(state) {
 function zoneTile(state) {
   const name = state.timeZone.replaceAll("/", "/\u200b");
   if (!state.clockOn) return ["idle", name, "Clock off: set it on the camera"];
-  const found = findZone(state.timeZone);
+  const found = findZone(state.timeZone) || legacyZone(state.timeZone);
   const offset = found ? utcOffsetText(found.zone) : "";
   return ["good", name, offset ? `Clock on \u00b7 now ${offset}` : "Clock on \u00b7 a rule given directly"];
 }

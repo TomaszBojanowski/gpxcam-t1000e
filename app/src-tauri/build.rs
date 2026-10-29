@@ -1,7 +1,8 @@
 //! Before the app is compiled: its ACL manifest, so the page may call only the app's own commands
 //! (capabilities/default.json), and the list of time zone names the card knows, from the card
 //! page's table (docs/zones.js, made by tools/gen_tz_table.py), so that 'tz NAME' passes here
-//! exactly as on the page.
+//! exactly as on the page. The old POSIX-style names the page does not offer (its "legacy") are
+//! listed apart, for the tests.
 use std::{env, fs, path::Path};
 
 const COMMANDS: &[&str] = &[
@@ -44,8 +45,16 @@ fn write_zone_names() {
     names.sort_unstable();
     names.dedup();
     let list: String = names.iter().map(|name| format!("    {name:?},\n")).collect();
+    let legacy: String = table["legacy"]
+        .as_object()
+        .expect("TZ_DATA.legacy")
+        .keys()
+        .map(|name| format!("    {name:?},\n"))
+        .collect();
     let code = format!(
-        "/// Every zone and alias of the card's table, sorted.\npub const ZONE_NAMES: &[&str] = &[\n{list}];\n"
+        "/// Every zone and alias the page offers, sorted.\npub const ZONE_NAMES: &[&str] = &[\n{list}];\n\
+         /// The names the card knows but the page does not offer.\n#[cfg(test)]\n\
+         pub const LEGACY_NAMES: &[&str] = &[\n{legacy}];\n"
     );
     fs::write(Path::new(&env::var("OUT_DIR").expect("OUT_DIR")).join("zones.rs"), code).expect("zones.rs");
 }

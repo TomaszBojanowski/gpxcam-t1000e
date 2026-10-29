@@ -2,7 +2,8 @@
 //! allowedCommand(), test/commands.json). The page checks them first; this is the second check,
 //! so that nothing in the window can send the card anything else ('dfu', 'off', 'link off').
 
-// ZONE_NAMES: every zone and alias of the card's table, sorted (build.rs, from docs/zones.js).
+// ZONE_NAMES: every zone and alias the page offers, sorted; LEGACY_NAMES, for the tests: the old
+// POSIX-style names the card knows but the page does not offer (build.rs, from docs/zones.js).
 include!(concat!(env!("OUT_DIR"), "/zones.rs"));
 
 /// Sent exactly as written.
@@ -27,7 +28,8 @@ pub const FIXED: [&str; 18] = [
     "tz",
 ];
 
-/// True for a fixed command, and for "tz NAME" with NAME spelled as the card's table spells it.
+/// True for a fixed command, and for "tz NAME" with NAME a zone the page offers, spelled as the card's
+/// table spells it.
 pub fn allowed(command: &str) -> bool {
     FIXED.contains(&command)
         || command
@@ -76,7 +78,7 @@ mod tests {
     }
 
     #[test]
-    fn the_app_lets_through_exactly_the_zones_of_the_card() {
+    fn the_app_lets_through_the_zones_of_the_card_but_the_legacy_names() {
         let start = CARD_TABLE
             .find("constexpr char ZONE_NAMES[] =")
             .expect("ZONE_NAMES in the card's table");
@@ -86,7 +88,12 @@ mod tests {
             .filter_map(|line| line.trim().strip_prefix('"')?.strip_suffix("\\0\""))
             .collect();
         card.sort_unstable();
-        assert_eq!(ZONE_NAMES, card.as_slice());
+        let mut known: Vec<&str> = ZONE_NAMES.iter().chain(LEGACY_NAMES).copied().collect();
+        known.sort_unstable();
+        assert_eq!(known, card);
+        for name in LEGACY_NAMES {
+            assert!(!allowed(&format!("tz {name}")), "{name} is not offered");
+        }
         assert!(
             ZONE_NAMES.windows(2).all(|pair| pair[0] < pair[1]),
             "sorted, for the binary search"

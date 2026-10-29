@@ -3,7 +3,8 @@
 // the desktop app reads it too (app/src-tauri/build.rs).
 // zones: [name, country codes, comment] for every zone of the card (zone1970.tab; none for Etc/...);
 // aliases: alias: zone; countries: code: [name (iso3166.tab), [[zone as named for the country,
-// comment], ...] (zone.tab)].
+// comment], ...] (zone.tab)]; legacy: name: zone for the old POSIX-style names (PST8PDT and the
+// like), which the card knows but the page does not offer.
 const TZ_DATA = {
 "version": "2026e",
 "zones": [
@@ -248,8 +249,6 @@ const TZ_DATA = {
 ["Australia/Melbourne", ["AU"], "Victoria"],
 ["Australia/Perth", ["AU"], "Western Australia (most areas)"],
 ["Australia/Sydney", ["AU"], "New South Wales (most areas)"],
-["CST6CDT", [], ""],
-["EST5EDT", [], ""],
 ["Etc/GMT", [], ""],
 ["Etc/GMT+1", [], ""],
 ["Etc/GMT+10", [], ""],
@@ -319,7 +318,6 @@ const TZ_DATA = {
 ["Indian/Chagos", ["IO"], ""],
 ["Indian/Maldives", ["MV", "TF"], "Kerguelen, St Paul I, Amsterdam I"],
 ["Indian/Mauritius", ["MU"], ""],
-["MST7MDT", [], ""],
 ["Pacific/Apia", ["WS"], ""],
 ["Pacific/Auckland", ["NZ", "AQ"], "New Zealand time"],
 ["Pacific/Bougainville", ["PG"], "Bougainville"],
@@ -350,7 +348,6 @@ const TZ_DATA = {
 ["Pacific/Tahiti", ["PF"], "Society Islands"],
 ["Pacific/Tarawa", ["KI", "MH", "TV", "UM", "WF"], "Gilberts, Marshalls, Wake"],
 ["Pacific/Tongatapu", ["TO"], ""],
-["PST8PDT", [], ""],
 ],
 "aliases": {
 "Africa/Accra": "Africa/Abidjan",
@@ -494,14 +491,11 @@ const TZ_DATA = {
 "Canada/Pacific": "America/Vancouver",
 "Canada/Saskatchewan": "America/Regina",
 "Canada/Yukon": "America/Whitehorse",
-"CET": "Europe/Brussels",
 "Chile/Continental": "America/Santiago",
 "Chile/EasterIsland": "Pacific/Easter",
 "Cuba": "America/Havana",
-"EET": "Europe/Athens",
 "Egypt": "Africa/Cairo",
 "Eire": "Europe/Dublin",
-"EST": "America/Panama",
 "Etc/GMT+0": "Etc/GMT",
 "Etc/GMT-0": "Etc/GMT",
 "Etc/GMT0": "Etc/GMT",
@@ -543,7 +537,6 @@ const TZ_DATA = {
 "GMT0": "Etc/GMT",
 "Greenwich": "Etc/GMT",
 "Hongkong": "Asia/Hong_Kong",
-"HST": "Pacific/Honolulu",
 "Iceland": "Africa/Abidjan",
 "Indian/Antananarivo": "Africa/Nairobi",
 "Indian/Christmas": "Asia/Bangkok",
@@ -559,11 +552,9 @@ const TZ_DATA = {
 "Japan": "Asia/Tokyo",
 "Kwajalein": "Pacific/Kwajalein",
 "Libya": "Africa/Tripoli",
-"MET": "Europe/Brussels",
 "Mexico/BajaNorte": "America/Tijuana",
 "Mexico/BajaSur": "America/Mazatlan",
 "Mexico/General": "America/Mexico_City",
-"MST": "America/Phoenix",
 "Navajo": "America/Denver",
 "NZ": "Pacific/Auckland",
 "NZ-CHAT": "Pacific/Chatham",
@@ -604,8 +595,20 @@ const TZ_DATA = {
 "US/Samoa": "Pacific/Pago_Pago",
 "UTC": "Etc/UTC",
 "W-SU": "Europe/Moscow",
-"WET": "Europe/Lisbon",
 "Zulu": "Etc/UTC",
+},
+"legacy": {
+"CET": "Europe/Brussels",
+"CST6CDT": "CST6CDT",
+"EET": "Europe/Athens",
+"EST": "America/Panama",
+"EST5EDT": "EST5EDT",
+"HST": "Pacific/Honolulu",
+"MET": "Europe/Brussels",
+"MST": "America/Phoenix",
+"MST7MDT": "MST7MDT",
+"PST8PDT": "PST8PDT",
+"WET": "Europe/Lisbon",
 },
 "countries": {
 "AD": ["Andorra", [["Europe/Andorra", ""]]],
