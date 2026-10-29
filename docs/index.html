@@ -533,9 +533,8 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
               about 30 seconds, so the card must already be looking for them.</li>
           <li>When the page says <em>Now start Bluetooth pairing on the camera</em>, start pairing in the
               camera's Bluetooth menu. The card looks for it for up to 2 minutes and tries up to 3 times.</li>
-          <li>Older cameras (the ones that pair with the older Panasonic phone app, not LUMIX Lab) then need
-              one more step, over the camera's own Wi-Fi network, which only the gpxcam card app can do: the app
-              starts it by itself and says what to do.</li>
+          <li>Older cameras (LUMIX Sync generation) then need one more step, over the camera's own Wi-Fi
+              network, which only the gpxcam card app can do: the app starts it by itself and says what to do.</li>
         </ol>
       </details>
       <div id="pair-row" class="row">
@@ -626,10 +625,9 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
           <path d="M5 12.5a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/>
           <circle cx="12" cy="19" r="1"/>
         </svg>Pair an older camera</h2>
-      <p><em>Pair</em> above recognises an older LUMIX camera (one that pairs with the older Panasonic phone app,
-         not LUMIX Lab) by itself and does its extra step over the camera's own Wi-Fi network. Use this only when
-         <em>Pair</em> does not recognise such a camera: it pairs the card as with an older camera from the
-         start.</p>
+      <p><em>Pair</em> above recognises an older camera (LUMIX Sync generation) by itself and does its extra
+         step over the camera's own Wi-Fi network. Use this only when <em>Pair</em> does not recognise such a
+         camera: it pairs the card as with an older camera from the start.</p>
       <details class="help">
         <summary>How it works</summary>
         <ol class="steps">
@@ -1934,11 +1932,16 @@ class LineSplitter {
   }
 }
 
-// Why the card did not answer 'v'. A read that fails at once while the card is plugged in comes
-// from Linux: a program using pyserial (a serial monitor such as pio device monitor) leaves the
-// port with VMIN=0, which the kernel keeps for the next program, and Chromium then takes the
-// first empty read for a lost device. Plugging the card in again resets the port's settings.
+// Why the card did not answer 'v'. In the browser, a read that fails at once while the card is plugged
+// in comes from Linux: a program using pyserial (a serial monitor such as pio device monitor) leaves the
+// port with VMIN=0, which the kernel keeps for the next program, and Chromium then takes the first empty
+// read for a lost device. Plugging the card in again resets the port's settings. The app opens the port
+// raw (app/src-tauri/src/card.rs), so its read errors get only the plain advice.
 function noAnswerText(readError) {
+  if (readError instanceof AppReadError) {
+    return `Reading from the card failed (${readErrorText(readError)}). Unplug the card, plug it in again and ` +
+      "click Connect.";
+  }
   if (readError) {
     return `Reading from the card failed (${readError.message}). On Linux this happens after another serial ` +
       "program, such as a serial monitor, used the card: unplug the card, plug it in again and click Connect.";
@@ -2129,15 +2132,19 @@ function parseOlderRegister(line) {
   return match ? { identity: match[1], name: match[2] } : null;
 }
 
-// How the app's Wi-Fi registration (register_older, app/src-tauri/src/older_wifi.rs) ended.
+// How the app's Wi-Fi registration (register_older, app/src-tauri/src/older_wifi.rs) ended: its outcome,
+// or the word it failed with (app/src-tauri/src/lib.rs Problem).
 function olderOutcomeText(outcome) {
   switch (outcome) {
-    case "accepted": return ["The camera accepted the card. Older pairing done.", "good"];
+    case "accepted": return ["The camera accepted the card. Pairing done.", "good"];
     case "not-confirmed": return ["The camera did not confirm. On the camera, allow the connection, then try the " +
       "Wi-Fi step again.", "bad"];
     case "not-on-network": return ["Could not reach the camera. Join the camera's Wi-Fi network on this computer, " +
       "then try the Wi-Fi step again.", "bad"];
     case "cancelled": return ["Cancelled.", ""];
+    case "bad-identity":
+    case "bad-name": return ["The app cannot register the identity this card gave. Install the newest gpxcam card " +
+      "app and gpxcam, then start again.", "bad"];
     default: return ["The Wi-Fi step failed. Try it again, or cancel.", "bad"];
   }
 }
@@ -2453,7 +2460,7 @@ class AppPort {
     const channel = new this.core.Channel();
     channel.onmessage = (event) => {
       if (event.kind === "line") settle(() => lines.enqueue(encoder.encode(event.text + "\n")));
-      else if (event.kind === "closed" && event.error) settle(() => lines.error(new Error(event.error)));
+      else if (event.kind === "closed" && event.error) settle(() => lines.error(new AppReadError(event.error)));
       else if (event.kind === "closed") settle(() => lines.close());
     };
     await this.core.invoke("open_card", { path: this.path, onEvent: channel });
@@ -2467,6 +2474,19 @@ class AppPort {
   async close() {
     await this.core.invoke("close_card");
   }
+}
+
+// Why the app's reading of the card ended, with the app's word as its message (app/src-tauri/src/lib.rs
+// Problem): port-closed, or port-failed when the card was unplugged.
+class AppReadError extends Error {}
+
+// Why reading from the card ended, for the page's messages: the app's word as text, or the browser's
+// own message (Web Serial).
+function readErrorText(error) {
+  if (!(error instanceof AppReadError)) return error.message;
+  if (error.message === "port-closed") return "the card's port closed";
+  if (error.message === "port-failed") return "the card's port failed";
+  return "the connection failed";
 }
 
 // Thrown when no card is plugged in: the app has no chooser that would show an empty list.
@@ -2974,7 +2994,7 @@ function startPage() {
     card = opened;
     ui.intro.classList.add("hidden");
     card.onClosed = () => {
-      const why = opened.readError ? ` (${opened.readError.message})` : "";
+      const why = opened.readError ? ` (${readErrorText(opened.readError)})` : "";
       if (card === opened) disconnected(`The connection to the card ended${why}.`, "bad");
     };
     busy = false;
@@ -3117,8 +3137,8 @@ function startPage() {
 
   // The one-time Wi-Fi step of an older camera (app only): the card has introduced itself and waits for
   // it; the app registers the same identity and name over the camera's own Wi-Fi. show(text, kind) puts
-  // the progress where the step was started from. The outcome of register_older (olderOutcomeText()),
-  // or null when the card went away meanwhile.
+  // the progress where the step was started from. The outcome of register_older, or the word it failed
+  // with (both for olderOutcomeText()), or null when the card went away meanwhile.
   const runWifiStep = async (asked, info, show) => {
     show("Join the camera's Wi-Fi network shown on its screen and keep this window open. On the S5 and similar " +
       "it has no password by default - just pick it from the list; if the camera asks for one, it is on the " +
@@ -3127,7 +3147,7 @@ function startPage() {
       if (card !== asked || olderCancelled) return;
       if (stage === "on-network") show("On the camera's network - registering the card...", "busy");
       else if (stage === "registering") show("Registering - allow the connection on the camera if it asks...", "busy");
-    });
+    }).catch((problem) => String(problem));
     return card === asked ? outcome : null;
   };
 
@@ -3228,7 +3248,7 @@ function startPage() {
       await asked.cancelPairing().catch(() => {}); // the card may still be waiting: stop it
       await refresh();
     } catch (error) {
-      if (card === asked) setStatus(ui.olderProgress, "Older pairing failed. Try again.", "bad");
+      if (card === asked) setStatus(ui.olderProgress, "Pairing failed. Try again.", "bad");
     } finally {
       stopWatch();
       olderEnded();
@@ -3255,7 +3275,7 @@ function startPage() {
         await finishWifiStep(asked, olderIdentity(cardId));
       }
     } catch (error) {
-      if (card === asked) showWifi("Older pairing failed. Try again.", "bad");
+      if (card === asked) showWifi("Pairing failed. Try again.", "bad");
     } finally {
       olderEnded();
     }

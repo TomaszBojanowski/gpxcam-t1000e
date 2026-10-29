@@ -16,6 +16,8 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use socket2::{Domain, Protocol, Socket, Type};
 
+use crate::Problem;
+
 /// The camera's address on its own access point, and the UPnP port and SSDP address used only to
 /// warm the camera up.
 pub struct Target {
@@ -72,9 +74,8 @@ impl Timing {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Progress {
-    WaitingForNetwork, // waiting for the user to join the camera's Wi-Fi
-    OnNetwork,         // reached the camera
-    Registering,       // sent the registration; the camera (and the user) must accept
+    OnNetwork,   // reached the camera
+    Registering, // sent the registration; the camera (and the user) must accept
 }
 
 /// How the step ended.
@@ -93,7 +94,7 @@ const UPNP_PATH: &str = "/Lumix/Server0/ddd";
 
 /// The identity text the card shows (device_identity::identityText): the 10-byte prefix and the
 /// 6-byte seed as 36 upper-case characters. The app registers exactly this.
-pub fn check_identity(identity: &str) -> Result<(), String> {
+pub fn check_identity(identity: &str) -> Result<(), Problem> {
     const PREFIX: &str = "4D454930-0100-1000-8001-";
     if identity.len() == 36
         && identity.starts_with(PREFIX)
@@ -101,16 +102,16 @@ pub fn check_identity(identity: &str) -> Result<(), String> {
     {
         Ok(())
     } else {
-        Err("the identity is not the 4D454930-0100-1000-8001-<seed> text".into())
+        Err(Problem::BadIdentity)
     }
 }
 
 /// The device name the card shows: printable ASCII, 1 to 16 characters (device_identity name field).
-pub fn check_name(name: &str) -> Result<(), String> {
+pub fn check_name(name: &str) -> Result<(), Problem> {
     if (1..=16).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_graphic()) {
         Ok(())
     } else {
-        Err("the device name is not 1 to 16 printable ASCII characters".into())
+        Err(Problem::BadName)
     }
 }
 
@@ -211,9 +212,10 @@ fn request_access(
     stream.set_read_timeout(Some(timing.io_timeout))?;
     stream.set_write_timeout(Some(timing.io_timeout))?;
     let host = host_header(&target.camera);
-    let token = match parse_token(&http_get(&mut stream, &host, "/cam.cgi?mode=accctrl&type=req_acc_g")?) {
-        Some(token) => token,
-        None => return Ok(Outcome::Failed),
+    let reply = http_get(&mut stream, &host, "/cam.cgi?mode=accctrl&type=req_acc_g")?;
+    let Some(token) = parse_token(&reply) else {
+        eprintln!("older camera Wi-Fi step: req_acc_g answered {reply:?}");
+        return Ok(Outcome::Failed);
     };
     let path = format!(
         "/cam.cgi?mode=accctrl&type=req_acc_e&value={}&value2={}",
@@ -231,11 +233,11 @@ fn request_access(
             }
             continue;
         }
-        return Ok(if reply.starts_with("ok") {
-            Outcome::Accepted
-        } else {
-            Outcome::Failed
-        });
+        if reply.starts_with("ok") {
+            return Ok(Outcome::Accepted);
+        }
+        eprintln!("older camera Wi-Fi step: req_acc_e answered {reply:?}");
+        return Ok(Outcome::Failed);
     }
     Ok(Outcome::NotConfirmed) // the camera kept saying "wait" for every attempt
 }
@@ -323,7 +325,6 @@ pub fn register(
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(Progress),
 ) -> Outcome {
-    progress(Progress::WaitingForNetwork);
     let Some(reached) = wait_for_network(target, timing, cancel) else {
         return if cancel.load(Ordering::SeqCst) {
             Outcome::Cancelled
@@ -339,7 +340,10 @@ pub fn register(
     progress(Progress::OnNetwork);
     warm_up(target, local, timing);
     progress(Progress::Registering);
-    request_access(target, identity, name, timing, cancel).unwrap_or(Outcome::Failed)
+    request_access(target, identity, name, timing, cancel).unwrap_or_else(|error| {
+        eprintln!("older camera Wi-Fi step: {error}");
+        Outcome::Failed
+    })
 }
 
 #[cfg(test)]
@@ -491,13 +495,17 @@ mod tests {
 
     #[test]
     fn checks_the_identity_and_the_name() {
-        assert!(check_identity("4D454930-0100-1000-8001-A1B2C3D4E5F6").is_ok());
-        assert!(check_identity("4D454930-0100-1000-8001-A1B2C3D4E5").is_err()); // too short
-        assert!(check_identity("00000000-0100-1000-8001-A1B2C3D4E5F6").is_err()); // wrong prefix
-        assert!(check_identity("4D454930-0100-1000-8001-A1B2C3D4E5FZ").is_err()); // non-hex seed
-        assert!(check_name("T1000-E").is_ok());
-        assert!(check_name("").is_err());
-        assert!(check_name("a name with spaces").is_err());
+        assert_eq!(check_identity("4D454930-0100-1000-8001-A1B2C3D4E5F6"), Ok(()));
+        for wrong in [
+            "4D454930-0100-1000-8001-A1B2C3D4E5",   // too short
+            "00000000-0100-1000-8001-A1B2C3D4E5F6", // wrong prefix
+            "4D454930-0100-1000-8001-A1B2C3D4E5FZ", // non-hex seed
+        ] {
+            assert_eq!(check_identity(wrong), Err(Problem::BadIdentity), "{wrong}");
+        }
+        assert_eq!(check_name("T1000-E"), Ok(()));
+        assert_eq!(check_name(""), Err(Problem::BadName));
+        assert_eq!(check_name("a name with spaces"), Err(Problem::BadName));
     }
 
     #[test]
@@ -505,10 +513,7 @@ mod tests {
         let camera = fake_camera("ok,deadbeef", &["ok_under_research,x", "ok,CAM,remote,open,abcd"]);
         let (outcome, events) = run(&camera.target, false);
         assert_eq!(outcome, Outcome::Accepted);
-        assert_eq!(
-            events,
-            [Progress::WaitingForNetwork, Progress::OnNetwork, Progress::Registering]
-        );
+        assert_eq!(events, [Progress::OnNetwork, Progress::Registering]);
     }
 
     #[test]
@@ -586,7 +591,7 @@ mod tests {
     fn not_on_network_when_the_camera_cannot_be_reached() {
         let (outcome, events) = run(&unreachable_camera(), false);
         assert_eq!(outcome, Outcome::NotOnNetwork);
-        assert_eq!(events, [Progress::WaitingForNetwork]);
+        assert_eq!(events, []);
     }
 
     #[test]

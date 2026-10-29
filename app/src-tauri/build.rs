@@ -1,4 +1,4 @@
-//! Before the app is compiled: its ACL manifest, so the page may call only the app's six commands
+//! Before the app is compiled: its ACL manifest, so the page may call only the app's own commands
 //! (capabilities/default.json), and the list of time zone names the card knows, from the card
 //! page's table (docs/index.html TZ_DATA, made by tools/gen_tz_table.py), so that 'tz NAME'
 //! passes here exactly as on the page.

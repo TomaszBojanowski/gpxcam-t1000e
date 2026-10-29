@@ -23,7 +23,7 @@ const page = vm.runInContext(
     " updatesAnswerText, updatesNoteText, updatesText, updatesNowText, storageNoteText, chooseTransport," +
     " openProblemText, parseOlderRegister, olderOutcomeText, olderStartProgress, FIXED_COMMANDS, isLogLine," +
     " belongsToScan, scanEnded, scanResultText, diagnosticsText, SCAN_RUN_MS, shouldPrepareGps, pairingKind," +
-    " maskIdentifiers, parseCardId, olderIdentity, PAIRING_STATUS_PERIOD_MS })",
+    " maskIdentifiers, parseCardId, olderIdentity, PAIRING_STATUS_PERIOD_MS, AppReadError, readErrorText })",
   vm.createContext({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console }),
 );
 
@@ -299,8 +299,13 @@ test("parseOlderRegister reads the card's line, and olderOutcomeText maps the re
   assert.equal(page.parseOlderRegister("older: introduced - waiting up to 300 s for the camera's 01"), null);
   assert.equal(page.olderOutcomeText("accepted")[1], "good");
   assert.equal(page.olderOutcomeText("cancelled")[1], "");
-  for (const bad of ["not-confirmed", "not-on-network", "failed", "anything"]) {
+  for (const bad of ["not-confirmed", "not-on-network", "bad-identity", "bad-name", "failed", "anything"]) {
     assert.equal(page.olderOutcomeText(bad)[1], "bad");
+  }
+  const general = page.olderOutcomeText("anything")[0]; // a word the page does not know
+  assert.equal(page.olderOutcomeText("failed")[0], general);
+  for (const word of ["bad-identity", "bad-name"]) {
+    assert.match(page.olderOutcomeText(word)[0], /^The app cannot register the identity this card gave\./, word);
   }
   for (const phase of ["waiting_gps", "searching", "connecting", "waiting_wifi"]) {
     assert.notEqual(page.olderStartProgress(phase), null, phase);
@@ -483,6 +488,16 @@ test("a read that fails at once is explained", async () => {
   assert.match(page.noAnswerText(card.readError), /^Reading from the card failed \(The device has been lost\.\)/);
   assert.match(page.noAnswerText(card.readError), /unplug the card, plug it in again/);
   assert.match(page.noAnswerText(null), /^No answer from the card/);
+});
+
+test("in the app, the end of reading is explained from the app's word", () => {
+  assert.equal(page.readErrorText(new page.AppReadError("port-closed")), "the card's port closed");
+  assert.equal(page.readErrorText(new page.AppReadError("port-failed")), "the card's port failed");
+  assert.equal(page.readErrorText(new page.AppReadError("anything")), "the connection failed");
+  assert.equal(page.readErrorText(new Error("The device has been lost.")), "The device has been lost.");
+  const text = page.noAnswerText(new page.AppReadError("port-failed"));
+  assert.equal(text, "Reading from the card failed (the card's port failed). Unplug the card, plug it in again " +
+    "and click Connect.");
 });
 
 test("closing ends reading and closes the port", async () => {
@@ -683,7 +698,7 @@ test("in the app: no chooser for one card, the same state, and words without the
   assert.equal(ui["updates-normal"].checked, true);
   app.unplug();
   await tick();
-  assert.equal(ui["card-status"].textContent, "The connection to the card ended (the card was unplugged).");
+  assert.equal(ui["card-status"].textContent, "The connection to the card ended (the card's port failed).");
   assert.equal(ui.connect.disabled, false);
 });
 
@@ -1575,7 +1590,7 @@ async function olderWizard(registerOutcome, statusAfterStart = null) {
 test("in the app: the older-camera wizard registers the identity the card prints, over Wi-Fi", async () => {
   const { app, ui } = await olderWizard("accepted");
   assert.deepEqual(app.registered, [OLDER_IDENTITY]);
-  assert.equal(ui["older-progress"].textContent, "The camera accepted the card. Older pairing done.");
+  assert.equal(ui["older-progress"].textContent, "The camera accepted the card. Pairing done.");
   assert.equal(ui["older-progress"].className, "good");
   assert.equal(app.calls.includes("send pair off"), false); // a paired card is left as it is
   assert.equal(ui["older-start"].hidden, false);
@@ -1598,11 +1613,27 @@ test("in the app: a Wi-Fi step that fails says why, keeps the card waiting, and 
   answers.status = statusWith({ paired: 1, link: "off" }, STATUS_GPS_HOLD);
   await ui["older-resume"].fire("click");
   assert.deepEqual(app.registered, [OLDER_IDENTITY, OLDER_IDENTITY]);
-  assert.equal(ui["older-progress"].textContent, "The camera accepted the card. Older pairing done.");
+  assert.equal(ui["older-progress"].textContent, "The camera accepted the card. Pairing done.");
   assert.equal(ui["older-resume"].hidden, true);
   assert.equal(ui["older-cancel"].hidden, true);
   assert.equal(ui["older-start"].hidden, false);
   assert.equal(app.calls.includes("send pair off"), false);
+  await ui.disconnect.fire("click");
+});
+
+test("in the app: an identity the app refuses is explained, and the card keeps waiting", async () => {
+  const answers = { v: VERSION_1_4, status: statusWith(NOT_PAIRED, STATUS_GPS_HOLD), "pair older": OLDER_STARTED };
+  const app = simulatedApp(["/dev/ttyACM0"], answers);
+  app.registerError = "bad-identity";
+  const ui = openPage(null, { app });
+  await ui.connect.fire("click");
+  answers.status = WAITING_WIFI;
+  await ui["older-start"].fire("click");
+  assert.deepEqual(app.registered, []); // refused before anything was sent
+  assert.match(ui["older-progress"].textContent, /^The app cannot register the identity this card gave\./);
+  assert.equal(ui["older-progress"].className, "bad");
+  assert.equal(app.calls.includes("send pair off"), false);
+  assert.equal(ui["older-resume"].hidden, false);
   await ui.disconnect.fire("click");
 });
 
@@ -1654,7 +1685,7 @@ test("in the app: a card left waiting at the Wi-Fi step can be resumed with the 
   await ui["older-resume"].fire("click");
   assert.equal(app.calls.includes("send p"), true);
   assert.deepEqual(app.registered, [OLDER_IDENTITY]);
-  assert.equal(ui["older-progress"].textContent, "The camera accepted the card. Older pairing done.");
+  assert.equal(ui["older-progress"].textContent, "The camera accepted the card. Pairing done.");
   assert.equal(ui["older-start"].hidden, false);
   await ui.disconnect.fire("click");
 });
@@ -1713,7 +1744,7 @@ test("in the app: a Pair that finds an older camera goes on with the Wi-Fi step 
   await until(() => ui["pair-progress"].textContent.startsWith("Paired."));
   assert.equal(ui["pair-progress"].textContent, "Paired. From now on the card connects to the camera by itself.");
   assert.equal(ui["pair-progress"].className, "good");
-  assert.equal(ui["older-progress"].textContent, "The camera accepted the card. Older pairing done.");
+  assert.equal(ui["older-progress"].textContent, "The camera accepted the card. Pairing done.");
   assert.equal(ui["pair-resume"].hidden, true);
   assert.equal(ui["pair-cancel"].hidden, true);
   assert.equal(app.calls.includes("send pair off"), false);
