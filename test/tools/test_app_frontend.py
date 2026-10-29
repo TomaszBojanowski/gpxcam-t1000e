@@ -37,6 +37,17 @@ class AppPage(unittest.TestCase):
             with self.assertRaises(ValueError, msg=page):
                 app_frontend.app_page(page + app_frontend.VERSION_SLOT, "1.2.3")
 
+    def test_the_scripts_of_the_page_are_its_files(self):
+        page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+        names = app_frontend.page_scripts(page)
+        self.assertEqual(names, ["zones.js"])
+        for name in names:
+            self.assertTrue((ROOT / "docs" / name).is_file(), name)
+        for script in ['<script src="https://example.com/x.js"></script>', '<script src="../zones.js"></script>',
+                       '<script type="module" src="zones.js"></script>']:
+            with self.assertRaises(ValueError, msg=script):
+                app_frontend.page_scripts(script)
+
     def test_a_page_without_one_place_for_the_version_is_refused(self):
         meta = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:">'
         for slots in [0, 2]:

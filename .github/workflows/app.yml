@@ -13,6 +13,7 @@ on:
       - "app/**"
       - "!app/**/*.md" # the app's documentation alone builds nothing
       - "docs/index.html"
+      - "docs/zones.js"
       - "tools/app_frontend.py"
       - "test/web/**"
       - "test/tools/**"

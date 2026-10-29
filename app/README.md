@@ -96,7 +96,8 @@ camera the moment it starts advertising, and the card will not get in.
 3. **Only when the app says *Now start Bluetooth pairing on the camera*** do it (the camera's
    Bluetooth menu → Pairing). The order matters: the camera stays in pairing mode only about 30
    seconds, so the card must already be looking for it (for up to 2 minutes). The card introduces
-   itself over Bluetooth; the camera then shows its Wi-Fi network on its screen.
+   itself over Bluetooth; the camera then shows its Wi-Fi network name (and a password, if one is set)
+   on its screen.
 4. Join that Wi-Fi network on this computer, by hand. On the S5 and similar it has **no password by
    default**, so just pick it from the list; if the camera asks for one, it is on the camera's screen
    or in its Wi-Fi setup: **[Setup] → [Wi-Fi] → [Wi-Fi Setup] → [Wi-Fi Password]** (see the

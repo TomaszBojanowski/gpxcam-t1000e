@@ -11,7 +11,10 @@ import { simulatedApp } from "./simulated_app.mjs";
 
 const PAGE = new URL("../../docs/index.html", import.meta.url);
 const html = readFileSync(PAGE, "utf8");
-const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
+// The page's scripts in its order: the zone data it loads from docs/zones.js, then its own.
+const zonesScript = readFileSync(new URL("../../docs/zones.js", import.meta.url), "utf8");
+assert.match(html, /<script src="zones\.js"><\/script>\s*<script>/);
+const scripts = [zonesScript, ...[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1])];
 const appCode = scripts[1];
 const page = vm.runInContext(
   scripts.join("\n") +
@@ -483,13 +486,15 @@ test("hidden parts stay hidden whatever display their own rule gives", () => {
   assert.match(html, /^\.hidden \{ display: none !important; \}/m);
 });
 
-test("the page fetches nothing: content security policy", () => {
+test("the page fetches nothing but its zone data, next to it: content security policy", () => {
   const policy = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(html);
   assert.ok(policy);
   assert.match(policy[1], /^default-src 'none';/);
+  assert.match(policy[1], /script-src 'self' 'unsafe-inline';/); // docs/zones.js and the page's own script
   assert.doesNotMatch(policy[1], /connect-src|https?:/);
   assert.match(policy[1], /img-src data:/); // the favicon is a data: image
-  assert.doesNotMatch(html, /<script[^>]+src=|<link[^>]+href="(?!data:)/);
+  assert.deepEqual([...html.matchAll(/<script[^>]+src="([^"]*)"/g)].map((match) => match[1]), ["zones.js"]);
+  assert.doesNotMatch(html, /<link[^>]+href="(?!data:)/);
 });
 
 test("a refused command is not written; no answer ends after the time limit", async () => {
