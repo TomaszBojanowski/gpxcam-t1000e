@@ -78,7 +78,7 @@ function installCard(simulatedApp, state) {
   app.registerOutcome = "wait"; // the Wi-Fi step waits, as while the user joins the camera's network
   app.registerStages = [];
   window.__TAURI__ = app.window.__TAURI__;
-  window.simulatedCard = { app, state };
+  window.simulatedCard = { state };
 }
 
 // Serves docs/index.html at http://127.0.0.1:<port>/ (a secure context, as the app's web view).
@@ -140,24 +140,24 @@ async function shoot(page, name, selectors) {
     path, fullPage: true, animations: "disabled", caret: "hide",
     clip: { x: left, y: top, width: right - left, height: bottom - top },
   });
-  await page.context().close();
   return path;
 }
 
-const CARD = "main > header.top, section:has(#state)";
-const CAMERA = "section:has(#pair)";
+const CARD = ["main > header.top", "section:has(#state)"];
+const CAMERA = ["section:has(#pair)"];
 const SETTINGS = ["section:has(#clock)", "section:has(#updates-normal)", "section:has(#sound-loud)"];
-const DIAGNOSTICS = "section:has(#scan)";
+const DIAGNOSTICS = ["section:has(#scan)"];
 
+// Each shot, by the name of its file (app-<name>.png): the page made ready for it, and its parts.
 const SHOTS = {
   // The card's state after Connect: paired and connected, a GPS fix, the battery charged.
-  state: async (browser, url) => shoot(await connectedPage(browser, url, {}), "state", CARD.split(", ")),
+  state: async (browser, url) => ({ page: await connectedPage(browser, url, {}), parts: CARD }),
   // Pair: the card looks for the camera, and the page says to start pairing on the camera now.
   pairing: async (browser, url) => {
     const page = await connectedPage(browser, url, NOT_PAIRED);
     await page.click("#pair");
     await page.waitForSelector("#pair-progress.act");
-    return shoot(page, "pairing", [CAMERA]);
+    return { page, parts: CAMERA };
   },
   // An older camera: Pair reached the Wi-Fi step, and the app waits for the user to join the camera's network.
   "older-wifi": async (browser, url) => {
@@ -167,17 +167,17 @@ const SHOTS = {
     await page.evaluate(() => { window.simulatedCard.state.pair = "waiting_wifi"; });
     await page.waitForFunction(() => document.getElementById("pair-progress").textContent.startsWith("Join"));
     await page.evaluate(() => { document.getElementById("pair-help").open = false; }); // the step stands out
-    return shoot(page, "older-wifi", [CAMERA]);
+    return { page, parts: CAMERA };
   },
   // Diagnostics: Scan for cameras, the camera's serial number hidden.
   diagnostics: async (browser, url) => {
     const page = await connectedPage(browser, url, {});
     await page.click("#scan");
     await page.waitForFunction(() => document.getElementById("diag-status").textContent.startsWith("Scan done"));
-    return shoot(page, "diagnostics", [DIAGNOSTICS]);
+    return { page, parts: DIAGNOSTICS };
   },
   // The settings: the camera's clock and time zone, the location updates and the sound.
-  settings: async (browser, url) => shoot(await connectedPage(browser, url, {}), "settings", SETTINGS),
+  settings: async (browser, url) => ({ page: await connectedPage(browser, url, {}), parts: SETTINGS }),
 };
 
 const server = await serve();
@@ -185,7 +185,14 @@ const url = `http://127.0.0.1:${server.address().port}/`;
 const browser = await chromium.launch({ executablePath: chromiumPath() });
 const files = [];
 try {
-  for (const [name, take] of Object.entries(SHOTS)) files.push(await take(browser, url));
+  for (const [name, prepare] of Object.entries(SHOTS)) {
+    const { page, parts } = await prepare(browser, url);
+    try {
+      files.push(await shoot(page, name, parts));
+    } finally {
+      await page.context().close();
+    }
+  }
 } finally {
   await browser.close();
   server.close();
@@ -195,6 +202,6 @@ let tooBig = false;
 for (const file of files) {
   const bytes = statSync(file).size;
   tooBig ||= bytes > MAX_BYTES;
-  console.log(`${file}: ${Math.round(bytes / 1024)} KB${bytes > MAX_BYTES ? " - over 150 KB" : ""}`);
+  console.log(`${file}: ${Math.round(bytes / 1024)} KB${bytes > MAX_BYTES ? ` - over ${MAX_BYTES / 1024} KB` : ""}`);
 }
 process.exitCode = tooBig ? 1 : 0;

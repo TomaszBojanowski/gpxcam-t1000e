@@ -59,9 +59,9 @@ class AppVersion(unittest.TestCase):
     def test_the_version_comes_from_the_package(self):
         self.assertEqual(app_frontend.app_version(CARGO.format("1.0.0")), "1.0.0")
 
-    def test_the_app_has_a_version(self):
+    def test_the_apps_cargo_toml_has_an_x_y_z_version(self):
         cargo = (ROOT / "app" / "src-tauri" / "Cargo.toml").read_text(encoding="utf-8")
-        self.assertRegex(app_frontend.app_version(cargo), r"^\d+\.\d+\.\d+$")
+        app_frontend.app_version(cargo)  # ValueError unless it is x.y.z
 
     def test_only_x_y_z_reaches_the_page(self):
         for version in ["1.0", "1.0.0-beta", "1.0.0<script>", ""]:
