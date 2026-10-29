@@ -1059,8 +1059,8 @@ test("the page offers every location updates setting of the firmware, each with 
   for (const setting of page.UPDATES_SETTINGS) assert.match(html, new RegExp(`id="updates-${setting}" type="radio"`));
 });
 
-// The timings in the page's words, the card's help ('help', src/main.cpp) and README.md (the one place in the
-// documentation that gives them) are the firmware's (src/link_policy.h).
+// The timings in the page's words, the console's help (src/console_commands.cpp) and README.md (the one place in
+// the documentation that gives them) are the firmware's (src/link_policy.h).
 test("the location updates are explained with the firmware's timings", () => {
   const source = readFileSync(new URL("../../src/link_policy.h", import.meta.url), "utf8");
   const timing = (name) => {
@@ -1081,7 +1081,7 @@ test("the location updates are explained with the firmware's timings", () => {
   assert.match(page.updatesNoteText(), /^The camera keeps the last position it got/);
   assert.match(page.updatesNowText({ ...STATE, updates: "frequent", updatesNow: "normal" }),
     new RegExp(`^For now every ${normal.seconds} seconds: the camera answers slowly\\.`));
-  const help = readFileSync(new URL("../../src/main.cpp", import.meta.url), "utf8");
+  const help = readFileSync(new URL("../../src/console_commands.cpp", import.meta.url), "utf8");
   assert.ok(help.includes(`locations every ${normal.seconds} s or every ${frequent.seconds} s`));
   const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8").replace(/\s+/g, " ");
   assert.ok(readme.includes(`with **Normal** location updates, every ${normal.seconds} s – earlier when it moves ` +
