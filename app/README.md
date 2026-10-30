@@ -17,14 +17,31 @@ pairing, the camera's clock and time zone, location updates and sound.
 
 *After Connect: the card's state, refreshed every few seconds.*
 
-![The camera section during pairing: the steps of How to pair, the Cancel button, a highlighted line "Now start Bluetooth pairing on the camera (its Bluetooth menu, Pairing). The card looks for it for up to 2 minutes.", and below it the folded "Pair does not recognise your older camera?"](../docs/images/app-pairing.png)
+![Pairing, Prepare: the steps Prepare, Pair on camera, Connect and Done, with Prepare current; "GPS has a fix" checked by itself, two reminders to tick (T1000-E not on the camera's Bluetooth list, no phone connected to the camera), the Pair button and "Don't start pairing on the camera yet – the app tells you when."](../docs/images/app-pair-prepare.png)
 
-*Pair: start pairing on the camera only when the app says so.*
+*Pairing, step by step: Prepare checks the GPS by itself and reminds of the camera's list and the
+phone.*
 
-![The camera section at the Wi-Fi step of an older camera, started with Start under the unfolded "Pair does not recognise your older camera?": the one status line says "Join the camera's Wi-Fi network shown on its screen and keep this window open", with where to find the password, beside the Cancel button](../docs/images/app-older-wifi.png)
+![Pairing, the user's turn: "Start Bluetooth pairing on the camera now", the camera menu path, a countdown at 1:42 with its bar, "left to find the camera", and below it "A camera is nearby, but not in pairing mode yet." with Cancel](../docs/images/app-pair-camera.png)
 
-*An older camera: Start under "Pair does not recognise your older camera?" (or Pair, which goes on by itself)
-leads to the Wi-Fi step, in the same section (see [below](#pairing-an-older-camera)).*
+*Start pairing on the camera only now: the card is looking, for the 2 minutes counted down.*
+
+![Pairing, the connection: "Camera found", with Camera in pairing mode and Connected over Bluetooth done, Introducing the card to the camera under way, and Setting the camera's clock to come](../docs/images/app-pair-connect.png)
+
+*The camera found: the stages of the connection, a few seconds.*
+
+![The Wi-Fi step of an older camera: the step Camera Wi-Fi current, "One more step for this camera", the instruction to join the Wi-Fi network the camera shows on its screen, and "Waiting for this computer to join… the app continues by itself (up to 5 minutes)." with Cancel](../docs/images/app-pair-wifi.png)
+
+*An older camera: one more step over its Wi-Fi, which the app goes on with by itself (see
+[below](#pairing-an-older-camera)).*
+
+![Paired: a green panel "Paired with your camera", "From now on the card connects by itself whenever the camera is on. You can unplug it.", with Pair again and Forget the camera](../docs/images/app-pair-done.png)
+
+*Paired.*
+
+![A pairing that found no camera: "The camera did not answer", "The card looked for 2 minutes and didn't find a camera in pairing mode.", three tips and Try again; below it "An older camera? (S5, S1, GH5, GH6, G9, G100…)" with Pair as an older camera](../docs/images/app-pair-failed.png)
+
+*No camera found: why, what to check, and the only place that offers pairing as with an older camera.*
 
 ![The settings: the camera's clock switched on with the time zone list (Europe/Warsaw selected), location updates set to Frequent, and the sound set to Quiet](../docs/images/app-settings.png)
 
@@ -77,24 +94,25 @@ built the same way. If something does not work there, please open an issue on Gi
 Most newer LUMIX cameras (S5II and the like) pair straight from the card page or this app with
 *Pair*. **Older** cameras – the LUMIX Sync generation – need one extra step over the camera's own
 Wi-Fi, which only the app can do (a web page cannot reach the camera that way). In the app, *Pair*
-recognises such a camera and goes on with that step by itself. Under *Pair*, the folded *Pair does
-not recognise your older camera?* has *Start*, which does the same from the start, for an older
+recognises such a camera and goes on with that step by itself. If *Pair* does not work, the screen
+that says so offers *Pair as an older camera*, which does the same from the start, for an older
 camera that *Pair* does not recognise.
 
 Before pairing, remove the phone from the camera's Bluetooth device list (Setup → Bluetooth →
 Delete), or at least turn the phone's Bluetooth off. A phone that is still registered may grab the
 camera the moment it starts advertising, and the card will not get in.
 
-1. Put the card where its GPS gets a fix, outdoors or by a window. The app switches the card's GPS
-   on as soon as it connects (gpxcam 1.5.0 or newer); the GPS tile shows *Fix* when it is
-   ready, which can take a few minutes after a fresh start.
-2. Click *Pair* (or *Start* under *Pair does not recognise your older camera?*). Do not start pairing
-   on the camera yet.
-3. **Only when the app says *Now start Bluetooth pairing on the camera*** do it (the camera's
+1. Put the card where its GPS gets a fix, outdoors or by a window. On a card that is not paired yet
+   the app switches the GPS on as soon as it connects (gpxcam 1.5.0 or newer), otherwise *Pair*
+   does. *GPS has a fix* on the first screen ticks itself when it is ready, which can take a few
+   minutes after a fresh start.
+2. Click *Pair* (or, on the screen of a pairing that did not work, *Pair as an older camera*). Do
+   not start pairing on the camera yet.
+3. **Only when the app says *Start Bluetooth pairing on the camera now*** do it (the camera's
    Bluetooth menu → Pairing). The order matters: the camera stays in pairing mode only about 30
-   seconds, so the card must already be looking for it (for up to 2 minutes). The card introduces
-   itself over Bluetooth; the camera then shows its Wi-Fi network name (and a password, if one is set)
-   on its screen.
+   seconds, so the card must already be looking for it (for up to 2 minutes, counted down). The card
+   introduces itself over Bluetooth; the camera then shows its Wi-Fi network name (and a password,
+   if one is set) on its screen.
 4. Join that Wi-Fi network on this computer, by hand. On the S5 and similar it has **no password by
    default**, so just pick it from the list; if the camera asks for one, it is on the camera's screen
    or in its Wi-Fi setup: **[Setup] → [Wi-Fi] → [Wi-Fi Setup] → [Wi-Fi Password]** (see the
@@ -103,13 +121,13 @@ camera the moment it starts advertising, and the card will not get in.
    card over the camera's own address (192.168.54.1) – nothing goes to the internet – and tells you
    how it went.
 
-If the card does not find the camera, click *Pair* (or *Start*) again: the card keeps its GPS on for
-10 minutes after a pairing that did not succeed, so it starts looking for the camera at once.
+If the card does not find the camera, click *Try again*: the card keeps its GPS on for 10 minutes
+after a pairing that did not succeed, so it starts looking for the camera at once.
 
 If the Wi-Fi step fails on the camera's network (for example the camera did not confirm), the card
 keeps waiting for it, up to 5 minutes from its introduction: click *Try the Wi-Fi step again*.
-If the app was closed or the cable came off in the middle, connect again: the app shows how far the
-card got and offers *Resume* (at the Wi-Fi step) or *Cancel*.
+If the app was closed or the cable came off in the middle, connect again: the app opens on the step
+the card is at, with *Cancel*; at the Wi-Fi step it goes on with it by itself.
 
 After it succeeds, the card connects to the camera over Bluetooth alone, like any other pairing.
 The protocol is in [docs/PROTOCOL.md](../docs/PROTOCOL.md).

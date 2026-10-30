@@ -80,10 +80,11 @@ computer without Chrome or Edge use [the desktop app](#the-desktop-app)):
 3. Click **Connect** and choose **T1000-E gpxcam**.
 
 The page runs only in the browser and sends nothing over the internet. It sends the card only `v`,
-`status`, `pair`, `pair off`, `pair prepare`, `unpair`, `clock on`, `clock off`, `sound loud`,
+`status`, `p`, `pair`, `pair off`, `pair prepare`, `unpair`, `clock on`, `clock off`, `sound loud`,
 `sound quiet`, `sound off`, `updates normal`, `updates frequent`, `log`, `diag scan`, `tz` and `tz`
-with a zone from its list; the app also `pair older` and `p` (which only reads the card's id) for
-older cameras. With gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or
+with a zone from its list; the app also `pair older` for older cameras. From `p` it only reads how
+long the card has been looking for the camera, and in the app the card's id for an older camera.
+With gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or
 newer, the location updates 1.4.0 and the diagnostics 1.5.0. On connecting to a card that is not
 paired yet, the page sends `pair prepare` (gpxcam 1.5.0): the card switches its GPS on for 10
 minutes, so that pairing finds the time ready.
@@ -105,12 +106,15 @@ generation), which need one extra step over the camera's own Wi-Fi; see
 
 ![The app's card section: connected to the card, with tiles for the camera (Connected), the GPS (Fix, 11 satellites), the battery (Charged, 100 %) and the time zone (Europe/Warsaw, clock on)](docs/images/app-state.png)
 
-![Pairing in the app: the card is looking for the camera, and a highlighted line says "Now start Bluetooth pairing on the camera"](docs/images/app-pairing.png)
+![Pairing, Prepare: the steps Prepare, Pair on camera, Connect and Done, with Prepare current; "GPS has a fix" checked by itself, two reminders to tick (T1000-E not on the camera's Bluetooth list, no phone connected to the camera), the Pair button and "Don't start pairing on the camera yet – the app tells you when."](docs/images/app-pair-prepare.png)
 
-![The Wi-Fi step of an older camera, started under the unfolded "Pair does not recognise your older camera?": in the camera section, the app asks to join the camera's Wi-Fi network shown on its screen and keep the window open](docs/images/app-older-wifi.png)
+![Pairing, the user's turn: "Start Bluetooth pairing on the camera now", the camera menu path, a countdown at 1:42 with its bar, "left to find the camera", and below it "A camera is nearby, but not in pairing mode yet." with Cancel](docs/images/app-pair-camera.png)
 
-*The app's state after Connect, pairing, and the Wi-Fi step of an older camera. More in
-[app/README.md](app/README.md#what-it-looks-like); made with `tools/screenshots.mjs` and a simulated card.*
+![The Wi-Fi step of an older camera: the step Camera Wi-Fi current, "One more step for this camera", the instruction to join the Wi-Fi network the camera shows on its screen, and "Waiting for this computer to join… the app continues by itself (up to 5 minutes)." with Cancel](docs/images/app-pair-wifi.png)
+
+*The app's state after Connect; pairing: Prepare, the moment to start pairing on the camera, and the
+Wi-Fi step of an older camera. More in [app/README.md](app/README.md#what-it-looks-like); made with
+`tools/screenshots.mjs` and a simulated card.*
 
 > [!WARNING]
 > **Older cameras (LUMIX Sync generation): experimental.** The card speaks their older Bluetooth protocol, but
@@ -121,7 +125,7 @@ generation), which need one extra step over the camera's own Wi-Fi; see
 > |---|---|---|
 > | LUMIX S5II | *Pair* on the card page or in the app | tested |
 > | Other current bodies: S5IIX, S9, GH7, G9II, S1II, S1RII, S1IIE, L10 | *Pair* on the card page or in the app | same protocol as the S5II, expected to work, not tested yet |
-> | LUMIX S5II in its older protocol | *Start* under *Pair does not recognise your older camera?* in the app, with the Wi-Fi step | tested by the author: pairing, locations with Normal and Frequent |
+> | LUMIX S5II in its older protocol | *Pair as an older camera* in the app (offered when *Pair* does not work), with the Wi-Fi step | tested by the author: pairing, locations with Normal and Frequent |
 > | LUMIX Sync generation: S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H, BGH1 | *Pair* in the desktop app, with a one-time step over the camera's Wi-Fi | not confirmed; the one field test so far, a LUMIX S5, has not connected |
 >
 > How to pair them: [app/README.md](app/README.md#pairing-an-older-camera).
@@ -267,10 +271,10 @@ Coming back to gpxcam (1.4.0 or newer) later:
 4. The card waits up to 120 s for GPS time, then looks for the camera for up to 120 s. **Only
    now** start pairing in the camera's Bluetooth menu (the screen that waits for a new device):
    some cameras stay in pairing mode only about 30 seconds, so the card must already be looking.
-   The card page says when: *Now start Bluetooth pairing on the camera*. On success the camera
-   shows "Pairing completed" and lists "T1000-E"; the card plays a rising melody. If it gives up:
-   two clicks. The card then keeps its GPS on for 10 minutes, so that another try starts looking
-   for the camera at once.
+   The card page says when, *Start Bluetooth pairing on the camera now*, and counts the 2 minutes
+   down. On success the camera shows "Pairing completed" and lists "T1000-E"; the card plays a
+   rising melody. If it gives up: two clicks. The card then keeps its GPS on for 10 minutes, so that
+   another try starts looking for the camera at once.
 
 A short press cancels pairing. The card only connects to a camera that is in pairing mode, and
 it pairs with one camera at a time: a new pairing replaces the old one.
