@@ -37,8 +37,9 @@ const NOT_PAIRED = { paired: 0, link: "off" };
 
 // Runs in the page before its own scripts: window.__TAURI__ from simulatedApp, with a card that
 // answers as gpxcam 1.5.0 does (src/main.cpp, src/pairing.cpp, src/bluetooth.cpp) and keeps its state
-// as its commands change it. Made-up values only: the card id of the test vectors, the camera serial
-// number 123456789a, Bluetooth addresses of the documentation range.
+// as its commands change it; window.__card lets a shot change that state and send a line of the card's
+// log. Made-up values only: the card id of the test vectors, the camera serial number 123456789a,
+// Bluetooth addresses of the documentation range.
 function installCard(simulatedApp, state) {
   const STATUS_LINES = [
     ["format", "fw", "git"], ["battery_mv", "battery_pct", "charger"], ["gps", "gps_fix", "gps_sat", "gps_hold"],
@@ -78,13 +79,17 @@ function installCard(simulatedApp, state) {
       return ["link: off\r\n", "older: introduced - waiting up to 300 s for the camera's 01\r\n",
         "older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E\r\n"];
     },
-    p: ["pair: card id 00112233-4455-4677-8899-a1b2c3d4e5f6, no camera paired\r\n"],
+    // The pairing lines of 'p'; a search has run for 18 s.
+    p: () => ["pair: card id 00112233-4455-4677-8899-a1b2c3d4e5f6, no camera paired\r\n",
+      state.pair === "searching" ? "pair: looking for a camera in pairing mode for 18 s, attempt 0/3\r\n"
+        : "pair: idle\r\n"],
     "diag scan": SCAN,
   };
   const app = simulatedApp(["/dev/ttyACM0"], answers);
   app.registerOutcome = "wait"; // the Wi-Fi step waits, as while the user joins the camera's network
   app.registerStages = [];
   window.__TAURI__ = app.window.__TAURI__;
+  window.__card = { state, say: (text) => app.channel.onmessage({ kind: "line", text }) };
 }
 
 // Serves docs/index.html at http://127.0.0.1:<port>/ (a secure context, as the app's web view).
@@ -150,7 +155,7 @@ async function shoot(page, name, selectors) {
 }
 
 const CARD = ["main > header.top", "section:has(#state)"];
-const CAMERA = ["section:has(#pair)"];
+const CAMERA = ["section:has(#pairing)"];
 const SETTINGS = ["section:has(#clock)", "section:has(#updates-normal)", "section:has(#sound-loud)"];
 const DIAGNOSTICS = ["section:has(#scan)"];
 
@@ -158,23 +163,51 @@ const DIAGNOSTICS = ["section:has(#scan)"];
 const SHOTS = {
   // The card's state after Connect: paired and connected, a GPS fix, the battery charged.
   state: async (browser, url) => ({ page: await connectedPage(browser, url, {}), parts: CARD }),
-  // Pair: the card looks for the camera, and the page says to start pairing on the camera now.
-  pairing: async (browser, url) => {
+  // The camera section's pairing screens. Prepare: a card not paired yet, with a GPS fix.
+  "pair-prepare": async (browser, url) => {
     const page = await connectedPage(browser, url, NOT_PAIRED);
-    await page.click("#pair");
-    await page.waitForSelector("#pair-progress.act");
+    await page.waitForSelector("#pair-screen-prepare:not(.hidden)");
     return { page, parts: CAMERA };
   },
-  // An older camera, started from the unfolded "Pair does not recognise your older camera?": the card has
-  // introduced itself, and the app waits for the user to join the camera's network.
-  "older-wifi": async (browser, url) => {
-    const page = await connectedPage(browser, url, NOT_PAIRED);
+  // The card has looked for the camera for 18 s ('p' after Connect): start pairing on the camera now; a
+  // camera nearby is not in pairing mode yet.
+  "pair-camera": async (browser, url) => {
+    const page = await connectedPage(browser, url, { ...NOT_PAIRED, pair: "searching" });
+    await page.waitForFunction(() => document.getElementById("pair-countdown-time").textContent === "1:42");
+    await page.evaluate(() => window.__card.say("pair: camera 123456789a is on (00), not in pairing mode - " +
+      "choose pairing on the camera"));
+    await page.waitForSelector("#pair-status.warn");
+    return { page, parts: CAMERA };
+  },
+  // Camera found: connected over Bluetooth, the card introduces itself.
+  "pair-connect": async (browser, url) => {
+    const page = await connectedPage(browser, url, { ...NOT_PAIRED, pair: "connecting", pair_attempt: 1 });
     await page.evaluate(() => {
-      document.getElementById("pair-help").open = false; // the step stands out
-      document.getElementById("older").open = true;
+      window.__card.say("pair: attempt 1/3 - camera 123456789a in pairing mode, -48 dBm, connecting");
+      window.__card.say("camera: connected");
     });
-    await page.click("#older-start");
-    await page.waitForFunction(() => document.getElementById("pair-progress").textContent.startsWith("Join"));
+    await page.waitForSelector("#connect-stage-3.current");
+    return { page, parts: CAMERA };
+  },
+  // An older camera at its Wi-Fi step (found waiting there after Connect, the app goes on by itself): the
+  // app waits for this computer to join the camera's network.
+  "pair-wifi": async (browser, url) => {
+    const page = await connectedPage(browser, url, { ...NOT_PAIRED, pair: "waiting_wifi", pair_attempt: 1 });
+    await page.waitForSelector("#pair-screen-wifi:not(.hidden)");
+    await page.waitForSelector("#pair-status.warn");
+    return { page, parts: CAMERA };
+  },
+  // Paired.
+  "pair-done": async (browser, url) => {
+    const page = await connectedPage(browser, url, {});
+    await page.waitForSelector("#pair-screen-done:not(.hidden)");
+    return { page, parts: CAMERA };
+  },
+  // A pairing that found no camera: why, the tips, Try again, and pairing as with an older camera.
+  "pair-failed": async (browser, url) => {
+    const page = await connectedPage(browser, url, { ...NOT_PAIRED, pair: "searching" });
+    await page.evaluate(() => Object.assign(window.__card.state, { pair: "idle", pair_result: "no_camera" }));
+    await page.waitForSelector("#pair-screen-failed:not(.hidden)");
     return { page, parts: CAMERA };
   },
   // Diagnostics: Scan for cameras, the camera's serial number hidden.
