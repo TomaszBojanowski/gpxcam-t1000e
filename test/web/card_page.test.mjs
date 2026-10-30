@@ -26,7 +26,9 @@ const page = vm.runInContext(
     " storageNoteText, chooseTransport, tzAnswerText, statusProblemText," +
     " openProblemText, parseOlderRegister, olderOutcomeText, FIXED_COMMANDS, isLogLine," +
     " belongsToScan, scanEnded, scanResultText, diagnosticsText, SCAN_RUN_MS, shouldPrepareGps, pairingKind," +
-    " maskIdentifiers, parseCardId, olderIdentity, PAIRING_STATUS_PERIOD_MS, AppReadError, readErrorText })",
+    " maskIdentifiers, parseCardId, olderIdentity, PAIRING_STATUS_PERIOD_MS, AppReadError, readErrorText," +
+    " PAIR_SEARCH_MS, pairingScreen, pairingSteps, pairingBadge, pairingEvent, searchLeftMs, countdownText," +
+    " countdownLabel, connectStages, cameraStepText, gpsCheck, failedText })",
   vm.createContext({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console }),
 );
 
@@ -1236,6 +1238,189 @@ test("the pairing stages and results are explained", () => {
   assert.equal(page.pairResultText("failed")[1], "bad");
   assert.match(page.pairResultText("failed")[0], /If the camera lists T1000\u2011E from an earlier pairing, delete it/);
   assert.deepEqual(json(page.pairResultText("cancelled")), ["Pairing cancelled.", ""]);
+});
+
+// ---- The camera section's pairing screens ----
+
+// A line as the card prints it, from the format string in its source that starts with `start`; each
+// conversion takes the next value.
+function firmwareLine(file, start, ...values) {
+  const source = readFileSync(new URL(`../../src/${file}`, import.meta.url), "utf8");
+  const escaped = start.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const format = new RegExp(`logger::(?:line|transient)\\("(${escaped}[^"]*)"`).exec(source);
+  assert.ok(format, `${file}: ${start}`);
+  let next = 0;
+  return format[1].replace(/%(02x|lu|u|d|s)/g, () => String(values[next++]));
+}
+
+// The text a firmware function returns for a case, or a name in a list of names: asserted to be in the source.
+function assertFirmwareText(file, text) {
+  assert.ok(readFileSync(new URL(`../../src/${file}`, import.meta.url), "utf8").includes(`"${text}"`), `${file}: ${text}`);
+}
+
+test("the camera section's screen follows the card's pairing phase and how the last pairing ended", () => {
+  const screen = (state, context) => json(page.pairingScreen({ ...STATE, ...state }, context));
+  const prepare = { screen: "prepare", variant: null };
+  const done = { screen: "done", variant: null };
+  assert.deepEqual(screen({ paired: false }), prepare);
+  assert.deepEqual(screen({ paired: true }), done);
+  assert.deepEqual(screen({ paired: true }, { pairAgain: true }), prepare);
+  assert.deepEqual(screen({ pair: "waiting_gps" }), { screen: "camera", variant: "gps" });
+  assert.deepEqual(screen({ pair: "searching" }), { screen: "camera", variant: "search" });
+  assert.deepEqual(screen({ pair: "pausing" }), { screen: "camera", variant: "pause" });
+  assert.deepEqual(screen({ pair: "connecting" }), { screen: "connect", variant: null });
+  assert.deepEqual(screen({ pair: "waiting_wifi" }), { screen: "wifi", variant: null });
+  assert.deepEqual(screen({ pair: "waiting_wifi" }, { introducing: true }), { screen: "connect", variant: null });
+  assert.deepEqual(screen({ pair: "a_later_phase" }), { screen: "connect", variant: null });
+  // A pairing under way is shown whatever ended before.
+  assert.deepEqual(screen({ pair: "searching" }, { ended: "no_camera" }), { screen: "camera", variant: "search" });
+  // How the last pairing the page followed ended.
+  assert.deepEqual(screen({ paired: true }, { ended: "paired" }), done);
+  for (const ended of ["no_camera", "not_in_pairing_mode"]) {
+    assert.deepEqual(screen({ paired: false }, { ended }), { screen: "failed", variant: "no-camera" }, ended);
+  }
+  for (const ended of ["failed", "no_gps_fix", "not_saved", "not_possible", "wifi-given-up"]) {
+    assert.deepEqual(screen({ paired: true }, { ended }), { screen: "failed", variant: "other" }, ended);
+  }
+  assert.deepEqual(screen({ paired: false }, { ended: "cancelled" }), prepare);
+  assert.deepEqual(screen({ paired: true }, { ended: "cancelled" }), done);
+  assert.deepEqual(screen({ paired: false }, { ended: "none" }), prepare);
+  // Every phase of the firmware but idle is a pairing under way.
+  const phases = firmwareValues("pairPhaseValue");
+  for (const pair of phases.slice(1)) {
+    assert.ok(["camera", "connect", "wifi"].includes(page.pairingScreen({ ...STATE, pair }).screen), pair);
+  }
+});
+
+test("the row of steps shows where the pairing is, with the Wi-Fi step only for an older camera", () => {
+  const steps = (screen, older) => {
+    const row = page.pairingSteps(screen, older);
+    return row === null ? null : json(row.map((step) => `${step.name}:${step.state}`));
+  };
+  assert.deepEqual(steps("prepare", false), ["prepare:current", "camera:later", "connect:later", "done:later"]);
+  assert.deepEqual(steps("camera", false), ["prepare:done", "camera:current", "connect:later", "done:later"]);
+  assert.deepEqual(steps("connect", true),
+    ["prepare:done", "camera:done", "connect:current", "wifi:later", "done:later"]);
+  assert.deepEqual(steps("wifi", false), ["prepare:done", "camera:done", "connect:done", "wifi:current", "done:later"]);
+  assert.equal(steps("done", true), null);
+  assert.equal(steps("failed", false), null);
+  assert.deepEqual(json(page.pairingSteps("camera", true).map((step) => step.label)),
+    ["Prepare", "Pair on camera", "Connect", "Camera Wi-Fi", "Done"]);
+});
+
+test("the badge beside the title says whether the card is paired or pairing", () => {
+  assert.equal(page.pairingBadge({ ...STATE, paired: false }), "Not paired yet");
+  assert.equal(page.pairingBadge({ ...STATE, paired: true }), "Paired");
+  assert.equal(page.pairingBadge({ ...STATE, paired: true, pair: "searching" }), "Pairing…");
+});
+
+test("the card's lines start the countdown, tell the stages, the older camera and why the card gave up", () => {
+  const at = 1000000;
+  const event = (line, searchMs) => json(page.pairingEvent(line, at, searchMs));
+  const search = (startsAt, lengthMs = 120000) => ({ search: { startsAt, lengthMs } });
+  assert.deepEqual(event(firmwareLine("pairing.cpp", "pair: GPS time ok", 120)), search(at));
+  assert.deepEqual(event(firmwareLine("pairing.cpp", "pair: GPS time ok", 60)), search(at, 60000));
+  const quickRetry = firmwareLine("pairing.cpp", "pair: quick retry", 2, 5, "no answer in connect");
+  assert.deepEqual(event(quickRetry), search(at));
+  assert.deepEqual(event(quickRetry, 60000), search(at, 60000));
+  assert.deepEqual(event(firmwareLine("pairing.cpp", "pair: next attempt in", 10)), search(at + 10000));
+  // After a reconnect: 'p' gives how long the card has looked.
+  assertFirmwareText("pairing.cpp", "looking for a camera in pairing mode");
+  const looking = firmwareLine("pairing.cpp", "pair: %s for", "looking for a camera in pairing mode", 37, 0, 3);
+  assert.deepEqual(event(looking), search(at - 37000));
+  assert.deepEqual(event(firmwareLine("pairing.cpp", "pair: camera %s is %s", "********9a", "on", "00")),
+    { nearby: true });
+  // The stages of the connection, in both dialects.
+  assert.deepEqual(event(firmwareLine("pairing.cpp", "pair: attempt %d/%d - camera", 1, 3, "********9a", -50)),
+    { stages: 1 });
+  assert.deepEqual(event(firmwareLine("newer_session.cpp", "camera: connected")), { stages: 2 });
+  assert.deepEqual(event(firmwareLine("older_session.cpp", "older: connected")), { stages: 2 });
+  for (const name of ["device name", "time", "identifier"]) {
+    assertFirmwareText("newer_session.cpp", name);
+    assertFirmwareText("older_session.cpp", name);
+  }
+  assert.deepEqual(event(firmwareLine("newer_session.cpp", "camera: %s accepted", "device name")), { stages: 3 });
+  assert.deepEqual(event(firmwareLine("older_session.cpp", "older: %s written", "device name")), { stages: 3 });
+  assert.deepEqual(event(firmwareLine("newer_session.cpp", "camera: %s accepted", "time")), { stages: 4 });
+  assert.deepEqual(event(firmwareLine("older_session.cpp", "older: %s written", "time")), { stages: 4 });
+  assert.equal(event(firmwareLine("newer_session.cpp", "camera: %s accepted", "identifier")), null);
+  // An older camera: Pair switches to it, then it waits for the Wi-Fi step.
+  assert.deepEqual(event(firmwareLine("pairing.cpp", "pair: camera %s has no", "********9a")), { older: true });
+  assert.deepEqual(event(firmwareLine("older_session.cpp", "older: introduced", 300, " (the camera now waits for " +
+    "the Wi-Fi step)")), { wifiStep: true });
+  assert.deepEqual(event("older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E"),
+    { wifiStep: true });
+  assert.deepEqual(event(firmwareLine("pairing.cpp", "pair: given up - %s", "no camera in pairing mode in time")),
+    { gaveUp: "no camera in pairing mode in time" });
+  for (const line of ["link: location 3 sent (period), answer 80 ms, frequent", "pair: paired with camera ********9a",
+    "camera: key read", "status: pair=searching pair_attempt=0 pair_result=none"]) {
+    assert.equal(event(line), null, line);
+  }
+});
+
+test("the page's search time is the card's", () => {
+  const source = readFileSync(new URL("../../src/pairing.cpp", import.meta.url), "utf8");
+  assert.equal(page.PAIR_SEARCH_MS, Number(/constexpr uint32_t SEARCH_MS = (\d+);/.exec(source)[1]));
+});
+
+test("the countdown runs from 2:00 to 0:00, also for a screen reader", () => {
+  const texts = [120000, 119001, 119000, 61000, 60000, 999, 0, -5].map((ms) => page.countdownText(ms));
+  assert.deepEqual(texts, ["2:00", "2:00", "1:59", "1:01", "1:00", "0:01", "0:00", "0:00"]);
+  assert.equal(page.countdownLabel(120000), "2 minutes left");
+  assert.equal(page.countdownLabel(92000), "1 minute 32 seconds left");
+  assert.equal(page.countdownLabel(61000), "1 minute 1 second left");
+  assert.equal(page.countdownLabel(1000), "1 second left");
+  assert.equal(page.countdownLabel(0), "0 seconds left");
+  const search = { startsAt: 1000000, lengthMs: 120000 };
+  assert.equal(page.searchLeftMs(null, 1000000), null);
+  assert.equal(page.searchLeftMs(search, 1020000), 100000);
+  assert.equal(page.searchLeftMs(search, 1200000), 0);
+  assert.equal(page.searchLeftMs(search, 990000), 120000); // a pause before it: its whole length
+});
+
+test("the stages of the connection: done, then the current one, then those to come", () => {
+  const stages = (done) => json(page.connectStages(done).map((stage) => stage.state));
+  assert.deepEqual(stages(1), ["done", "current", "later", "later"]);
+  assert.deepEqual(stages(3), ["done", "done", "done", "current"]);
+  assert.deepEqual(stages(4), ["done", "done", "done", "done"]);
+  assert.deepEqual(json(page.connectStages(0).map((stage) => stage.label)), ["Camera in pairing mode",
+    "Connected over Bluetooth", "Introducing the card to the camera…", "Setting the camera's clock"]);
+});
+
+test("under the countdown the page says what the card does", () => {
+  const text = (variant, state, context) => json(page.cameraStepText(variant, { ...STATE, ...state }, context));
+  assert.deepEqual(text("gps", { gpsSatellites: 3 }),
+    ["Waiting for the GPS time – 3 satellites so far. Don't start pairing on the camera yet.", "busy"]);
+  assert.deepEqual(text("search", {}), ["Looking for the camera…", "busy"]);
+  assert.deepEqual(text("search", { pairAttempt: 1 }), ["Looking for the camera again (attempt 2 of 3)…", "busy"]);
+  assert.deepEqual(text("search", {}, { nearby: true }), ["A camera is nearby, but not in pairing mode yet.", "warn"]);
+  assert.deepEqual(text("pause", { pairAttempt: 1 }, { pauseLeftMs: 9500 }),
+    ["Attempt 1 of 3 didn't work – looking again in 10 s. Keep the camera in pairing mode.", "warn"]);
+  assert.match(text("pause", { pairAttempt: 2 })[0], /^Attempt 2 of 3 didn't work – looking again in a moment\./);
+});
+
+test("Prepare checks the GPS by itself", () => {
+  assert.deepEqual(json(page.gpsCheck({ ...STATE, gpsFix: true, gpsSatellites: 11 })),
+    { done: true, detail: "11 satellites – the card knows the time. Checked by itself." });
+  assert.deepEqual(json(page.gpsCheck({ ...STATE, gpsFix: false, gpsSatellites: 1 })),
+    { done: false, detail: "Waiting for a fix – 1 satellite so far." });
+  assert.equal(page.gpsCheck({ ...STATE, gpsOn: false, gpsFix: false }).detail, "The GPS switches on when pairing starts.");
+});
+
+test("every way a pairing can end without a camera is explained, the older-camera box only where it helps", () => {
+  const results = firmwareValues("pairResultValue").filter((result) => !["none", "paired", "cancelled"].includes(result));
+  assert.deepEqual(results, ["not_saved", "not_possible", "no_gps_fix", "no_camera", "not_in_pairing_mode", "failed"]);
+  for (const result of [...results, "wifi-given-up"]) {
+    assert.doesNotMatch(page.failedText(result).text, /^The card ended the pairing/, result);
+  }
+  const older = [...results, "wifi-given-up"].filter((result) => page.failedText(result).older);
+  assert.deepEqual(older, ["no_camera", "not_in_pairing_mode", "failed"]);
+  assert.deepEqual(json(page.failedText("no_camera")), { title: "The camera did not answer",
+    text: "The card looked for 2 minutes and didn't find a camera in pairing mode.", older: true });
+  assert.match(page.failedText("failed").text, /^The camera did not take the card in 3 attempts\./);
+  assert.equal(page.failedText("failed", "no connection to the camera after 5 quick retries (last: link not " +
+    "established (0x3e))").text, "The card could not connect to the camera: the connection never came up.");
+  assert.equal(page.failedText("failed", "all attempts failed").text, page.failedText("failed").text);
 });
 
 test("the answers to 'unpair' are told apart, also the card's line for damaged storage", () => {
