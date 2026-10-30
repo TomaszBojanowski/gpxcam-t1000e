@@ -511,8 +511,10 @@ button.big { min-height: 48px; padding: var(--s2) var(--s6); font-size: var(--fs
   border-radius: var(--radius-s);
   background: var(--edge-tint);
 }
-.done-panel { --edge: var(--good); --edge-tint: var(--good-tint); }
-.done-panel .result-icon { stroke: var(--good); }
+.done-panel { --edge: var(--good); --edge-tint: var(--good-tint); text-align: center; }
+.done-panel .result-icon { display: block; width: 48px; height: 48px; margin: 0 auto var(--s2); stroke: var(--good); }
+.done-panel .row { justify-content: center; }
+.done-panel .confirm { text-align: left; }
 .warn-panel { --edge: var(--warn); --edge-tint: var(--warn-tint); }
 .warn-panel .result-icon { stroke: var(--warn); }
 .tips { margin: var(--s2) 0 var(--s3); padding-left: 22px; }
@@ -759,6 +761,7 @@ button.big { min-height: 48px; padding: var(--s2) var(--s6); font-size: var(--fs
             </svg>
             <h3 id="failed-title"></h3>
             <p id="failed-text"></p>
+            <p id="failed-paired" class="hidden">Your camera stays paired as before.</p>
             <ul id="failed-tips" class="tips">
               <li>Start pairing on the camera only when you are told to &ndash; some cameras stay in pairing mode
                   for just 30 seconds.</li>
@@ -792,7 +795,7 @@ button.big { min-height: 48px; padding: var(--s2) var(--s6); font-size: var(--fs
                 off: a phone may grab the camera the moment it starts pairing.</li>
             <li>Click <em>Pair</em>. Do not start pairing on the camera yet: some cameras stay in pairing mode only
                 about 30 seconds, so the card must already be looking for them.</li>
-            <li>When the page says <em>Start Bluetooth pairing on the camera now</em>, start pairing in the
+            <li>When this screen says <em>Start Bluetooth pairing on the camera now</em>, start pairing in the
                 camera's Bluetooth menu. The card looks for it for up to 2 minutes and tries up to 3 times.</li>
             <li>Older cameras (LUMIX Sync generation) then need one more step, over the camera's own Wi-Fi
                 network, which only the gpxcam card app can do: the app starts it by itself and says what to do.</li>
@@ -1368,7 +1371,7 @@ const BATTERY_VERY_LOW_PERCENT = 10;
 // The card connects to the camera only with a GPS fix: the camera gets the time from it. While the camera is
 // away a while, the card looks for it with the GPS asleep (link_policy::gpsNeeded): no fix, but nothing to wait for.
 function cameraTile(state) {
-  if (state.pair !== "idle") return ["warn", "Pairing", "See The camera below"];
+  if (state.pair !== "idle") return ["warn", "Pairing", "See the camera section below"];
   if (!state.paired) return ["idle", "Not paired", "Pair it below"];
   switch (state.link) {
     case "connected": return ["good", "Connected", "Sends the position"];
@@ -2019,6 +2022,8 @@ function startPage() {
     forgetNo: element("forget-no"),
     failedTitle: element("failed-title"),
     failedText: element("failed-text"),
+    failedPaired: element("failed-paired"),
+    pairingHelp: element("pairing-help"),
     failedTips: element("failed-tips"),
     pairRetry: element("pair-retry"),
     olderBox: element("older-box"),
@@ -2082,6 +2087,7 @@ function startPage() {
   let stagesDone = 0; // of the connection (connectStages())
   let pairNote = null; // [text, kind] on the status line around a pairing (cancelled, forgotten, no answer)
   let countdownTimer = null;
+  let helpScreen = null; // the screen How pairing works was last shown on: folded again on another one
   let olderCancelled = false; // the user pressed Cancel during older-camera pairing
   let olderRunning = false; // the older-camera pairing or a Wi-Fi step is under way
   let olderRetry = false; // the last Wi-Fi step failed: it can be tried again
@@ -2211,6 +2217,7 @@ function startPage() {
     const failed = failedText(ended, endedReason);
     ui.failedTitle.textContent = failed.title;
     ui.failedText.textContent = failed.text;
+    ui.failedPaired.classList.toggle("hidden", !lastState.paired); // a failed pairing keeps the camera paired
     ui.failedTips.classList.toggle("hidden", variant !== "no-camera");
     ui.olderBox.classList.toggle("hidden", !failed.older || !canPairOlder(lastState.version));
     ui.pairOlder.classList.toggle("hidden", !inApp);
@@ -2239,6 +2246,8 @@ function startPage() {
     ui.pairBadge.className = `pair-badge${badge}`;
     showSteps(pairingSteps(screen, older));
     for (const name of PAIRING_SCREENS) element(`pair-screen-${name}`).classList.toggle("hidden", name !== screen);
+    if (screen !== helpScreen) ui.pairingHelp.open = false; // opened by the user, it stays open on this screen only
+    helpScreen = screen;
     let status = pairNote || ["", ""];
     if (screen === "prepare") showPrepare();
     else if (screen === "camera") status = showCamera(variant);
@@ -2437,6 +2446,7 @@ function startPage() {
     setStatus(ui.updatesAnswer, "");
     lastState = null;
     watchingPairing = false;
+    helpScreen = null;
     resetPairing();
     if (ui.diagStatus.className === "busy") { // a log or a scan cut short
       ui.diagProgress.classList.add("hidden");

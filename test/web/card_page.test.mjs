@@ -634,7 +634,7 @@ test("the state is shown as tiles, each state in a word, not only by the colour 
     ["idle", "Looking for it", "Camera off or out of range"]);
   assert.deepEqual(tile(page.cameraTile, { link: "stopped" }), ["bad", "Refused the card", "Pair them again"]);
   assert.deepEqual(tile(page.cameraTile, { link: "off", pair: "searching" }),
-    ["warn", "Pairing", "See The camera below"]);
+    ["warn", "Pairing", "See the camera section below"]);
   assert.deepEqual(tile(page.gpsTile), ["good", "Fix", "11 satellites"]);
   assert.deepEqual(tile(page.gpsTile, { gpsOn: false }), ["idle", "Off", "Saves power"]);
   assert.deepEqual(tile(page.gpsTile, { gpsFix: false, gpsSatellites: 1 }),
@@ -1254,8 +1254,13 @@ test("the pairing screens are made of real buttons, labelled checkboxes and one 
   // Pairing as with an older camera is offered on the screen of a failed pairing only.
   assert.equal(pairingHtml.match(/id="pair-older"/g).length, 1);
   assert.match(screenHtml("failed"), /id="pair-older"/);
-  // How pairing works is folded.
+  // How pairing works is folded, and its words fit the page and the app alike.
   assert.match(pairingHtml, /<details id="pairing-help" class="help">/);
+  assert.match(pairingHtml, /When this screen says <em>Start Bluetooth pairing on the camera now<\/em>/);
+  assert.doesNotMatch(pairingHtml, /the page says/);
+  // Paired: the panel's mark and words in the middle.
+  assert.match(html, /\.done-panel \{[^}]*text-align: center;/);
+  assert.match(html, /\.done-panel \.row \{ justify-content: center; \}/);
 });
 
 test("the camera section's screen follows the card's pairing phase and how the last pairing ended", () => {
@@ -1568,6 +1573,7 @@ test("a cancelled pairing, one refused at once, and one from the card's button t
   assert.deepEqual(shownScreen(ui), ["failed"]);
   assert.equal(ui["failed-title"].textContent, "The camera did not answer");
   assert.equal(ui["failed-tips"].hidden, false);
+  assert.equal(ui["failed-paired"].hidden, true); // no camera was paired before
   assert.equal(ui["older-box"].hidden, true); // gpxcam 1.3.0 cannot pair as with an older camera
 
   // Try again pairs at once.
@@ -1575,6 +1581,30 @@ test("a cancelled pairing, one refused at once, and one from the card's button t
   await ui["pair-retry"].fire("click");
   assert.equal(port.written.filter((command) => command === "pair\n").length, 3);
   assert.deepEqual(shownScreen(ui), ["camera"]);
+  await ui.disconnect.fire("click");
+});
+
+test("How pairing works folds on each new screen; a failed pairing of a paired card keeps its camera", async () => {
+  const answers = { v: VERSION_1_3, status: STATUS_ANSWER, pair: PAIR_STARTED };
+  const { ui } = await connected(answers);
+  assert.deepEqual(shownScreen(ui), ["done"]);
+  assert.equal(ui["pairing-help"].open, false);
+  ui["pairing-help"].open = true; // the user opens it
+  await ui.refresh.fire("click");
+  assert.equal(ui["pairing-help"].open, true); // on the same screen it stays open
+  await ui["pair-again"].fire("click");
+  assert.deepEqual(shownScreen(ui), ["prepare"]);
+  assert.equal(ui["pairing-help"].open, false); // a new screen: folded
+  ui["pairing-help"].open = true;
+  answers.status = statusWith({ pair: "searching" });
+  await ui["pair-start"].fire("click");
+  assert.deepEqual(shownScreen(ui), ["camera"]);
+  assert.equal(ui["pairing-help"].open, false);
+  answers.status = statusWith({ pair_result: "no_camera" }); // the card still has its camera
+  await ui.refresh.fire("click");
+  assert.deepEqual(shownScreen(ui), ["failed"]);
+  assert.equal(ui["failed-paired"].hidden, false);
+  assert.match(screenHtml("failed"), /<p id="failed-paired" class="hidden">Your camera stays paired as before\.<\/p>/);
   await ui.disconnect.fire("click");
 });
 
