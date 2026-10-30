@@ -504,7 +504,9 @@ test("text and the edges of fields stand out enough in both themes", () => {
 });
 
 test("each part of the page is a card with its heading and icon; the favicon is drawn in the page", () => {
-  const card = /<section class="panel section">\s*<h2><svg class="icon"[^>]*>[\s\S]*?<\/svg>([^<]+)<\/h2>/g;
+  // The camera's heading also holds the short pairing state (pair-badge).
+  const card = new RegExp(String.raw`<section class="panel section">\s*<h2><svg class="icon"[^>]*>[\s\S]*?<\/svg>` +
+    String.raw`([^<]+)(?:<span id="pair-badge"[^>]*><\/span>)?<\/h2>`, "g");
   const cards = [...html.matchAll(card)];
   assert.deepEqual(cards.map((card) => card[1]), ["The card", "The camera", "The camera's clock", "Location updates",
     "Sound", "Diagnostics"]);
@@ -1257,6 +1259,35 @@ function firmwareLine(file, start, ...values) {
 function assertFirmwareText(file, text) {
   assert.ok(readFileSync(new URL(`../../src/${file}`, import.meta.url), "utf8").includes(`"${text}"`), `${file}: ${text}`);
 }
+
+// The camera section's pairing screens in the page's HTML.
+const pairingHtml = /<div id="pairing" [\s\S]*?<\/details>\n {6}<\/div>/.exec(html)[0];
+const screenHtml = (name) => new RegExp(String.raw`<div id="pair-screen-${name}"[\s\S]*?` +
+  String.raw`(?=\n {8}<div id="pair-screen-|\n {8}<p id="pair-status")`).exec(pairingHtml)[0];
+
+test("the pairing screens are made of real buttons, labelled checkboxes and one status line, 44 px high", () => {
+  for (const name of ["prepare", "camera", "connect", "wifi", "done", "failed"]) assert.ok(screenHtml(name), name);
+  const buttons = [...pairingHtml.matchAll(/<button [^>]*>/g)].map((match) => match[0]);
+  assert.ok(buttons.length >= 9);
+  for (const button of buttons) assert.match(button, /type="button"/, button);
+  for (const box of ["check-list", "check-phone"]) {
+    assert.match(pairingHtml, new RegExp(`<label><input id="${box}" type="checkbox">`), box);
+  }
+  assert.match(pairingHtml, /<progress id="pair-countdown-bar" [^>]*aria-label="Time left to find the camera"/);
+  assert.equal(pairingHtml.match(/role="status"/g).length, 1);
+  assert.match(html, /\.pairing button \{ min-height: 44px; \}/);
+  // One element for each step and stage the functions give.
+  for (const step of page.pairingSteps("wifi", true)) {
+    assert.match(pairingHtml, new RegExp(`id="pair-step-${step.name}"`));
+  }
+  const stages = page.connectStages(0).length;
+  assert.equal(screenHtml("connect").match(/id="connect-stage-\d"/g).length, stages);
+  // Pairing as with an older camera is offered on the screen of a failed pairing only.
+  assert.equal(pairingHtml.match(/id="pair-older"/g).length, 1);
+  assert.match(screenHtml("failed"), /id="pair-older"/);
+  // How pairing works is folded.
+  assert.match(pairingHtml, /<details id="pairing-help" class="help">/);
+});
 
 test("the camera section's screen follows the card's pairing phase and how the last pairing ended", () => {
   const screen = (state, context) => json(page.pairingScreen({ ...STATE, ...state }, context));

@@ -30,6 +30,7 @@
   --good: #1e7a43;
   --warn: #9a5b00;
   --warn-tint: rgba(196, 120, 0, 0.09);
+  --good-tint: rgba(30, 122, 67, 0.08);
   --idle: #8a9099;
   --error: #c42b1c;
   --error-tint: rgba(196, 43, 28, 0.07);
@@ -71,6 +72,7 @@
     --good: #4cc47a;
     --warn: #f0b048;
     --warn-tint: rgba(240, 176, 72, 0.1);
+    --good-tint: rgba(76, 196, 122, 0.12);
     --idle: #6e7881;
     --error: #ff7b6e;
     --error-tint: rgba(255, 123, 110, 0.1);
@@ -401,6 +403,140 @@ p.bad::before {
 }
 .meta button { margin-left: auto; }
 button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--fs-small); }
+/* Pairing: a row of steps and one screen at a time; its controls are at least 44 px high */
+.pairing button { min-height: 44px; }
+button.big { min-height: 48px; padding: var(--s2) var(--s6); font-size: var(--fs-tile); }
+.pair-badge { margin-left: auto; font-size: var(--fs-small); font-weight: 600; color: var(--muted); }
+.pair-badge.paired { color: var(--good); }
+.pair-badge.pairing { color: var(--link); }
+.pair-steps { display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s4); padding: 0; list-style: none; }
+.pair-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--s1) var(--s3);
+  border-radius: 999px;
+  background: var(--list-bg);
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+.pair-steps li.done { color: var(--good); }
+.pair-steps li.done::before { content: "\2713"; }
+.pair-steps li.current { background: var(--accent); color: var(--accent-text); }
+.pair-screen h3 { margin: 0 0 var(--s1); font-size: var(--fs-tile); }
+.checklist { margin: 0 0 var(--s4); padding: 0; list-style: none; }
+.checklist li {
+  display: flex;
+  gap: var(--s3);
+  align-items: flex-start;
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--line);
+}
+.checklist li:last-child { border-bottom: 0; }
+.checklist label { display: flex; flex: 1; gap: var(--s3); align-items: flex-start; min-height: 44px; cursor: pointer; }
+.checklist strong, .checklist small { display: block; }
+.checklist input[type="checkbox"] { width: 20px; height: 20px; margin: 2px 0 0; flex: none; }
+.check-mark {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  flex: none;
+  border: 2px solid var(--idle);
+  border-radius: 50%;
+  color: var(--panel);
+  font-size: 12px;
+  font-weight: 700;
+}
+.check-done .check-mark { border-color: var(--good); background: var(--good); }
+.check-done .check-mark::after { content: "\2713"; }
+.callout {
+  display: flex;
+  gap: var(--s4);
+  align-items: flex-start;
+  padding: var(--s4);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-s);
+  background: var(--accent-tint);
+}
+.callout > .icon, .wifi-box > .icon, .result-icon { width: 36px; height: 36px; }
+.callout > div { flex: 1; min-width: 0; }
+.countdown { margin-top: var(--s3); }
+.countdown progress { appearance: none; height: 8px; border: 0; border-radius: 4px; background: var(--line); }
+.countdown progress::-webkit-progress-bar { border-radius: 4px; background: var(--line); }
+.countdown progress::-webkit-progress-value { border-radius: 4px; background: var(--accent); }
+.countdown progress::-moz-progress-bar { border-radius: 4px; background: var(--accent); }
+.countdown-time {
+  display: block;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.stages { margin: var(--s3) 0; padding: 0; list-style: none; }
+.stages li { display: flex; align-items: center; gap: var(--s3); min-height: 32px; color: var(--muted); }
+.stages li::before {
+  content: "";
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: 2px solid var(--idle);
+  border-radius: 50%;
+  color: var(--panel);
+  font-size: 11px;
+  font-weight: 700;
+}
+.stages li.done { color: var(--text); }
+.stages li.done::before { content: "\2713"; border-color: var(--good); background: var(--good); }
+.stages li.current { color: var(--text); font-weight: 600; }
+.stages li.current::before {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.wifi-box {
+  display: flex;
+  gap: var(--s4);
+  align-items: flex-start;
+  margin: var(--s3) 0;
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+.done-panel, .warn-panel {
+  padding: var(--s4);
+  border-left: 4px solid var(--edge);
+  border-radius: var(--radius-s);
+  background: var(--edge-tint);
+}
+.done-panel { --edge: var(--good); --edge-tint: var(--good-tint); }
+.done-panel .result-icon { stroke: var(--good); }
+.warn-panel { --edge: var(--warn); --edge-tint: var(--warn-tint); }
+.warn-panel .result-icon { stroke: var(--warn); }
+.tips { margin: var(--s2) 0 var(--s3); padding-left: 22px; }
+.tips li { margin: var(--s1) 0; }
+.older-box {
+  margin-top: var(--s4);
+  padding: var(--s3) var(--s4);
+  border: 1px dashed var(--field-line);
+  border-radius: var(--radius-s);
+}
+.older-box h3 { margin: 0 0 var(--s1); font-size: var(--fs); }
+/* The section's one status line: an amber dot while something waits on the user or goes wrong slowly */
+#pair-status.warn::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--s2);
+  border-radius: 50%;
+  background: var(--warn);
+  vertical-align: 1px;
+}
 @media (max-width: 640px) {
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -509,10 +645,163 @@ button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--
     <section class="panel section">
       <h2><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M7 7.5l10 9-5 4.5V3l5 4.5-10 9"/>
-        </svg>The camera</h2>
+        </svg>The camera<span id="pair-badge" class="pair-badge hidden"></span></h2>
       <p id="camera-note"></p>
       <p id="camera-old" class="hidden">Pairing from this page needs gpxcam 1.3.0. With gpxcam 1.2, pair with the
          card's button, see <a href="https://github.com/TomaszBojanowski/gpxcam-t1000e#pairing-once">the README</a>.</p>
+      <div id="pairing" class="pairing hidden">
+        <ol id="pair-steps" class="pair-steps" aria-label="Pairing steps">
+          <li id="pair-step-prepare"></li>
+          <li id="pair-step-camera"></li>
+          <li id="pair-step-connect"></li>
+          <li id="pair-step-wifi"></li>
+          <li id="pair-step-done"></li>
+        </ol>
+
+        <div id="pair-screen-prepare" class="pair-screen hidden">
+          <ul class="checklist">
+            <li id="check-gps">
+              <span class="check-mark" aria-hidden="true"></span>
+              <div><strong>GPS has a fix</strong><small id="check-gps-detail"></small></div>
+            </li>
+            <li>
+              <label><input id="check-list" type="checkbox">
+                <span><strong>T1000&#8209;E is not on the camera's Bluetooth list</strong>
+                  <small>Camera: Setup &rarr; Bluetooth. Delete it there if you paired before.</small></span></label>
+            </li>
+            <li>
+              <label><input id="check-phone" type="checkbox">
+                <span><strong>No phone is connected to the camera</strong>
+                  <small>Remove the phone from the same list, or turn its Bluetooth off.</small></span></label>
+            </li>
+          </ul>
+          <div class="row">
+            <button id="pair-start" type="button" class="big">Pair</button>
+            <button id="pair-keep" type="button" class="secondary hidden">Keep the current camera</button>
+          </div>
+          <p id="pair-wait-note" class="note"></p>
+        </div>
+
+        <div id="pair-screen-camera" class="pair-screen hidden">
+          <div class="callout">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3.5 8.5h3.2l1.6-2.5h7.4l1.6 2.5h3.2v10.5h-17z"/>
+              <circle cx="12" cy="13.5" r="3.6"/>
+            </svg>
+            <div>
+              <h3 id="camera-now">Start Bluetooth pairing on the camera now</h3>
+              <p class="note">Camera menu: Setup &rarr; Bluetooth &rarr; Pairing</p>
+              <div id="pair-countdown" class="countdown">
+                <span id="pair-countdown-time" class="countdown-time" aria-hidden="true"></span>
+                <progress id="pair-countdown-bar" max="120" value="0"
+                          aria-label="Time left to find the camera"></progress>
+                <small>left to find the camera</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="pair-screen-connect" class="pair-screen hidden">
+          <h3>Camera found</h3>
+          <p class="note">Leave the camera on and in its pairing screen. This takes a few seconds.</p>
+          <ol class="stages">
+            <li id="connect-stage-1"></li>
+            <li id="connect-stage-2"></li>
+            <li id="connect-stage-3"></li>
+            <li id="connect-stage-4"></li>
+          </ol>
+        </div>
+
+        <div id="pair-screen-wifi" class="pair-screen hidden">
+          <h3>One more step for this camera</h3>
+          <p class="note">This is an older camera (LUMIX Sync generation). It needs the card registered once over its
+             own Wi-Fi.</p>
+          <div id="wifi-app" class="wifi-box">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.5 16a5 5 0 0 1 7 0"/>
+              <circle cx="12" cy="19" r="1"/>
+            </svg>
+            <div>
+              <p><strong>On this computer, join the Wi-Fi network the camera shows on its screen.</strong></p>
+              <p class="note">No password, unless you set one in the camera.</p>
+            </div>
+          </div>
+          <p id="wifi-browser" class="hidden">This step needs the gpxcam card app: a browser cannot reach the
+             camera's Wi-Fi. Cancel, then pair it in the
+             <a href="https://github.com/TomaszBojanowski/gpxcam-t1000e/tree/main/app#install">app</a>.</p>
+          <div class="row"><button id="wifi-retry" type="button" class="hidden">Try the Wi-Fi step again</button></div>
+        </div>
+
+        <div id="pair-screen-done" class="pair-screen done-panel hidden">
+          <svg class="icon result-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M7.5 12.5l3 3 6-6.5"/>
+          </svg>
+          <h3>Paired with your camera</h3>
+          <p>From now on the card connects by itself whenever the camera is on. You can unplug it.</p>
+          <div class="row">
+            <button id="pair-again" type="button" class="secondary">Pair again</button>
+            <button id="forget" type="button" class="danger">Forget the camera</button>
+          </div>
+          <div id="forget-confirm" class="confirm gap-top hidden">
+            <p>Forget the paired camera? The card stops connecting to it. To pair them again later, also delete
+               T1000&#8209;E in the camera's Bluetooth menu.</p>
+            <div class="row">
+              <button id="forget-yes" type="button">Forget</button>
+              <button id="forget-no" type="button" class="secondary">Keep</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="pair-screen-failed" class="pair-screen hidden">
+          <div class="warn-panel">
+            <svg class="icon result-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3.5l9.5 16.5h-19z"/>
+              <path d="M12 10v4.5M12 17.2v.1"/>
+            </svg>
+            <h3 id="failed-title"></h3>
+            <p id="failed-text"></p>
+            <ul id="failed-tips" class="tips">
+              <li>Start pairing on the camera only when you are told to &ndash; some cameras stay in pairing mode
+                  for just 30 seconds.</li>
+              <li>Keep the camera within a metre of the card.</li>
+              <li>Check that no phone is connected to the camera.</li>
+            </ul>
+            <div class="row"><button id="pair-retry" type="button">Try again</button></div>
+          </div>
+          <div id="older-box" class="older-box">
+            <h3>An older camera? (S5, S1, GH5, GH6, G9, G100&hellip;)</h3>
+            <p>Pair usually recognises them by itself. If it didn't, pair it as an older camera: same steps, plus one
+               over the camera's Wi-Fi.</p>
+            <button id="pair-older" type="button" class="secondary">Pair as an older camera</button>
+            <p id="older-browser" class="note hidden">The step over the camera's Wi-Fi needs the gpxcam card
+               <a href="https://github.com/TomaszBojanowski/gpxcam-t1000e/tree/main/app#install">app</a>.</p>
+          </div>
+        </div>
+
+        <p id="pair-status" role="status"></p>
+        <div id="pair-stop-row" class="row hidden">
+          <button id="pair-stop" type="button" class="secondary">Cancel</button>
+        </div>
+
+        <details id="pairing-help" class="help">
+          <summary>How pairing works</summary>
+          <ol class="steps">
+            <li>Put the card where its GPS gets a fix, outdoors or by a window: pairing needs the time from it.
+                The GPS tile above shows <em>Fix</em> when it is ready.</li>
+            <li>If the camera lists T1000&#8209;E from an earlier pairing, delete it there first: the camera does
+                not pair a card it already knows. Remove the phone from the same list too, or turn its Bluetooth
+                off: a phone may grab the camera the moment it starts pairing.</li>
+            <li>Click <em>Pair</em>. Do not start pairing on the camera yet: some cameras stay in pairing mode only
+                about 30 seconds, so the card must already be looking for them.</li>
+            <li>When the page says <em>Start Bluetooth pairing on the camera now</em>, start pairing in the
+                camera's Bluetooth menu. The card looks for it for up to 2 minutes and tries up to 3 times.</li>
+            <li>Older cameras (LUMIX Sync generation) then need one more step, over the camera's own Wi-Fi
+                network, which only the gpxcam card app can do: the app starts it by itself and says what to do.</li>
+          </ol>
+        </details>
+      </div>
+
       <details id="pair-help" class="help" open>
         <summary>How to pair</summary>
         <ol class="steps">
