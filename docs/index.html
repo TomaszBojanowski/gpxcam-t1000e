@@ -772,8 +772,8 @@ button.big { min-height: 48px; padding: var(--s2) var(--s6); font-size: var(--fs
           </div>
           <div id="older-box" class="older-box">
             <h3>An older camera? (S5, S1, GH5, GH6, G9, G100&hellip;)</h3>
-            <p>Pair usually recognises them by itself. If it didn't, pair it as an older camera: same steps, plus one
-               over the camera's Wi-Fi.</p>
+            <p><em>Pair</em> recognises most of them by itself. If it did not, pair yours as an older camera: the same
+               steps, plus one over the camera's Wi-Fi.</p>
             <button id="pair-older" type="button" class="secondary">Pair as an older camera</button>
             <p id="older-browser" class="note hidden">The step over the camera's Wi-Fi needs the gpxcam card
                <a href="https://github.com/TomaszBojanowski/gpxcam-t1000e/tree/main/app#install">app</a>.</p>
@@ -2565,7 +2565,7 @@ function startPage() {
     refreshButtons();
     const opened = new Card(port);
     try {
-      setStatus(ui.cardStatus, "Connecting...", "busy");
+      setStatus(ui.cardStatus, "Connecting\u2026", "busy");
       await opened.open();
     } catch (error) {
       disconnected(openProblemText(error), "bad");
@@ -2620,7 +2620,7 @@ function startPage() {
     busy = true;
     refreshButtons();
     ui.saveAnswer.classList.remove("hidden");
-    setStatus(ui.saveStatus, `Saving ${name}...`, "busy");
+    setStatus(ui.saveStatus, `Saving ${name}\u2026`, "busy");
     ui.saveNote.classList.add("hidden");
     ui.saveLines.textContent = "";
     const lines = await card.timeZone(name).catch(() => []);
@@ -2640,7 +2640,7 @@ function startPage() {
     if (!asked) return;
     busy = true;
     refreshButtons();
-    setStatus(answerElement, "Saving...", "busy");
+    setStatus(answerElement, "Saving\u2026", "busy");
     const lines = await asked.save(answers, value).catch(() => []);
     if (card !== asked) return;
     setStatus(answerElement, ...answers.text(value, answers.classify(lines)));
@@ -2672,7 +2672,7 @@ function startPage() {
     if (!asked) return;
     busy = true;
     refreshButtons();
-    setStatus(ui.pairStatus, "Forgetting the camera...", "busy");
+    setStatus(ui.pairStatus, "Forgetting the camera\u2026", "busy");
     const answer = classifyUnpairAnswer(await asked.unpair().catch(() => []));
     if (card !== asked) return;
     busy = false;
@@ -2705,7 +2705,7 @@ function startPage() {
   const cancelOlder = () => {
     if (!busy) return;
     olderCancelled = true;
-    setStatus(ui.pairStatus, "Cancelling...", "busy");
+    setStatus(ui.pairStatus, "Cancelling\u2026", "busy");
     transport.cancelOlder();
   };
 
@@ -2791,7 +2791,7 @@ function startPage() {
     const asked = card;
     if (!asked || busy) return;
     olderStarted();
-    showWifi("Reading the card's identity...", "busy");
+    showWifi("Reading the card's identity\u2026", "busy");
     try {
       const cardId = await asked.cardId();
       if (card !== asked) return;
@@ -2873,7 +2873,7 @@ function startPage() {
   const copyLog = async () => {
     const asked = card;
     if (!asked || busy) return;
-    startDiagnostics("Reading the card's log...");
+    startDiagnostics("Reading the card's log\u2026");
     const lines = await asked.log().catch(() => []);
     if (card !== asked) return;
     if (lines.length === 0) {
@@ -2891,7 +2891,7 @@ function startPage() {
   const scanForCameras = async () => {
     const asked = card;
     if (!asked || busy) return;
-    startDiagnostics(`Scanning for ${SCAN_RUN_MS / 1000} seconds - keep the camera next to the card...`);
+    startDiagnostics(`Scanning for ${SCAN_RUN_MS / 1000} seconds \u2013 keep the camera next to the card\u2026`);
     ui.diagProgress.max = SCAN_RUN_MS;
     ui.diagProgress.value = 0;
     ui.diagProgress.classList.remove("hidden");

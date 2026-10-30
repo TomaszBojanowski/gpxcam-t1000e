@@ -94,7 +94,7 @@ built the same way. If something does not work there, please open an issue on Gi
 Most newer LUMIX cameras (S5II and the like) pair straight from the card page or this app with
 *Pair*. **Older** cameras – the LUMIX Sync generation – need one extra step over the camera's own
 Wi-Fi, which only the app can do (a web page cannot reach the camera that way). In the app, *Pair*
-recognises such a camera and goes on with that step by itself. If *Pair* finds no camera, the screen
+recognises such a camera and goes on with that step by itself. If *Pair* does not work, the screen
 that says so offers *Pair as an older camera*, which does the same from the start, for an older
 camera that *Pair* does not recognise.
 
@@ -102,11 +102,12 @@ Before pairing, remove the phone from the camera's Bluetooth device list (Setup 
 Delete), or at least turn the phone's Bluetooth off. A phone that is still registered may grab the
 camera the moment it starts advertising, and the card will not get in.
 
-1. Put the card where its GPS gets a fix, outdoors or by a window. The app switches the card's GPS
-   on as soon as it connects (gpxcam 1.5.0 or newer); the GPS tile shows *Fix* when it is
-   ready, which can take a few minutes after a fresh start.
-2. Click *Pair* (or, after a pairing that found no camera, *Pair as an older camera*). Do not start
-   pairing on the camera yet.
+1. Put the card where its GPS gets a fix, outdoors or by a window. On a card that is not paired yet
+   the app switches the GPS on as soon as it connects (gpxcam 1.5.0 or newer), otherwise *Pair*
+   does. *GPS has a fix* on the first screen ticks itself when it is ready, which can take a few
+   minutes after a fresh start.
+2. Click *Pair* (or, on the screen of a pairing that did not work, *Pair as an older camera*). Do
+   not start pairing on the camera yet.
 3. **Only when the app says *Start Bluetooth pairing on the camera now*** do it (the camera's
    Bluetooth menu → Pairing). The order matters: the camera stays in pairing mode only about 30
    seconds, so the card must already be looking for it (for up to 2 minutes, counted down). The card

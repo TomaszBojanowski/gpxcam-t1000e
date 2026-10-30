@@ -80,10 +80,11 @@ computer without Chrome or Edge use [the desktop app](#the-desktop-app)):
 3. Click **Connect** and choose **T1000-E gpxcam**.
 
 The page runs only in the browser and sends nothing over the internet. It sends the card only `v`,
-`status`, `pair`, `pair off`, `pair prepare`, `unpair`, `clock on`, `clock off`, `sound loud`,
+`status`, `p`, `pair`, `pair off`, `pair prepare`, `unpair`, `clock on`, `clock off`, `sound loud`,
 `sound quiet`, `sound off`, `updates normal`, `updates frequent`, `log`, `diag scan`, `tz` and `tz`
-with a zone from its list; the app also `pair older` and `p` (which only reads the card's id) for
-older cameras. With gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or
+with a zone from its list; the app also `pair older` for older cameras. From `p` it only reads how
+long the card has been looking for the camera, and in the app the card's id for an older camera.
+With gpxcam 1.2 it only sets the time zone; the rest needs 1.3.0 or
 newer, the location updates 1.4.0 and the diagnostics 1.5.0. On connecting to a card that is not
 paired yet, the page sends `pair prepare` (gpxcam 1.5.0): the card switches its GPS on for 10
 minutes, so that pairing finds the time ready.
@@ -124,7 +125,7 @@ Wi-Fi step of an older camera. More in [app/README.md](app/README.md#what-it-loo
 > |---|---|---|
 > | LUMIX S5II | *Pair* on the card page or in the app | tested |
 > | Other current bodies: S5IIX, S9, GH7, G9II, S1II, S1RII, S1IIE, L10 | *Pair* on the card page or in the app | same protocol as the S5II, expected to work, not tested yet |
-> | LUMIX S5II in its older protocol | *Pair as an older camera* in the app (offered when *Pair* finds no camera), with the Wi-Fi step | tested by the author: pairing, locations with Normal and Frequent |
+> | LUMIX S5II in its older protocol | *Pair as an older camera* in the app (offered when *Pair* does not work), with the Wi-Fi step | tested by the author: pairing, locations with Normal and Frequent |
 > | LUMIX Sync generation: S5, S1, S1R, S1H, GH5, GH5 II, GH5S, GH6, G9, G97, G100, BS1H, BGH1 | *Pair* in the desktop app, with a one-time step over the camera's Wi-Fi | not confirmed; the one field test so far, a LUMIX S5, has not connected |
 >
 > How to pair them: [app/README.md](app/README.md#pairing-an-older-camera).
