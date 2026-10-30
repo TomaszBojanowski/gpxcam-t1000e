@@ -6,7 +6,6 @@
 // PlatformIO's library finder link the Adafruit TinyUSB library; it does not follow
 // includes inside core headers.
 #include <Adafruit_TinyUSB.h>
-#include <strings.h>
 
 #include "battery.h"
 #include "battery_log.h"
@@ -15,6 +14,7 @@
 #include "board.h"
 #include "button.h"
 #include "camera_link.h"
+#include "console_commands.h"
 #include "diag.h"
 #include "gps.h"
 #include "link_control.h"
@@ -53,8 +53,7 @@ constexpr uint32_t LOOP_DELAY_MS = 10;        // loop period; the CPU sleeps in 
 
 // Longest accepted command, longer input is rejected: "tz", a space and a POSIX rule as long
 // as the time zone file holds (63 characters).
-constexpr char TZ_COMMAND[] = "tz";
-constexpr size_t COMMAND_MAX = (sizeof(TZ_COMMAND) - 1) + 1 + (tz_record::RULE_SIZE - 1);
+constexpr size_t COMMAND_MAX = (sizeof(console_commands::TIME_ZONE_SET) - 1) + (tz_record::RULE_SIZE - 1);
 static_assert(COMMAND_MAX == 66, "tz with the longest rule");
 
 // Terminal editing keys. PlatformIO's send_on_enter filter sends the typed line as is,
@@ -167,38 +166,12 @@ void logMemory()
                       dbgStackTotal());
 }
 
+static_assert(console_commands::HELP_LINE_MAX == logger::TEXT_MAX, "a help line is one log line");
+static_assert(logger::HISTORY_LINES == 64, "the help of 'log' (console_commands.cpp)");
+
 void logHelp()
 {
-    logger::transient("commands: v = version and reset reason,");
-    logger::transient("          p = state of GPS, BLE, pairing, time zone, settings, link, battery and memory,");
-    logger::transient("          status = the same in short key=value lines, for the card page,");
-    logger::transient("          dfu = UF2 bootloader (for flashing),");
-    logger::transient("          off = System OFF after a 15 s countdown (refused with USB connected),");
-    logger::transient("          log = last %lu log lines, also those from times without USB,",
-                      (unsigned long)logger::HISTORY_LINES);
-    logger::transient("          link on / link off = work with the paired camera (on after start when paired),");
-    logger::transient("          pair = pair with a camera in pairing mode (or click + hold 3 s), pair off = cancel,");
-    logger::transient("          pair older = pair an older LUMIX camera (the app does a one-time Wi-Fi step),");
-    logger::transient("          pair prepare = GPS on for 10 min, so that pairing finds the time ready,");
-    logger::transient("          unpair = forget the paired camera ('p' shows the card id and the camera),");
-    logger::transient("          tz = time zone of the camera's clock: tz NAME (e.g. tz America/New_York),");
-    logger::transient("          tz POSIX-RULE (e.g. tz <+0545>-5:45), tz alone shows it");
-    logger::transient("          clock on / clock off = the card sets the camera's clock or not,");
-    logger::transient("          clock alone shows it");
-    logger::transient("          sound loud / sound quiet / sound off = how loud the card is (off: it only answers");
-    logger::transient("          a held button, quietly), sound alone shows it");
-    logger::transient("          updates normal / updates frequent = locations every 25 s or every 5 s (frequent:");
-    logger::transient("          for photos on the move), updates alone shows it");
-    logger::transient("          bat log on / bat log off = battery log in flash every 10 min on the battery,");
-    logger::transient("          bat log = show it, bat log clear = delete it");
-    logger::transient("          storage format yes = erase the file system, for a damaged one ('p' says when; the");
-    logger::transient("          settings are lost, the pairing comes back from its copy; the card restarts)");
-    logger::transient("diagnostics: diag bat (battery divider settling, ~4 s), diag snd 1..50 (volume, %% duty),");
-    logger::transient("             diag hang (test of the watchdog: the card restarts after %lu s),",
-                      (unsigned long)watchdog::TIMEOUT_S);
-    logger::transient("             diag clk [S] (64 MHz crystal running, now or in S s, kept for 'log')");
-    logger::transient("             diag scan (30 s dump of nearby advertisements, to see a camera's dialect;");
-    logger::transient("                       it has the camera's serial number, so send the log privately)");
+    console_commands::help([](const char *line) { logger::transient("%s", line); });
 }
 
 void rebootToUf2Bootloader()
@@ -213,9 +186,6 @@ void rebootToUf2Bootloader()
     // the USB drive. Flash is not changed. Does not return.
     enterUf2Dfu();
 }
-
-constexpr const char *SOUND_TEST_COMMAND = "diag snd ";
-constexpr const char *CLOCK_CHECK_COMMAND = "diag clk ";
 
 // "diag clk S": the crystal check in S seconds.
 void runClockCheck(const char *argument)
@@ -263,39 +233,25 @@ void forgetCamera()
         logger::line("pair: could not write the pairing file");
 }
 
-// "tz" alone or followed by a space, in any case; *argument is the rest, "" for "tz" alone.
-bool isTimeZoneCommand(const char *cmd, const char **argument)
+// The camera gets the time zone with the time when the card connects to it (newer_session, older_session).
+void setTimeZone(const char *nameOrRule)
 {
-    const size_t length = strlen(TZ_COMMAND);
-    if (strncasecmp(cmd, TZ_COMMAND, length) != 0 || (cmd[length] != '\0' && cmd[length] != ' '))
-        return false;
-    *argument = cmd + length;
-    while (**argument == ' ')
-        (*argument)++;
-    return true;
-}
-
-// The camera gets the time zone with the time when the card connects to it (camera_session, older_session).
-void setTimeZone(const char *argument)
-{
-    if (argument[0] != '\0') {
-        switch (tz_store::set(argument)) {
-        case tz_store::SetResult::Saved:
-            logger::line("tz: saved - the camera gets it at the next connection");
-            if (!tz_store::clockOn())
-                logger::transient("tz: the clock is off - the card sends the zone only after 'clock on'");
-            break;
-        case tz_store::SetResult::Unchanged:
-            logger::line("tz: already set");
-            break;
-        case tz_store::SetResult::Unknown:
-            logger::line("tz: unknown time zone or rule '%s'", argument);
-            logger::transient("tz: e.g. tz Europe/Warsaw, tz America/New_York, tz Asia/Kolkata");
-            return;
-        case tz_store::SetResult::NotSaved:
-            logger::line("tz: could not write the time zone file");
-            return;
-        }
+    switch (tz_store::set(nameOrRule)) {
+    case tz_store::SetResult::Saved:
+        logger::line("tz: saved - the camera gets it at the next connection");
+        if (!tz_store::clockOn())
+            logger::transient("tz: the clock is off - the card sends the zone only after 'clock on'");
+        break;
+    case tz_store::SetResult::Unchanged:
+        logger::line("tz: already set");
+        break;
+    case tz_store::SetResult::Unknown:
+        logger::line("tz: unknown time zone or rule '%s'", nameOrRule);
+        logger::transient("tz: e.g. tz Europe/Warsaw, tz America/New_York, tz Asia/Kolkata");
+        return;
+    case tz_store::SetResult::NotSaved:
+        logger::line("tz: could not write the time zone file");
+        return;
     }
     tz_store::logState();
 }
@@ -325,8 +281,6 @@ void setClock(bool on)
     }
     logClock();
 }
-
-constexpr const char *SOUND_SET_COMMAND = "sound ";
 
 // What 'off' still plays (sound_rules.h): without it the user cannot tell when to let go.
 void logSoundOffNote()
@@ -368,8 +322,6 @@ void setSound(const char *name)
         sound::playConnected(); // the sample: two short beeps
 }
 
-constexpr const char *UPDATES_SET_COMMAND = "updates ";
-
 void logUpdates()
 {
     settings_store::logUpdates();
@@ -402,12 +354,6 @@ void setUpdates(const char *name)
     logUpdates();
 }
 
-void toLowerCase(char *text)
-{
-    for (; *text != '\0'; text++)
-        *text = (char)tolower((unsigned char)*text);
-}
-
 void handleButton()
 {
     const button::Event event = button::poll();
@@ -425,129 +371,176 @@ void handleButton()
     }
 }
 
-// Commands are matched in lower case, except the argument of 'tz': POSIX rules need their
-// case ("M3.5.0").
-void runCommand(char *cmd)
+// 'p': the state of every part of the card, for a person reading it.
+void logCardState()
 {
-    const char *timeZone = nullptr;
-    if (isTimeZoneCommand(cmd, &timeZone)) {
-        setTimeZone(timeZone);
-        return;
-    }
-    toLowerCase(cmd);
-    if (strcmp(cmd, "v") == 0) {
-        logVersion(true);
-        diag::logResetInfo();
-    } else if (strcmp(cmd, "p") == 0) {
-        storage::logState();
-        board::logPowerState();
-        gps::logState();
-        bluetooth::logState();
-        pairing_store::logState();
-        tz_store::logState();
-        settings_store::logState();
-        pairing::logState();
-        link_control::logState();
-        watchdog::logState();
-        usb_power::logState();
-        logBattery(BatteryCheck::None);
-        logMemory();
-    } else if (strcmp(cmd, "status") == 0) {
-        logStatus();
-    } else if (strcmp(cmd, "dfu") == 0) {
-        rebootToUf2Bootloader();
-    } else if (strcmp(cmd, "off") == 0) {
-        power::startCountdown();
-    } else if (strcmp(cmd, "log") == 0) {
-        logger::dumpHistory();
-    } else if (strcmp(cmd, "link on") == 0) {
-        link_control::start();
-    } else if (strcmp(cmd, "link off") == 0) {
-        if (link_control::active())
-            link_control::stop(false);
-        else if (pairing::keepLinkOff())
-            logger::line("link: off - it stays off after the pairing");
-        else
-            logger::line("link: already off");
-    } else if (strcmp(cmd, "pair") == 0) {
-        pairing::start();
-    } else if (strcmp(cmd, "pair older") == 0) {
-        pairing::startOlder();
-    } else if (strcmp(cmd, "pair prepare") == 0) {
-        pairing::prepare();
-    } else if (strcmp(cmd, "pair off") == 0) {
-        if (pairing::active())
-            pairing::stop();
-        else
-            logger::line("pair: not running");
-    } else if (strcmp(cmd, "unpair") == 0) {
-        forgetCamera();
-    } else if (strcmp(cmd, "clock") == 0) {
-        logClock();
-    } else if (strcmp(cmd, "clock on") == 0) {
-        setClock(true);
-    } else if (strcmp(cmd, "clock off") == 0) {
-        setClock(false);
-    } else if (strcmp(cmd, "sound") == 0) {
-        logSound();
-    } else if (strncmp(cmd, SOUND_SET_COMMAND, strlen(SOUND_SET_COMMAND)) == 0) {
-        setSound(cmd + strlen(SOUND_SET_COMMAND));
-    } else if (strcmp(cmd, "updates") == 0) {
-        logUpdates();
-    } else if (strncmp(cmd, UPDATES_SET_COMMAND, strlen(UPDATES_SET_COMMAND)) == 0) {
-        setUpdates(cmd + strlen(UPDATES_SET_COMMAND));
-    } else if (strcmp(cmd, "bat log on") == 0) {
-        battery_log::start();
-    } else if (strcmp(cmd, "bat log off") == 0) {
-        battery_log::stop();
-    } else if (strcmp(cmd, "bat log") == 0) {
-        battery_log::dump();
-#ifdef GPXCAM_TEST_COMMANDS
-    } else if (strcmp(cmd, "diag storage break yes") == 0) {
-        diag::breakFileSystem();
-    } else if (strcmp(cmd, "diag storage break middle yes") == 0) {
-        diag::breakFileSystemPage();
-    } else if (strcmp(cmd, "diag scan stall") == 0) {
-        bluetooth::stallScan();
-    } else if (strcmp(cmd, "diag gps stale") == 0) {
-        gps::setStaleForTest(true);
-    } else if (strcmp(cmd, "diag gps fresh") == 0) {
-        gps::setStaleForTest(false);
-#endif
-    } else if (strcmp(cmd, "storage format yes") == 0) {
-        storage::format();
-    } else if (strcmp(cmd, "storage format") == 0) {
-        logger::line("storage: 'storage format yes' erases the file system and restarts (the pairing comes back "
-                     "from its copy)");
-    } else if (strcmp(cmd, "bat log clear") == 0) {
-        battery_log::clear();
-    } else if (strncmp(cmd, SOUND_TEST_COMMAND, strlen(SOUND_TEST_COMMAND)) == 0) {
-        runSoundTest(cmd + strlen(SOUND_TEST_COMMAND));
-    } else if (strcmp(cmd, "diag bat") == 0) {
-        diag::battery();
-    } else if (strcmp(cmd, "diag hang") == 0) {
-        diag::hang();
-    } else if (strcmp(cmd, "diag clk") == 0) {
-        diag::checkClock(0);
-    } else if (strcmp(cmd, "diag scan") == 0) {
-        bluetooth::startScanDump();
-    } else if (strncmp(cmd, CLOCK_CHECK_COMMAND, strlen(CLOCK_CHECK_COMMAND)) == 0) {
-        runClockCheck(cmd + strlen(CLOCK_CHECK_COMMAND));
-    } else if (cmd[0] != '\0') {
-        logger::line("command: unknown '%s'", cmd);
-        logHelp();
-    }
+    storage::logState();
+    board::logPowerState();
+    gps::logState();
+    bluetooth::logState();
+    pairing_store::logState();
+    tz_store::logState();
+    settings_store::logState();
+    pairing::logState();
+    link_control::logState();
+    watchdog::logState();
+    usb_power::logState();
+    logBattery(BatteryCheck::None);
+    logMemory();
 }
 
-// Removes leading and trailing spaces in place; returns the start of the text.
-char *trimSpaces(char *text)
+void stopLink()
 {
-    while (*text == ' ')
-        text++;
-    size_t len = strlen(text);
-    while (len > 0 && text[len - 1] == ' ')
-        text[--len] = '\0';
-    return text;
+    if (link_control::active())
+        link_control::stop(false);
+    else if (pairing::keepLinkOff())
+        logger::line("link: off - it stays off after the pairing");
+    else
+        logger::line("link: already off");
+}
+
+void stopPairing()
+{
+    if (pairing::active())
+        pairing::stop();
+    else
+        logger::line("pair: not running");
+}
+
+// The commands and their help: src/console_commands.cpp.
+void runCommand(char *line)
+{
+    using console_commands::Id;
+    const console_commands::Command found = console_commands::find(line);
+    switch (found.id) {
+    case Id::Empty:
+        break;
+    case Id::Unknown:
+        logger::line("command: unknown '%s'", found.argument);
+        logHelp();
+        break;
+    case Id::Version:
+        logVersion(true);
+        diag::logResetInfo();
+        break;
+    case Id::State:
+        logCardState();
+        break;
+    case Id::Status:
+        logStatus();
+        break;
+    case Id::Log:
+        logger::dumpHistory();
+        break;
+    case Id::Off:
+        power::startCountdown();
+        break;
+    case Id::Dfu:
+        rebootToUf2Bootloader();
+        break;
+    case Id::Pair:
+        pairing::start();
+        break;
+    case Id::PairOff:
+        stopPairing();
+        break;
+    case Id::PairOlder:
+        pairing::startOlder();
+        break;
+    case Id::PairPrepare:
+        pairing::prepare();
+        break;
+    case Id::Unpair:
+        forgetCamera();
+        break;
+    case Id::TimeZone:
+        tz_store::logState();
+        break;
+    case Id::TimeZoneSet:
+        setTimeZone(found.argument);
+        break;
+    case Id::Clock:
+        logClock();
+        break;
+    case Id::ClockOn:
+        setClock(true);
+        break;
+    case Id::ClockOff:
+        setClock(false);
+        break;
+    case Id::Sound:
+        logSound();
+        break;
+    case Id::SoundSet:
+        setSound(found.argument);
+        break;
+    case Id::Updates:
+        logUpdates();
+        break;
+    case Id::UpdatesSet:
+        setUpdates(found.argument);
+        break;
+    case Id::LinkOn:
+        link_control::start();
+        break;
+    case Id::LinkOff:
+        stopLink();
+        break;
+    case Id::BatteryLogOn:
+        battery_log::start();
+        break;
+    case Id::BatteryLogOff:
+        battery_log::stop();
+        break;
+    case Id::BatteryLog:
+        battery_log::dump();
+        break;
+    case Id::BatteryLogClear:
+        battery_log::clear();
+        break;
+    case Id::DiagBattery:
+        diag::battery();
+        break;
+    case Id::DiagSound:
+        runSoundTest(found.argument);
+        break;
+    case Id::DiagHang:
+        diag::hang();
+        break;
+    case Id::DiagScan:
+        bluetooth::startScanDump();
+        break;
+    case Id::DiagClock:
+        diag::checkClock(0);
+        break;
+    case Id::DiagClockLater:
+        runClockCheck(found.argument);
+        break;
+    case Id::StorageFormat:
+        logger::line("storage: 'storage format yes' erases the file system and restarts (the pairing comes back "
+                     "from its copy)");
+        break;
+    case Id::StorageFormatYes:
+        storage::format();
+        break;
+#ifdef GPXCAM_TEST_COMMANDS
+    case Id::DiagStorageBreak:
+        diag::breakFileSystem();
+        break;
+    case Id::DiagStorageBreakMiddle:
+        diag::breakFileSystemPage();
+        break;
+    case Id::DiagScanStall:
+        bluetooth::stallScan();
+        break;
+    case Id::DiagGpsStale:
+        gps::setStaleForTest(true);
+        break;
+    case Id::DiagGpsFresh:
+        gps::setStaleForTest(false);
+        break;
+#endif
+    }
 }
 
 void finishCommand()
@@ -556,7 +549,7 @@ void finishCommand()
     if (commandTooLong)
         logger::line("command: too long (max %u characters)", (unsigned)COMMAND_MAX);
     else
-        runCommand(trimSpaces(command)); // an empty line (e.g. the LF of CRLF) does nothing
+        runCommand(command);
     commandLen = 0;
     commandTooLong = false;
 }

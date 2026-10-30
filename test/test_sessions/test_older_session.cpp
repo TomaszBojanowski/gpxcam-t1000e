@@ -6,6 +6,7 @@
 #include "older_session.h"
 
 using older_session::Result;
+using session_end::Reason;
 
 namespace {
 
@@ -45,7 +46,7 @@ void test_older_session_without_01_is_a_card_not_taken_after_15_s()
 {
     fake::camera.knowsCard = false;
     TEST_ASSERT_EQUAL(Result::Failed, runLasting());
-    TEST_ASSERT_TRUE(older_session::cardNotTaken());
+    TEST_ASSERT_EQUAL(Reason::NotTaken, older_session::endReason());
     TEST_ASSERT_EQUAL_STRING("no 01 from the camera in 15 s", older_session::failure());
     TEST_ASSERT_FALSE(fake::linkUp());
 }
@@ -54,7 +55,7 @@ void test_older_session_refused_identifier_is_rejected()
 {
     fake::camera.refuse = {fake::Request::Write, fake::OLDER_DEVICE_ID};
     TEST_ASSERT_EQUAL(Result::Rejected, runLasting());
-    TEST_ASSERT_TRUE(older_session::cardNotTaken());
+    TEST_ASSERT_EQUAL(Reason::Refused, older_session::endReason());
     TEST_ASSERT_FALSE(fake::linkUp());
 }
 

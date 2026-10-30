@@ -48,7 +48,7 @@ constexpr uint16_t INITIATOR_INTERVAL = 80; // 50 ms
 constexpr uint16_t INITIATOR_WINDOW = INITIATOR_INTERVAL;
 
 // Connection parameters travel from the BLE task to poll() through their own queue, so the
-// GATT steps of camera_session and link_control never see them.
+// GATT steps of newer_session and link_control never see them.
 enum class ParamsEvent : uint8_t {
     Connected,     // the parameters the connection started with
     CameraRequest, // the camera asked for others (Bluefruit accepts them, BLECentral.cpp)
@@ -75,9 +75,9 @@ constexpr uint16_t FIRST_HANDLE = 0x0001;
 // Vendor-specific UUIDs: the SoftDevice keeps the 128-bit base and gives it a type; the
 // UUID is then (type, bytes 12-13 of the little-endian form) (ble.h, sd_ble_uuid_vs_add()).
 ble_uuid_t serviceUuid = {};
-ble_uuid_t characteristicUuids[camera_link::CHARACTERISTIC_COUNT] = {};
+ble_uuid_t characteristicUuids[camera_link::NEWER_CHARACTERISTIC_COUNT] = {};
 
-const uint8_t *const CHARACTERISTIC_UUIDS[camera_link::CHARACTERISTIC_COUNT] = {
+const uint8_t *const CHARACTERISTIC_UUIDS[camera_link::NEWER_CHARACTERISTIC_COUNT] = {
     lumix::KEY_UUID,  lumix::DEVICE_ID_UUID,  lumix::APP_NAME_UUID,  lumix::DEVICE_NAME_UUID,
     lumix::TIME_UUID, lumix::GPS_MODE_UUID, lumix::GPS_NOTIFY_UUID, lumix::LOCATION_UUID};
 
@@ -139,13 +139,13 @@ void addCharacteristics(const ble_gattc_evt_char_disc_rsp_t &response, camera_li
             }
             continue; // older: do not also match the newer list
         }
-        for (uint8_t which = 0; which < camera_link::CHARACTERISTIC_COUNT; which++) {
+        for (uint8_t which = 0; which < camera_link::NEWER_CHARACTERISTIC_COUNT; which++) {
             const ble_uuid_t &wanted = characteristicUuids[which];
             if (found.uuid.type != wanted.type || found.uuid.uuid != wanted.uuid ||
-                out->characteristics.count >= camera_link::CHARACTERISTIC_COUNT)
+                out->characteristics.count >= camera_link::NEWER_CHARACTERISTIC_COUNT)
                 continue;
-            camera_link::FoundCharacteristic &entry = out->characteristics.list[out->characteristics.count++];
-            entry.which = (camera_link::Characteristic)which;
+            camera_link::FoundNewerCharacteristic &entry = out->characteristics.list[out->characteristics.count++];
+            entry.which = (camera_link::NewerCharacteristic)which;
             entry.properties = (found.char_props.read ? camera_link::PROPERTY_READ : 0) |
                                (found.char_props.write ? camera_link::PROPERTY_WRITE : 0) |
                                (found.char_props.notify ? camera_link::PROPERTY_NOTIFY : 0) |
@@ -208,7 +208,7 @@ bool begin()
     if (!registerUuid(lumix::SERVICE_UUID, &serviceUuid))
         return false;
     registeredCount++;
-    for (size_t i = 0; i < CHARACTERISTIC_COUNT; i++) {
+    for (size_t i = 0; i < NEWER_CHARACTERISTIC_COUNT; i++) {
         if (!registerUuid(CHARACTERISTIC_UUIDS[i], &characteristicUuids[i]))
             return false;
         registeredCount++;
@@ -367,7 +367,7 @@ bool findService()
     return sd_ble_gattc_primary_services_discover(connHandle, FIRST_HANDLE, &serviceUuid) == NRF_SUCCESS;
 }
 
-bool findCharacteristics(uint16_t startHandle, uint16_t endHandle)
+bool findNewerCharacteristics(uint16_t startHandle, uint16_t endHandle)
 {
     const ble_gattc_handle_range_t range = {startHandle, endHandle};
     return sd_ble_gattc_characteristics_discover(connHandle, &range) == NRF_SUCCESS;

@@ -1,4 +1,4 @@
-// pairing, with camera_session and older_session, against the fake camera (fake.h).
+// pairing, with newer_session and older_session, against the fake camera (fake.h).
 #include <unity.h>
 
 #include <ble_hci.h>

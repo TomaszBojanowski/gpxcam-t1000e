@@ -295,7 +295,7 @@ position is sent until the fix is back.
 
 Charge the card with the magnetic cable on the bare card, not through a case, until the magnet
 clicks into place. A contact that keeps making and breaking can hang the card (see
-[docs/HARDWARE.md](docs/HARDWARE.md#reliability-140)).
+[docs/HARDWARE.md](docs/HARDWARE.md#the-hang-of-2026-10-24)).
 
 When the camera is switched off, the card notices it (two falling beeps) and waits:
 - for the first 20 minutes it keeps the GPS ready and looks for the camera every second, so the
@@ -337,8 +337,8 @@ keeps the setting through restarts and firmware updates.
 ### If the card forgot its settings
 
 From 1.4.0 the card never erases its stored settings by itself. If it cannot read them – its
-file system is damaged, as after the hang described in [docs/HARDWARE.md](docs/HARDWARE.md#reliability-140) –
-it:
+file system is damaged, as after the hang described in
+[docs/HARDWARE.md](docs/HARDWARE.md#the-hang-of-2026-10-24) – it:
 - works with the default settings: sound Loud, the clock on, Europe/Warsaw, location updates
   Normal;
 - stays paired with the camera, from the copy of its pairing, and connects as usual;
@@ -401,16 +401,18 @@ The modules without hardware dependencies – NMEA parser, LUMIX protocol (adver
 formats, location), camera list, UTC calendar, time zone table, POSIX time zone rules (against the
 full tz database at every change of 2026–2031), time zone file, pairing record and its copy,
 settings file, the camera handles kept between connections, link, battery and sound rules, the
-battery log's batches and the stable-USB rule, the lines of `status` – are
-tested with made-up data and the vectors from `docs/PROTOCOL.md`. The second command runs the
-state machines – the introduction in both dialects, pairing and the link – against fakes of the
-hardware and a test camera that can disconnect, stay silent or refuse at any step. The third
-(Node.js, tested with version 22) tests the card page with a simulated card.
+battery log's batches and the stable-USB rule, the lines of `status`, the console's commands and
+help (against the table above and the commands of the card page) – are tested with made-up data
+and the vectors from `docs/PROTOCOL.md`. The second command runs the state machines – the
+introduction in both dialects, pairing and the link – against fakes of the hardware and a test
+camera that can disconnect, stay silent or refuse at any step. The third (Node.js, tested with
+version 22) tests the card page with a simulated card.
 
 ## Documentation
 
-- [docs/HARDWARE.md](docs/HARDWARE.md) – the card: bootloader, SoftDevice, flash map, DFU, pins,
-  measurements and findings of every milestone, differences from Meshtastic.
+- [docs/HARDWARE.md](docs/HARDWARE.md) – the card and how the firmware uses it, by topic: pins, flash
+  and DFU, power and battery, GPS, Bluetooth, storage, reliability, pairing and the link, with the
+  measurements behind them and the differences from Meshtastic.
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) – the Bluetooth LE protocol of LUMIX cameras, the
   connection parameters the S5II works with, how the camera takes the time zone, and test vectors.
 - [The card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/) – the card's state, pairing,

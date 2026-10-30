@@ -86,7 +86,7 @@ uint16_t status(Request request, uint16_t handle)
     return matches(camera.refuse, request, handle) ? camera.refuseStatus : BLE_GATT_STATUS_SUCCESS;
 }
 
-void addNewer(camera_link::Event *event, camera_link::Characteristic which, uint16_t handle, uint8_t properties)
+void addNewer(camera_link::Event *event, camera_link::NewerCharacteristic which, uint16_t handle, uint8_t properties)
 {
     event->characteristics.list[event->characteristics.count++] = {which, properties, handle};
 }
@@ -166,6 +166,16 @@ void endConnection(uint8_t reason)
 void loseNextEvent()
 {
     dropNext = true;
+}
+
+void askForEncryption()
+{
+    queue(made(camera_link::EventType::SecurityRequest));
+}
+
+void gattTimeout()
+{
+    queue(made(camera_link::EventType::GattTimeout));
 }
 
 } // namespace fake
@@ -249,7 +259,7 @@ bool findService()
     return accepted;
 }
 
-bool findCharacteristics(uint16_t, uint16_t)
+bool findNewerCharacteristics(uint16_t, uint16_t)
 {
     fake::ask("characteristics");
     bool accepted = false;

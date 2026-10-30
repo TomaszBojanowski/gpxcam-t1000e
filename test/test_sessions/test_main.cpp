@@ -4,11 +4,13 @@
 
 #include "fake.h"
 
-void runCameraSessionTests();
+void runNewerSessionTests();
 void runLinkTests();
 void runPairingTests();
 void runOlderSessionTests();
 void runInvariantTests();
+void runSessionEndTests();
+void runCameraConnectionTests();
 
 void setUp()
 {
@@ -25,10 +27,12 @@ void tearDown()
 int main(int, char **)
 {
     UNITY_BEGIN();
-    runCameraSessionTests();
+    runNewerSessionTests();
     runLinkTests();
     runPairingTests();
     runOlderSessionTests();
     runInvariantTests();
+    runSessionEndTests();
+    runCameraConnectionTests();
     return UNITY_END();
 }

@@ -8,7 +8,7 @@
 
 #include "bluetooth.h"
 #include "camera_link.h"
-#include "camera_session.h"
+#include "newer_session.h"
 #include "gps.h"
 #include "link_policy.h"
 #include "log.h"
@@ -17,6 +17,7 @@
 #include "pairing.h"
 #include "pairing_record.h"
 #include "pairing_store.h"
+#include "session_end.h"
 #include "settings_store.h"
 #include "sound.h"
 
@@ -51,7 +52,7 @@ uint32_t connectedAt = 0;
 bool olderLink = false; // the connection is in the older dialect (older_session introduced the card)
 char serialText[2 * lumix::SERIAL_LENGTH + 1] = "";
 
-// The connection in Connected (from camera_session::discovered(), or older_session in the older dialect).
+// The connection in Connected (from newer_session::discovered(), or older_session in the older dialect).
 uint16_t locationHandle = 0;
 uint16_t notifyHandle = 0;      // the camera asks for a location (newer dialect)
 uint16_t olderNotifyHandle = 0; // 02: the camera is switching off (older dialect)
@@ -230,7 +231,7 @@ bool connectionOpen()
 // in the newer the accepted time write does, which a lasting connection skips with the clock off.
 bool cameraKnowsCard()
 {
-    return olderLink || camera_session::writesTime();
+    return olderLink || newer_session::writesTime();
 }
 
 // The setting chosen with 'updates', and the one in effect (link_control::updatesNow()).
@@ -281,7 +282,7 @@ void connectionFailed(const char *reason)
 {
     // After the introduction the link uses the session's handles; an error may mean a wrong one.
     if (connectionOpen() && !olderLink)
-        camera_session::forgetHandles(reason);
+        newer_session::forgetHandles(reason);
     char why[logger::LINE_MAX];
     snprintf(why, sizeof(why), "connection to camera %s failed (%s)", serialText, reason);
     pause(why);
@@ -378,7 +379,7 @@ void onAccepted()
 {
     quickRetryUsed = false; // the next refused connection may get its quick attempt again
     sentBefore = false;     // nothing sent in this connection yet
-    const camera_session::Discovered &found = camera_session::discovered();
+    const newer_session::Discovered &found = newer_session::discovered();
     const uint16_t gpsModeHandle = found.valueHandle[camera_link::GPS_MODE];
     locationHandle = found.valueHandle[camera_link::LOCATION];
     olderNotifyHandle = 0;
@@ -411,7 +412,7 @@ void onDisconnected(uint16_t reason)
     if (reason == BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION)
         failuresInARow = 0;
     if (phase != Phase::Connected) // ended while the link was being set up
-        camera_session::forgetHandles("disconnected during the setup");
+        newer_session::forgetHandles("disconnected during the setup");
     if (!sentBefore && earlyEndStopped())
         return;
     char why[logger::LINE_MAX];
@@ -463,7 +464,7 @@ void onLocationWritten(const camera_link::Event &event)
         failedCount++;
         logger::transient("link: location refused (GATT 0x%04x), answer %lu ms", event.status, (unsigned long)answerMs);
         if (!olderLink)
-            camera_session::forgetHandles("location refused");
+            newer_session::forgetHandles("location refused");
         return;
     }
     sentCount++;
@@ -561,19 +562,19 @@ void settingUp()
         if (phase == Phase::GpsMode && event.type == camera_link::EventType::WriteDone) {
             if (event.status != BLE_GATT_STATUS_SUCCESS &&
                 link_policy::refusalMeansUnknownCard(link_policy::IntroductionWrite::GpsMode,
-                                                     camera_session::writesTime())) {
+                                                     newer_session::writesTime())) {
                 rejectedWhileConnected("GPS mode", event.status);
                 continue;
             }
             if (event.status != BLE_GATT_STATUS_SUCCESS) {
                 logger::line("link: GPS mode refused (GATT 0x%04x) - going on", event.status);
-                camera_session::forgetHandles("GPS mode refused");
+                newer_session::forgetHandles("GPS mode refused");
             }
             afterGpsMode();
         } else if (phase == Phase::FindingCccd && event.type == camera_link::EventType::DescriptorsFound) {
             const uint16_t last = event.descriptors.lastHandle;
             if (event.descriptors.cccdHandle != 0) {
-                const camera_session::Discovered &found = camera_session::discovered();
+                const newer_session::Discovered &found = newer_session::discovered();
                 const bool indicate = (found.properties[camera_link::GPS_NOTIFY] & camera_link::PROPERTY_NOTIFY) == 0;
                 enableNotifications(event.descriptors.cccdHandle, indicate);
             } else if (event.status == BLE_GATT_STATUS_SUCCESS && !event.descriptors.nextCharacteristic &&
@@ -589,7 +590,7 @@ void settingUp()
             if (event.status != BLE_GATT_STATUS_SUCCESS) {
                 logger::line("link: notifications refused (GATT 0x%04x) - sending every %lu s only", event.status,
                              (unsigned long)(timing().periodMs / 1000));
-                camera_session::forgetHandles("notifications refused");
+                newer_session::forgetHandles("notifications refused");
             }
             enterConnected();
         }
@@ -611,29 +612,6 @@ void quickRetry()
     logger::line("link: connection to camera %s not established - trying again in %lu s", serialText,
                  (unsigned long)(QUICK_RETRY_MS / 1000));
     enter(Phase::Pausing);
-}
-
-void introducing()
-{
-    switch (camera_session::poll()) {
-    case camera_session::Result::Running:
-        break;
-    case camera_session::Result::Accepted:
-        onAccepted();
-        break;
-    case camera_session::Result::Rejected:
-        rejectedByCamera();
-        break;
-    case camera_session::Result::Failed:
-        if (camera_session::endedAfterConnecting() && earlyEndStopped())
-            break;
-        if (camera_session::notEstablished() && !quickRetryUsed) {
-            quickRetry();
-        } else {
-            connectionFailed(camera_session::failure());
-        }
-        break;
-    }
 }
 
 void search(uint32_t now)
@@ -676,10 +654,10 @@ void search(uint32_t now)
                 enter(Phase::Older);
             else
                 connectionFailed(older_session::failure());
-        } else if (camera_session::start(camera->last, record.uuid, true)) {
+        } else if (newer_session::start(camera->last, record.uuid, true)) {
             enter(Phase::Introducing);
         } else {
-            connectionFailed(camera_session::failure());
+            connectionFailed(newer_session::failure());
         }
         return;
     }
@@ -709,27 +687,18 @@ const char *phaseText()
     return "?";
 }
 
-// The older dialect's introduction ended without the camera taking the card. A camera that refused it
-// (a refused write, no 01 in time) counts, and the third such connection in a row stops the link as a
-// refusal does (link_policy::olderRefusalMeansUnknownCard()). Otherwise as in the newer dialect: a
-// connection that was not established gets a quick retry, anything else a longer pause each time.
-void olderEnded()
+// The older dialect's introduction ended without the camera taking the card (a refused write, no 01 in
+// time): it counts, and the third such connection in a row stops the link as a refusal does
+// (link_policy::olderRefusalMeansUnknownCard()).
+void olderCardNotTaken(const char *failure)
 {
-    if (older_session::cardNotTaken()) {
-        if (link_policy::olderRefusalMeansUnknownCard(&earlyEndsInARow)) {
-            logger::line("link: %u connections in a row ended without camera %s taking the card (last: %s)",
-                         (unsigned)earlyEndsInARow, serialText, older_session::failure());
-            rejectedByCamera();
-        } else {
-            connectionFailed(older_session::failure());
-        }
+    if (!link_policy::olderRefusalMeansUnknownCard(&earlyEndsInARow)) {
+        connectionFailed(failure);
         return;
     }
-    if (older_session::linkFailure() == camera_link::LinkFailure::NotEstablished && !quickRetryUsed) {
-        quickRetry();
-        return;
-    }
-    connectionFailed(older_session::failure());
+    logger::line("link: %u connections in a row ended without camera %s taking the card (last: %s)",
+                 (unsigned)earlyEndsInARow, serialText, failure);
+    rejectedByCamera();
 }
 
 // The camera took the card: the connection is the link's, and the locations go as in the newer dialect.
@@ -744,20 +713,55 @@ void onOlderAccepted()
     enterConnected();
 }
 
-// The older dialect's introduction is driven by older_session; this only goes on or pauses the link.
-void olderPhase()
+// The introduction in either dialect has ended: the connection goes on, or the link tries again, pauses or
+// stops.
+void introductionEnded(session_end::Reason reason, const char *failure)
 {
-    switch (older_session::poll()) {
-    case older_session::Result::Running:
+    switch (reason) {
+    case session_end::Reason::Accepted:
+        if (olderLink)
+            onOlderAccepted();
+        else
+            onAccepted();
         break;
-    case older_session::Result::Accepted:
-        onOlderAccepted();
+    case session_end::Reason::Refused:
+        if (olderLink)
+            olderCardNotTaken(failure);
+        else
+            rejectedByCamera();
         break;
-    case older_session::Result::Rejected:
-    case older_session::Result::Failed:
-        olderEnded();
+    case session_end::Reason::NotTaken:
+        olderCardNotTaken(failure);
+        break;
+    case session_end::Reason::EndedEarly:
+        // In the newer dialect without the time written an early end is how an unknown card shows; in the
+        // older the camera's 01 shows it.
+        if (olderLink || !earlyEndStopped())
+            connectionFailed(failure);
+        break;
+    case session_end::Reason::NotEstablished:
+        if (quickRetryUsed)
+            connectionFailed(failure);
+        else
+            quickRetry();
+        break;
+    case session_end::Reason::NoAnswer:
+    case session_end::Reason::NoNewerService:
+    case session_end::Reason::Failed:
+        connectionFailed(failure);
         break;
     }
+}
+
+// Phase::Introducing and Phase::Older: the session of the connection's dialect.
+void introducing()
+{
+    if ((olderLink ? older_session::poll() : newer_session::poll()) == session_end::Result::Running)
+        return;
+    if (olderLink)
+        introductionEnded(older_session::endReason(), older_session::failure());
+    else
+        introductionEnded(newer_session::endReason(), newer_session::failure());
 }
 
 } // namespace
@@ -809,7 +813,7 @@ void stop(bool keepGps)
 {
     if (!active() && phase != Phase::Rejected)
         return;
-    camera_session::cancel();
+    newer_session::cancel();
     older_session::cancel();
     camera_link::close();
     if (bluetooth::scanning())
@@ -925,6 +929,7 @@ void poll()
         search(now);
         break;
     case Phase::Introducing:
+    case Phase::Older:
         introducing();
         break;
     case Phase::GpsMode:
@@ -934,9 +939,6 @@ void poll()
         break;
     case Phase::Connected:
         connected(now);
-        break;
-    case Phase::Older:
-        olderPhase();
         break;
     case Phase::Pausing:
         if (now - phaseStart >= pauseLength)

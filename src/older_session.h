@@ -8,13 +8,13 @@
 
 #include <stdint.h>
 
-#include "camera_link.h"
 #include "camera_list.h"
 #include "lumix.h"
+#include "session_end.h"
 
 namespace older_session {
 
-enum class Result { Running, Accepted, Rejected, Failed };
+using Result = session_end::Result;
 
 // Starts on a camera the caller chose; scanning must be off and the GPS must have time. keepOpen:
 // the connection stays open for the caller once the camera accepts (the lasting link); false: the
@@ -30,12 +30,10 @@ Result poll();
 // Why the last session failed or was rejected (for the caller's log).
 const char *failure();
 
-// Whether the last session got no link at all (no answer, or HCI 0x3e), for pairing's quick retries.
-camera_link::LinkFailure linkFailure();
-
-// Whether the camera did not take the card in the last session: it refused a write of the introduction
-// or the time (Rejected), or sent no 01 in time (Failed). The link stops after a few in a row.
-bool cardNotTaken();
+// Why the last session ended, once poll() returned something other than Running. The camera did not
+// take the card when it refused a write of the introduction or the time (Refused) or sent no 01 in time
+// (NotTaken): the link stops after a few in a row.
+session_end::Reason endReason();
 
 // The handles of the last accepted connection: the location characteristic and its notifications
 // (01: the camera knows the card, 02: it is switching off).

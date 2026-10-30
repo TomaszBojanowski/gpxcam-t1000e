@@ -10,19 +10,19 @@
 #include "camera_link.h"
 #include "camera_list.h"
 #include "lumix.h"
+#include "session_end.h"
 
-namespace camera_session {
+namespace newer_session {
 
-// Rejected: a refusal that means the camera does not know the card: the time, or with the clock
-// off any write of the introduction (link_policy::refusalMeansUnknownCard()).
-enum class Result { Running, Accepted, Rejected, Failed };
+// Rejected: a refusal that means the camera does not know the card (session_end::Reason::Refused).
+using Result = session_end::Result;
 
 // What the session found on the camera; valid after Accepted.
 struct Discovered {
     uint16_t mtu;
     uint16_t serviceEnd;
-    uint16_t valueHandle[camera_link::CHARACTERISTIC_COUNT]; // 0 = not found
-    uint8_t properties[camera_link::CHARACTERISTIC_COUNT];
+    uint16_t valueHandle[camera_link::NEWER_CHARACTERISTIC_COUNT]; // 0 = not found
+    uint8_t properties[camera_link::NEWER_CHARACTERISTIC_COUNT];
 };
 
 // Starts with a camera seen in the scan; scanning must be off. Never connects to a camera
@@ -36,24 +36,14 @@ Result poll();
 // Why the last session failed, e.g. "time: refused (GATT 0x0080)".
 const char *failure();
 
-// True if the last session failed because the connection was not established (HCI 0x3e,
-// seen on the S5II right after it was switched on, and now and then otherwise): a quick
-// second attempt usually works.
-bool notEstablished();
+// Why the last session ended, once poll() returned something other than Running. NotEstablished
+// (HCI 0x3e) is seen on the S5II right after it was switched on, and now and then otherwise: a quick
+// second attempt usually works. NoNewerService: the service search ended with "attribute not found"
+// or found none; the camera speaks only the older dialect, so 'pair' switches to it (pairing.cpp).
+// Another error of that search is Failed.
+session_end::Reason endReason();
 
 const Discovered &discovered();
-
-// True if the last session failed because the connection ended after it was made (not HCI
-// 0x3e, a connection that was never made).
-bool endedAfterConnecting();
-
-// Whether the last session got no link at all (no answer, or HCI 0x3e), for pairing's quick retries.
-camera_link::LinkFailure linkFailure();
-
-// True if the last session failed because the camera has no newer-dialect service (1FE71B85): its
-// search ended with "attribute not found" or found none. It speaks only the older dialect, so 'pair'
-// switches to it (pairing.cpp). Another error of that search is a failed attempt only.
-bool lacksNewerService();
 
 // Whether the last session wrote the time: always when pairing; in a connection that stays
 // open unless the clock is off ('clock off', tz_store). link_control judges refusals by it.
@@ -69,4 +59,4 @@ void forgetHandles(const char *why);
 // Ends a running session at once: stops connecting or disconnects without waiting.
 void cancel();
 
-} // namespace camera_session
+} // namespace newer_session

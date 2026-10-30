@@ -115,7 +115,7 @@ private:
     bool nextSlow = false;
 };
 
-// The writes of the introduction (camera_session) and the first ones of the link, in order.
+// The writes of the introduction (newer_session) and the first ones of the link, in order.
 enum class IntroductionWrite : uint8_t { Identifier, AppName, DeviceName, Time, GpsMode, FirstLocation };
 
 // Whether a GATT refusal of this write means that the camera does not know the card (never
