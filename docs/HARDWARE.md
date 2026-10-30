@@ -168,7 +168,7 @@ Sources:
 
 - **The console writes only while the computer holds DTR** (`src/log.cpp`: without it `Serial` is false and lines
   are counted as dropped). Checked from Python on 2026-10-22: with DTR off the card received `v` and sent nothing.
-- **Linux and Chromium (the time zone page, 1.2.0):** programs that use pyserial (`pio device monitor`, the scripts
+- **Linux and Chromium (the card page, since 1.2.0):** programs that use pyserial (`pio device monitor`, the scripts
   of this project) leave the port's terminal settings with `VMIN=0, VTIME=0`, and the kernel keeps them for the next
   program (`cdc_acm` does not reset them). Chromium's Web Serial does not set them and takes the first empty read
   for a lost device: "The device has been lost". Unplugging the card and plugging it in again resets them
@@ -377,8 +377,9 @@ Tested on the card (M2, step 1, `gps on` near a window, cold start, nothing sent
 - **GATT without blocking Bluefruit functions:** `BLEClientCharacteristic::read()/write_resp()` wait only 100 ms
   (`BLE_GENERIC_TIMEOUT`, cannot be changed), create a semaphore on the heap at every call, and a late response
   would land in a stale buffer (`AdaMsg`). Connection, MTU, discovery of the service and characteristics, read and write
-  with response go directly through the SoftDevice API (`src/camera_link.cpp`), with our own timeouts
-  (`src/newer_session.cpp`). We do not register Bluefruit client objects, so its procedures ignore our responses.
+  with response go directly through the SoftDevice API (`src/camera_link.cpp`), with our own time limit for each step
+  (`src/camera_link.h`, timed by `src/camera_connection.cpp` for both dialects). We do not register Bluefruit client
+  objects, so its procedures ignore our responses.
   Bluefruit answers the camera's requests for us: PHY, packet length, connection parameters, the MTU from the camera.
 - **MTU:** the SoftDevice is configured for 185 (`configCentralConn` before start; there is enough RAM). The S5II grants 57 –
   writes of up to 54 bytes; 32 are needed.
@@ -655,7 +656,7 @@ Host tests: `pio test -e native_sessions` (the state machines against fakes and 
 - **Notifications without CCCD:** in the S5II the notification characteristic (handle `0x008e`, "notify" only) has no CCCD
   descriptor – right after its value comes the declaration of the next characteristic (`0x2803`). The gpxcam app does not write anything either
   (`getDescriptor` returns null). The card listens for notifications without a CCCD; the camera sent one about 2 s before switching off.
-- **Altitude:** the S5II does not write it to EXIF, neither with the card nor with the Lumix Lab app (the same set of GPS tags,
+- **Altitude:** the S5II does not write it to EXIF, neither with the card nor with the LUMIX Lab app (the same set of GPS tags,
   `GPSMeasureMode` 0); the card sends the altitude as the protocol says.
 - **Signals (M5, step 3):** LED – searching: two 50 ms flashes every 2 s, connected: one every 4 s, without `link`: every 1 s;
   sounds – connection: two rising tones (CS4, FS4), end of connection: two falling ones.
