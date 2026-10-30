@@ -763,14 +763,23 @@ Host tests: `pio test -e native_sessions` (the state machines against fakes and 
   the problem did not occur; the firmware retries the clearing for 100 ms and logs the details if it comes back.
 - **P0.05:** analog reading 2.73 V, but digital 0, also with a pull-up – contradictory, unexplained.
   To detect USB power we use the VBUS register in the nRF; P0.05 is not needed.
+- **Standby after the camera falls silent:** the camera advertises its standby only for about 20 minutes
+  (`docs/PROTOCOL.md`). Then the card no longer sees it and after 5 min switches from long standby (scan every 10 s)
+  to rare mode (every 2 s) – more scanning for the rest of the night. To be decided after the standby current is
+  measured.
 - **Manual DFU (button + cable twice):** works, but neither plugging in the cable alone nor pressing the button alone
   resets the processor, so the mechanism is different. The bootloader enters DFU after a double reset on the
   RESET pin (P0.18), and the pin is enabled – probably something on the board causes this reset. We do not investigate as long as it works.
 
 ## Still to do
 
-The measurements and changes still to do are
-[GitHub issues](https://github.com/TomaszBojanowski/gpxcam-t1000e/issues): the range and the current with
-+8 dBm, the current in standby and in System OFF, the standby after the camera falls silent, a shorter pause
-after a loss of range, gpxcam's files after Meshtastic, the card page and a GPS that starts from nothing, and a
-test with an older camera of the S5 generation.
+- The range with +8 dBm against 0 dBm: another person carries the card away until the connection ends (1.3.0 and a
+  later version, same place, same pocket).
+- The current with +8 dBm (the battery log in the same scenario as 1.0.1).
+- The current in standby (the battery log) and at rest in System OFF (it needs a meter). The LR1110 in sleep should
+  draw less than 1 µA.
+- A shorter pause before connecting again after a loss of range (`HCI 0x08`).
+- Whether Meshtastic leaves gpxcam's files in the file system after a trip there and back.
+- The card page: say when the GPS starts from nothing (after flashing; since 1.5.0 the card keeps it on for 10
+  minutes around a pairing).
+- A test with an older camera of the S5 generation.
