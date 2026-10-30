@@ -534,6 +534,7 @@ block of the file system (`LFS_BLOCK_SIZE` in the core's `InternalFileSystem.cpp
 - **Battery log** written only after 10 s of USB without a break, and before `dfu` (below). Tested: a short touch of
   the cable wrote nothing, a 9 s plug-in neither, a firm plug-in wrote after about 10 s.
 
+<a id="reliability-140"></a>
 ## Reliability
 
 ### The hang of 2026-10-24
@@ -748,7 +749,7 @@ Host tests: `pio test -e native_sessions` (the state machines against fakes and 
 
 ## Test builds and `diag`
 
-- **`diag`** (every build; README, "Serial console (service)"): `diag bat`, `diag snd N`, `diag scan` and
+- **`diag`** (every build; docs/GUIDE.md, "Serial console (service)"): `diag bat`, `diag snd N`, `diag scan` and
   `diag clk [S]` measure, play or log, and `diag hang` tests the watchdog; none of them changes stored data.
   Their findings are in the sections of the card, the battery, the buzzer, the watchdog, the scan and the
   energy above.

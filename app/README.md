@@ -89,7 +89,7 @@ built the same way. If something does not work there, please open an issue on Gi
 ## Pairing an older camera
 
 > [!WARNING]
-> Older cameras (LUMIX Sync generation) are experimental: [the table in the README](../README.md#the-desktop-app) shows which cameras are tested and how each one pairs.
+> Older cameras (LUMIX Sync generation) are experimental: [the table in the README](../README.md#cameras) shows which cameras are tested and how each one pairs.
 
 Most newer LUMIX cameras (S5II and the like) pair straight from the card page or this app with
 *Pair*. **Older** cameras – the LUMIX Sync generation – need one extra step over the camera's own

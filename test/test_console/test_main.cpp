@@ -1,7 +1,7 @@
 // Unit tests for src/console_commands.cpp, run on the PC: pio test -e native
 // The console knows every command the card page and the app send (test/commands.json) and every one
-// README.md documents, runs a line only as the command it spells, and its help has the rows of
-// README's table. Made-up values.
+// docs/GUIDE.md documents, runs a line only as the command it spells, and its help has the rows of
+// the guide's table. Made-up values.
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
@@ -21,8 +21,8 @@ namespace {
 
 // 'pio test' runs the tests in the project folder.
 constexpr const char *COMMANDS_FILE = "test/commands.json";
-constexpr const char *README_FILE = "README.md";
-constexpr const char *README_CONSOLE = "## Serial console (service)";
+constexpr const char *GUIDE_FILE = "docs/GUIDE.md";
+constexpr const char *GUIDE_CONSOLE = "## Serial console (service)";
 
 // The last command of the released firmware (the test build's commands come after it).
 constexpr Id LAST_COMMAND = Id::StorageFormatYes;
@@ -81,28 +81,28 @@ std::vector<std::string> split(const std::string &text, const std::string &separ
     return parts;
 }
 
-// The rows of the console's table in README.md, each a list of the commands of its first column
+// The rows of the console's table in docs/GUIDE.md, each a list of the commands of its first column
 // ("`pair` / `pair off`" → pair, pair off).
-std::vector<std::vector<std::string>> readmeRows()
+std::vector<std::vector<std::string>> guideRows()
 {
-    const std::string readme = readFile(README_FILE);
-    const size_t section = readme.find(README_CONSOLE);
-    TEST_ASSERT_TRUE_MESSAGE(section != std::string::npos, README_CONSOLE);
+    const std::string guide = readFile(GUIDE_FILE);
+    const size_t section = guide.find(GUIDE_CONSOLE);
+    TEST_ASSERT_TRUE_MESSAGE(section != std::string::npos, GUIDE_CONSOLE);
     std::vector<std::vector<std::string>> rows;
-    size_t at = readme.find("\n| `", section);
-    while (at != std::string::npos && readme.compare(at, 4, "\n| `") == 0) {
+    size_t at = guide.find("\n| `", section);
+    while (at != std::string::npos && guide.compare(at, 4, "\n| `") == 0) {
         const size_t cellStart = at + 3;
-        const size_t cellEnd = readme.find(" |", cellStart);
-        std::vector<std::string> commands = split(readme.substr(cellStart, cellEnd - cellStart), " / ");
+        const size_t cellEnd = guide.find(" |", cellStart);
+        std::vector<std::string> commands = split(guide.substr(cellStart, cellEnd - cellStart), " / ");
         for (std::string &command : commands) {
             TEST_ASSERT_TRUE_MESSAGE(command.size() > 2 && command.front() == '`' && command.back() == '`',
                                      command.c_str());
             command = command.substr(1, command.size() - 2);
         }
         rows.push_back(commands);
-        at = readme.find('\n', at + 1);
+        at = guide.find('\n', at + 1);
     }
-    TEST_ASSERT_TRUE_MESSAGE(!rows.empty(), "the console's table in README.md");
+    TEST_ASSERT_TRUE_MESSAGE(!rows.empty(), "the console's table in docs/GUIDE.md");
     return rows;
 }
 
@@ -182,7 +182,7 @@ bool isCommand(Id id)
     return id != Id::Empty && id != Id::Unknown;
 }
 
-// A README command with its placeholder (an upper-case last word) replaced by a made-up value.
+// A command of the guide with its placeholder (an upper-case last word) replaced by a made-up value.
 std::string withSample(const std::string &command)
 {
     const size_t space = command.rfind(' ');
@@ -257,9 +257,9 @@ void test_refused_commands_stay_what_they_spell()
     TEST_ASSERT_EQUAL_STRING(" normal", updates.argument.c_str());
 }
 
-void test_the_readme_commands_are_known()
+void test_the_guide_commands_are_known()
 {
-    for (const std::vector<std::string> &row : readmeRows())
+    for (const std::vector<std::string> &row : guideRows())
         for (const std::string &command : row) {
             const std::string line = withSample(command);
             const Found found = find(line);
@@ -268,9 +268,9 @@ void test_the_readme_commands_are_known()
         }
 }
 
-// The help has the rows of README's table, in its order: "  pair / pair off = ...", and lines that go
+// The help has the rows of the guide's table, in its order: "  pair / pair off = ...", and lines that go
 // on with a deeper indent.
-void test_the_help_has_the_rows_of_the_readme_table()
+void test_the_help_has_the_rows_of_the_guide_table()
 {
     std::vector<std::vector<std::string>> helpRows;
     for (const std::string &line : printHelp()) {
@@ -280,12 +280,12 @@ void test_the_help_has_the_rows_of_the_readme_table()
         TEST_ASSERT_TRUE_MESSAGE(equals != std::string::npos, line.c_str());
         helpRows.push_back(split(line.substr(2, equals - 2), " / "));
     }
-    const std::vector<std::vector<std::string>> readme = readmeRows();
-    TEST_ASSERT_EQUAL(readme.size(), helpRows.size());
-    for (size_t i = 0; i < readme.size(); i++) {
-        TEST_ASSERT_EQUAL_MESSAGE(readme[i].size(), helpRows[i].size(), readme[i][0].c_str());
-        for (size_t j = 0; j < readme[i].size(); j++)
-            TEST_ASSERT_EQUAL_STRING(readme[i][j].c_str(), helpRows[i][j].c_str());
+    const std::vector<std::vector<std::string>> guide = guideRows();
+    TEST_ASSERT_EQUAL(guide.size(), helpRows.size());
+    for (size_t i = 0; i < guide.size(); i++) {
+        TEST_ASSERT_EQUAL_MESSAGE(guide[i].size(), helpRows[i].size(), guide[i][0].c_str());
+        for (size_t j = 0; j < guide[i].size(); j++)
+            TEST_ASSERT_EQUAL_STRING(guide[i][j].c_str(), helpRows[i][j].c_str());
     }
 }
 
@@ -341,8 +341,8 @@ int main(int, char **)
     RUN_TEST(test_every_command_finds_itself);
     RUN_TEST(test_the_commands_of_the_page_and_the_app_are_known);
     RUN_TEST(test_refused_commands_stay_what_they_spell);
-    RUN_TEST(test_the_readme_commands_are_known);
-    RUN_TEST(test_the_help_has_the_rows_of_the_readme_table);
+    RUN_TEST(test_the_guide_commands_are_known);
+    RUN_TEST(test_the_help_has_the_rows_of_the_guide_table);
     RUN_TEST(test_help_lines_fit_a_log_line);
     RUN_TEST(test_case_and_spaces);
     RUN_TEST(test_the_time_zone_keeps_its_case);

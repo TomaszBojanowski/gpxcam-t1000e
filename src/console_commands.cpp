@@ -33,7 +33,7 @@ struct Entry {
     const char *help;  // what it does, or SAME_ROW or HIDDEN
 };
 
-// In the order of the console's table in README.md, with the same rows (test/test_console).
+// In the order of the console's table in docs/GUIDE.md, with the same rows (test/test_console).
 constexpr Entry ENTRIES[] = {
     {"v", Id::Version, Form::Exact, nullptr, "version and reset reason"},
     {"p", Id::State, Form::Exact, nullptr,

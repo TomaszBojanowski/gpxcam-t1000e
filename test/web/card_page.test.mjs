@@ -1057,8 +1057,8 @@ test("the page offers every location updates setting of the firmware, each with 
   for (const setting of page.UPDATES_SETTINGS) assert.match(html, new RegExp(`id="updates-${setting}" type="radio"`));
 });
 
-// The timings in the page's words, the console's help (src/console_commands.cpp) and README.md (the one place in
-// the documentation that gives them) are the firmware's (src/link_policy.h).
+// The timings in the page's words, the console's help (src/console_commands.cpp) and README.md ("What it does" and
+// "Normal use", the places in the documentation that give them) are the firmware's (src/link_policy.h).
 test("the location updates are explained with the firmware's timings", () => {
   const source = readFileSync(new URL("../../src/link_policy.h", import.meta.url), "utf8");
   const timing = (name) => {
@@ -1083,8 +1083,10 @@ test("the location updates are explained with the firmware's timings", () => {
   assert.ok(help.includes(`locations every ${normal.seconds} s or every ${frequent.seconds} s`));
   const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8").replace(/\s+/g, " ");
   assert.ok(readme.includes(`with **Normal** location updates, every ${normal.seconds} s – earlier when it moves ` +
-    `more than ${normal.metres} m; with **Frequent** (1.4.0) every ${frequent.seconds} s – earlier when it moves ` +
+    `more than ${normal.metres} m; with **Frequent** every ${frequent.seconds} s – earlier when it moves ` +
     `more than ${frequent.metres} m, at most every ${frequent.minGapSeconds} s.`));
+  assert.ok(readme.includes(`every ${normal.seconds} s, sooner after ${normal.metres} m (Normal), or every ` +
+    `${frequent.seconds} s, sooner after ${frequent.metres} m (Frequent).`));
 });
 
 // updates_now differs from updates only while the guard holds a connection at normal.
