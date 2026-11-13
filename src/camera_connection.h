@@ -24,7 +24,7 @@ constexpr const char *DEVICE_NAME = "T1000-E";
 // release() or cancel(); its first step, connecting, has camera_link::CONNECT_TIMEOUT_MS.
 bool start(const camera_list::Report &camera);
 
-// The session no longer has the connection: it ended, or gave its lasting connection to the link.
+// The session lets go of the connection: it ended, or gave its lasting connection to the link.
 void release();
 
 // Ends the session's connection at once: stops connecting or disconnects without waiting; releases.

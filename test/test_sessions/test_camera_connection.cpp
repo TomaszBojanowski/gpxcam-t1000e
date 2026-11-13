@@ -55,7 +55,7 @@ Reason run(const Dialect &dialect)
     return camera_connection::endReason();
 }
 
-// Another session can start: the last one no longer has the connection, and one it closed has ended.
+// Another session can start: the last one let go of the connection, and one it closed has ended.
 void assertNextSessionStarts(const Dialect &dialect, const char *what)
 {
     const Dialect &next = other(dialect);
@@ -188,7 +188,7 @@ void test_a_request_for_encryption_is_logged_and_the_session_goes_on()
     }
 }
 
-// A lasting connection the camera took is the link's: the session no longer has it, so the next start
+// A lasting connection the camera took is the link's: the session let go of it, so the next start
 // closes it as an earlier connection.
 void test_a_lasting_connection_is_given_to_the_link()
 {

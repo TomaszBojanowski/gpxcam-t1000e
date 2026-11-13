@@ -564,6 +564,41 @@ test("hidden parts stay hidden whatever display their own rule gives", () => {
   assert.match(html, /^\.hidden \{ display: none !important; \}/m);
 });
 
+// Ids nothing on the page refers to, and why they stay.
+const IDS_FOR_OTHERS = {
+  "about-version": "tools/app_frontend.py writes the app's version there",
+  "check-list": "the user's own reminder: the page does not read it, so it does not hold Pair back",
+  "check-phone": "the user's own reminder, as check-list",
+};
+
+test("the page uses each name of its script, each class of its style and each id", () => {
+  const style = /<style>([\s\S]*?)<\/style>/.exec(html)[1].replace(/\/\*[\s\S]*?\*\//g, "");
+  const markup = html.replace(/<style>[\s\S]*?<\/style>|<script>[\s\S]*?<\/script>/g, "");
+  const code = appCode.replace(/\/\*[\s\S]*?\*\/|(?<![:"'\\])\/\/[^\n]*/g, "");
+  const escaped = (name) => name.replace(/[$]/g, "\\$");
+  const uses = (text, name, part) => (text.match(new RegExp(`(?<!${part})${escaped(name)}(?!${part})`, "g")) || []).length;
+  // Classes and ids the script makes from a prefix: `tile level-${level}`, element(`pair-screen-${name}`).
+  const prefixes = [...code.matchAll(/([\w-]+-)\$\{/g)].map((match) => match[1]);
+  const madeByScript = (name) => uses(code, name, "[\\w-]") > 0 || prefixes.some((prefix) => name.startsWith(prefix));
+
+  const names = [...appCode.matchAll(/^(?:async function |function |const |let |class )([\w$]+)/gm)].map((m) => m[1]);
+  assert.ok(names.length > 100);
+  assert.deepEqual(names.filter((name) => uses(code, name, "[\\w$]") < 2), [], "declared, never used");
+
+  const selectors = style.replace(/\{[^{}]*\}/g, "{}");
+  const styled = new Set([...selectors.matchAll(/\.(-?[a-zA-Z_][\w-]*)/g)].map((match) => match[1]));
+  const inMarkup = new Set([...markup.matchAll(/ class="([^"]*)"/g)].flatMap((match) => match[1].split(/\s+/)));
+  assert.deepEqual([...styled].filter((name) => !inMarkup.has(name) && !madeByScript(name)), [], "styled, never used");
+  assert.deepEqual([...inMarkup].filter((name) => !styled.has(name) && !madeByScript(name)), [],
+    "in the markup, neither styled nor used by the script");
+
+  const references = markup.replace(/ id="[^"]+"/g, "");
+  const referred = (id) => madeByScript(id) || uses(style, `#${id}`, "[\\w-]") > 0 ||
+    references.includes(`="${id}"`) || references.includes(`="#${id}"`);
+  const ids = [...markup.matchAll(/ id="([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(ids.filter((id) => !referred(id)).sort(), Object.keys(IDS_FOR_OTHERS).sort());
+});
+
 test("the page fetches nothing but its zone data, next to it: content security policy", () => {
   const policy = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(html);
   assert.ok(policy);

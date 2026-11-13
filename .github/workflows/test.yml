@@ -1,6 +1,7 @@
 # The tests of every part: the firmware on the PC and its two builds (each checked by
-# tools/uf2check.py), the card page, the app's page and its Rust side, and the generated time
-# zone files. On every push to main and every pull request; app.yml runs it before the installers.
+# tools/uf2check.py), the card page, the app's page and its Rust side, the generated time zone
+# files and the comments. On every push to main and every pull request; app.yml runs it before the
+# installers.
 name: test
 
 on:
@@ -68,3 +69,5 @@ jobs:
           cargo test --locked
       - name: The time zone files
         run: python tools/gen_tz_table.py --check
+      - name: Comments without history
+        run: python -I test/tools/test_comments.py

@@ -56,7 +56,7 @@ void test_older_session_without_01_is_a_card_not_taken_after_15_s()
 }
 
 // A lasting connection: once the camera takes the card, the open connection is the caller's (link_control
-// sends the locations); the session sends none and its cancel() no longer closes it.
+// sends the locations); the session sends none and its cancel() leaves it open.
 void test_older_session_hands_a_lasting_connection_over()
 {
     TEST_ASSERT_EQUAL(Reason::Accepted, runLasting());
