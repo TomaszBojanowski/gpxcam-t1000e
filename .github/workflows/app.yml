@@ -1,6 +1,6 @@
-# The desktop app (app/): its tests, then its installers for Linux, macOS and Windows as files
-# of the run. Nothing is published from here: the files go to a GitHub Release by hand, after a
-# check, under a tag app-vX.Y.Z. No secrets: the macOS app is signed ad hoc, the Windows
+# The desktop app (app/): the tests of every part (test.yml), then the app's installers for Linux,
+# macOS and Windows as files of the run. Nothing is published from here: the files go to a GitHub
+# Release by hand, after a check, under a tag app-vX.Y.Z. No secrets: the macOS app is signed ad hoc, the Windows
 # installers are not signed.
 name: app
 
@@ -28,44 +28,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RUST_TOOLCHAIN: "1.99.0" # the version the app was tested with
+  RUST_TOOLCHAIN: "1.99.0" # as in test.yml: the version the app was tested with
   TAURI_CLI_VERSION: "2.12.4"
   CARGO_TERM_COLOR: never
 
 jobs:
   test:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12" # app_frontend.py needs tomllib (3.11)
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "22"
-      - name: Linux packages for Tauri and serialport
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev libssl-dev libudev-dev pkg-config
-      - name: Rust
-        run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
-          rustup default "$RUST_TOOLCHAIN"
-      - name: The card page
-        run: node --test test/web/card_page.test.mjs
-      - name: The app's page, made from the card page
-        run: |
-          python -I test/tools/test_app_frontend.py
-          python tools/app_frontend.py
-      - name: The Rust side
-        working-directory: app/src-tauri
-        run: |
-          cargo fmt --check
-          cargo clippy --locked --all-targets -- -D warnings
-          cargo test --locked
+    uses: ./.github/workflows/test.yml
 
   build:
     needs: test
