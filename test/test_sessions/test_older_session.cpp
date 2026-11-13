@@ -20,6 +20,10 @@ Result runLasting()
     return fake::runSession(older_session::poll);
 }
 
+// The steps of an older connection, as the card logs them.
+const char *const STEPS[] = {"older: connected", "older: MTU", "older: handles", "older: key read", " written",
+                             "older: notification", "older: the camera knows the card", "older: the camera took"};
+
 } // namespace
 
 void test_older_session_takes_01_after_the_device_name()
@@ -73,6 +77,28 @@ void test_older_session_hands_a_lasting_connection_over()
     TEST_ASSERT_TRUE(fake::linkUp());
 }
 
+// The 64 lines of 'log' are for the events of a walk and a whole older pairing (log.h): the steps of a
+// lasting connection are only sent, a pairing's are kept.
+void test_older_session_only_sends_the_steps_of_a_lasting_connection()
+{
+    TEST_ASSERT_EQUAL(Result::Accepted, runLasting());
+    for (const char *step : STEPS) {
+        TEST_ASSERT_TRUE_MESSAGE(fake::logged(step), step);
+        TEST_ASSERT_FALSE_MESSAGE(fake::kept(step), step);
+    }
+}
+
+void test_older_session_keeps_the_steps_of_a_pairing()
+{
+    fake::gpsOn = true;
+    fake::gpsFix = true;
+    fake::camera.dialect = fake::Dialect::Older;
+    TEST_ASSERT_TRUE(older_session::start(fake::cameraIn(lumix::STATE_PAIRING), fake::record.uuid, false));
+    TEST_ASSERT_EQUAL(Result::Accepted, fake::runSession(older_session::poll));
+    for (const char *step : STEPS)
+        TEST_ASSERT_TRUE_MESSAGE(fake::kept(step), step);
+}
+
 void runOlderSessionTests()
 {
     RUN_TEST(test_older_session_takes_01_after_the_device_name);
@@ -81,4 +107,6 @@ void runOlderSessionTests()
     RUN_TEST(test_older_session_without_01_is_a_card_not_taken_after_15_s);
     RUN_TEST(test_older_session_refused_identifier_is_rejected);
     RUN_TEST(test_older_session_hands_a_lasting_connection_over);
+    RUN_TEST(test_older_session_only_sends_the_steps_of_a_lasting_connection);
+    RUN_TEST(test_older_session_keeps_the_steps_of_a_pairing);
 }

@@ -55,6 +55,21 @@ const char *const CHARACTERISTIC_NAMES[camera_link::OLDER_CHARACTERISTIC_COUNT] 
     "key", "identifier", "device name", "camera name", "camera text", "time", "time notify", "location",
     "location notify"};
 
+// A step of the connection: kept in the 'log' history while pairing (log.h keeps a whole older pairing),
+// only sent in a lasting connection, whose start and end the link keeps (64 lines, the events of a walk).
+__attribute__((format(printf, 1, 2))) void logStep(const char *fmt, ...)
+{
+    char text[logger::TEXT_MAX + 1]; // what a line of the log holds
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(text, sizeof(text), fmt, args);
+    va_end(args);
+    if (keepOpen)
+        logger::transient("%s", text);
+    else
+        logger::line("%s", text);
+}
+
 const char *stepName(Step s)
 {
     switch (s) {
@@ -154,7 +169,7 @@ bool makeTimePacket()
     if (!camera_connection::timePacket(TIME_FROM_FIX_MAX_MS, txData, &source))
         return false;
     if (source.fromLastFix && !timeFromFixLogged) {
-        logger::line("older: no fresh GPS time - the time of the fix %lu s ago",
+        logStep("older: no fresh GPS time - the time of the fix %lu s ago",
                      (unsigned long)(source.fixAgeMs / 1000));
         timeFromFixLogged = true;
     }
@@ -165,7 +180,7 @@ bool makeTimePacket()
 // connection goes to the caller (poll()).
 void accept()
 {
-    logger::line("older: the camera took the card");
+    logStep("older: the camera took the card");
     ending = session_end::Reason::Accepted;
     enter(Step::Done, camera_connection::NO_LIMIT);
 }
@@ -183,12 +198,12 @@ void writeTime(Step next)
 // connection with the clock off ('clock off') writes none.
 void afterKnown()
 {
-    logger::line("older: the camera knows the card (01 on %s)",
+    logStep("older: the camera knows the card (01 on %s)",
                  knownByLocationNotify && knownByTimeNotify ? "both notify characteristics"
                  : knownByLocationNotify                    ? "the location notify"
                                                             : "the time notify");
     if (keepOpen && !tz_store::clockOn()) {
-        logger::line("older: clock off - no time written");
+        logStep("older: clock off - no time written");
         accept();
         return;
     }
@@ -219,7 +234,7 @@ void waitForKnown()
         return;
     }
     const uint32_t limit = keepOpen ? KNOWN_WAIT_CONNECT_MS : KNOWN_WAIT_PAIR_MS;
-    logger::line("older: introduced - waiting up to %lu s for the camera's 01%s", (unsigned long)(limit / 1000),
+    logStep("older: introduced - waiting up to %lu s for the camera's 01%s", (unsigned long)(limit / 1000),
                  keepOpen ? "" : " (the camera now waits for the Wi-Fi step)");
     if (!keepOpen)
         logAppRegistration();
@@ -265,7 +280,7 @@ void writeDeviceId()
 void logHandles()
 {
     static_assert(camera_link::OLDER_CHARACTERISTIC_COUNT == 9, "nine handles in the line");
-    logger::line("older: handles (key id name cam-name cam-text time time-ntf loc loc-ntf): "
+    logStep("older: handles (key id name cam-name cam-text time time-ntf loc loc-ntf): "
                  "%04x %04x %04x %04x %04x %04x %04x %04x %04x",
                  handles[0], handles[1], handles[2], handles[3], handles[4], handles[5], handles[6], handles[7],
                  handles[8]);
@@ -307,7 +322,7 @@ void onKey(const camera_link::Event &event)
         return;
     }
     memcpy(key, event.read.data, lumix::KEY_LENGTH);
-    logger::line("older: key read");
+    logStep("older: key read");
     writeDeviceId();
 }
 
@@ -315,7 +330,7 @@ void onKey(const camera_link::Event &event)
 bool writeAccepted(const camera_link::Event &event, camera_link::OlderCharacteristic which)
 {
     if (event.status == BLE_GATT_STATUS_SUCCESS) {
-        logger::line("older: %s written", CHARACTERISTIC_NAMES[which]);
+        logStep("older: %s written", CHARACTERISTIC_NAMES[which]);
         return true;
     }
     endWith(session_end::Reason::Refused, "%s: refused (GATT 0x%04x)", CHARACTERISTIC_NAMES[which], event.status);
@@ -327,9 +342,9 @@ bool writeAccepted(const camera_link::Event &event, camera_link::OlderCharacteri
 void onCameraRead(const camera_link::Event &event, camera_link::OlderCharacteristic which)
 {
     if (event.status == BLE_GATT_STATUS_SUCCESS)
-        logger::line("older: %s read (content not logged)", CHARACTERISTIC_NAMES[which]);
+        logStep("older: %s read (content not logged)", CHARACTERISTIC_NAMES[which]);
     else
-        logger::line("older: %s not read (GATT 0x%04x) - going on", CHARACTERISTIC_NAMES[which], event.status);
+        logStep("older: %s not read (GATT 0x%04x) - going on", CHARACTERISTIC_NAMES[which], event.status);
 }
 
 // A notification: its handle and up to 8 bytes. 01 on either notify characteristic means the
@@ -343,7 +358,7 @@ void onNotified(const camera_link::Event &event)
     char bytes[3 * camera_link::MAX_READ_LENGTH + 1] = "";
     for (uint8_t i = 0; i < event.read.length; i++)
         snprintf(bytes + 3 * i, sizeof(bytes) - 3 * i, "%02x ", event.read.data[i]);
-    logger::line("older: notification 0x%04x (%s), %u bytes: %s", event.read.handle, name, event.read.length, bytes);
+    logStep("older: notification 0x%04x (%s), %u bytes: %s", event.read.handle, name, event.read.length, bytes);
     if (event.read.length == 0)
         return;
     const uint8_t value = event.read.data[0];
@@ -352,14 +367,14 @@ void onNotified(const camera_link::Event &event)
     if (value == lumix::OLDER_KNOWN && event.read.handle == handles[camera_link::OLDER_TIME_NOTIFY])
         knownByTimeNotify = true;
     if (value == lumix::OLDER_SWITCHING_OFF && event.read.handle == handles[camera_link::OLDER_LOCATION_NOTIFY])
-        logger::line("older: the camera is switching off");
+        logStep("older: the camera is switching off");
     if (step == Step::WaitKnown && (knownByLocationNotify || knownByTimeNotify))
         afterKnown();
 }
 
 void onConnected()
 {
-    logger::line("older: connected");
+    logStep("older: connected");
     if (!camera_connection::requestMtu()) {
         fail("MTU: request refused");
         return;
@@ -369,7 +384,7 @@ void onConnected()
 
 void onMtu(const camera_link::Event &event)
 {
-    logger::line("older: MTU %u - looking for the characteristics in all handles", camera_connection::mtu(event));
+    logStep("older: MTU %u - looking for the characteristics in all handles", camera_connection::mtu(event));
     if (!camera_link::findOlderCharacteristics(FIRST_HANDLE, LAST_HANDLE))
         fail("characteristics: request refused");
     else

@@ -1219,12 +1219,12 @@ test("with gpxcam 1.2 the sound stays loud and cannot be changed", async () => {
 
 // ---- The camera section's pairing screens ----
 
-// A line as the card prints it, from the format string in its source that starts with `start`; each
-// conversion takes the next value.
+// A line as the card prints it, from the format string in its source (logger::line, logger::transient, or
+// older_session's logStep) that starts with `start`; each conversion takes the next value.
 function firmwareLine(file, start, ...values) {
   const source = readFileSync(new URL(`../../src/${file}`, import.meta.url), "utf8");
   const escaped = start.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const format = new RegExp(`logger::(?:line|transient)\\("(${escaped}[^"]*)"`).exec(source);
+  const format = new RegExp(`(?:logger::line|logger::transient|logStep)\\("(${escaped}[^"]*)"`).exec(source);
   assert.ok(format, `${file}: ${start}`);
   let next = 0;
   return format[1].replace(/%(02x|lu|u|d|s)/g, () => String(values[next++]));
