@@ -64,21 +64,6 @@ function installCard(simulatedApp, state) {
       state.gps_hold = 600;
       return ["pair: GPS on for 600 s, ready for pairing\r\n"];
     },
-    pair: () => {
-      Object.assign(state, { paired: 0, link: "off", pair: "searching", pair_attempt: 0, pair_result: "none" });
-      return ["link: off\r\n", "pair: GPS time ok - looking for a camera in pairing mode (up to 120 s)\r\n"];
-    },
-    "pair off": () => {
-      Object.assign(state, { pair: "idle", pair_result: "cancelled" });
-      return ["pair: cancelled\r\n"];
-    },
-    // The card has introduced itself to an older camera and waits for the Wi-Fi step (src/older_session.cpp);
-    // the identity of the made-up seed of test/device_identity_vectors.txt.
-    "pair older": () => {
-      Object.assign(state, { paired: 0, link: "off", pair: "waiting_wifi", pair_attempt: 1, pair_result: "none" });
-      return ["link: off\r\n", "older: introduced - waiting up to 300 s for the camera's 01\r\n",
-        "older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E\r\n"];
-    },
     // The pairing lines of 'p'; a search has run for 18 s.
     p: () => ["pair: card id 00112233-4455-4677-8899-a1b2c3d4e5f6, no camera paired\r\n",
       state.pair === "searching" ? "pair: looking for a camera in pairing mode for 18 s, attempt 0/3\r\n"

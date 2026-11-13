@@ -243,8 +243,8 @@ input.toggle:disabled { opacity: var(--disabled-opacity); cursor: default; }
    cannot read what it saved */
 .slow-note { --edge: var(--warn); --edge-tint: var(--warn-tint); margin: var(--s3) 0 0; }
 fieldset:disabled { opacity: var(--disabled-opacity); }
-ol.steps { margin: var(--s2) 0; padding-left: 22px; }
-ol.steps li { margin: var(--s1) 0; }
+ul.steps { margin: var(--s2) 0; padding-left: 22px; }
+ul.steps li { margin: var(--s1) 0; }
 /* A panel of a fixed height, about four and a half results, so what follows does not move while
    typing and the empty part reads as part of the list */
 #results {
@@ -693,7 +693,7 @@ button.big { min-height: 48px; padding: var(--s2) var(--s6); font-size: var(--fs
               <p class="note">Camera menu: Setup &rarr; Bluetooth &rarr; Pairing</p>
               <div id="pair-countdown" class="countdown">
                 <span id="pair-countdown-time" class="countdown-time" aria-hidden="true"></span>
-                <progress id="pair-countdown-bar" max="120" value="0"
+                <progress id="pair-countdown-bar" value="0"
                           aria-label="Time left to find the camera"></progress>
                 <small>left to find the camera</small>
               </div>
@@ -787,19 +787,12 @@ button.big { min-height: 48px; padding: var(--s2) var(--s6); font-size: var(--fs
 
         <details id="pairing-help" class="help">
           <summary>How pairing works</summary>
-          <ol class="steps">
-            <li>Put the card where its GPS gets a fix, outdoors or by a window: pairing needs the time from it.
-                The GPS tile above shows <em>Fix</em> when it is ready.</li>
-            <li>If the camera lists T1000&#8209;E from an earlier pairing, delete it there first: the camera does
-                not pair a card it already knows. Remove the phone from the same list too, or turn its Bluetooth
-                off: a phone may grab the camera the moment it starts pairing.</li>
-            <li>Click <em>Pair</em>. Do not start pairing on the camera yet: some cameras stay in pairing mode only
-                about 30 seconds, so the card must already be looking for them.</li>
-            <li>When this screen says <em>Start Bluetooth pairing on the camera now</em>, start pairing in the
-                camera's Bluetooth menu. The card looks for it for up to 2 minutes and tries up to 3 times.</li>
-            <li>Older cameras (LUMIX Sync generation) then need one more step, over the camera's own Wi-Fi
-                network, which only the gpxcam card app can do: the app starts it by itself and says what to do.</li>
-          </ol>
+          <ul class="steps">
+            <li>Pairing needs the time from the card's GPS: put the card where it gets a fix, outdoors or by a
+                window.</li>
+            <li>Older cameras (LUMIX Sync generation) need one more step, over the camera's own Wi-Fi network,
+                which only the gpxcam card app can do.</li>
+          </ul>
         </details>
       </div>
     </section>
@@ -927,12 +920,14 @@ const ANSWER_TIMEOUT_MS = 3000;
 const STATUS_PERIOD_MS = 5000; // the card's state on the page refreshes itself this often
 const PAIRING_STATUS_PERIOD_MS = 2000; // ... and this often while the card pairs
 const UNPAIR_TIMEOUT_MS = 10000; // the card first puts its GPS to sleep (up to 7.5 s), then writes flash
-// 'pair older': the card may wait 2 min for a GPS fix and 2 min for the camera, then introduce.
-const OLDER_START_TIMEOUT_MS = 270000;
-// Pairing as the card does it (src/pairing.cpp): the limits the page tells.
+// Pairing as the card does it (src/pairing.cpp MAX_ATTEMPTS, FIX_WAIT_MS, SEARCH_MS; the page's test compares):
+// the card looks for a camera in pairing mode PAIR_SEARCH_MS, and again as long after each quick retry and each
+// pause between attempts; its first line says it ("up to 120 s").
 const PAIR_ATTEMPTS = 3;
-const PAIR_FIX_WAIT_TEXT = "2 minutes";
-const PAIR_SEARCH_TEXT = "2 minutes";
+const PAIR_FIX_WAIT_MS = 120 * 1000;
+const PAIR_SEARCH_MS = 120 * 1000;
+// 'pair older': the card may wait for a GPS fix, then for the camera, then connect and introduce itself.
+const OLDER_START_TIMEOUT_MS = PAIR_FIX_WAIT_MS + PAIR_SEARCH_MS + 30 * 1000;
 // The commands that save a setting (time zone, clock, sound, location updates; 'tz' alone too): saving
 // writes flash, about 1 s, more the first time.
 const SAVE_TIMEOUT_MS = 6000;
@@ -1478,10 +1473,6 @@ function canPairOlder(version) {
 // While an older camera's Wi-Fi step waits for the user (app only).
 const WIFI_WAIT_TEXT = "Waiting for this computer to join\u2026 the app continues by itself (up to 5 minutes).";
 
-// The card looks for a camera in pairing mode this long, and again as long after each quick retry and each
-// pause between attempts (src/pairing.cpp SEARCH_MS); its first line says it ("up to 120 s").
-const PAIR_SEARCH_MS = 120 * 1000;
-
 // The screens of the camera section: prepare (1), camera (2: start pairing on the camera now), connect (3),
 // wifi (4: the older cameras' Wi-Fi step), done (5), failed (6). state: the card's last 'status'. ended: how
 // the last pairing the page followed ended (the card's pair_result, or "wifi-given-up"), null for none.
@@ -1531,14 +1522,18 @@ function pairingSteps(screen, older) {
   if (screen === "done" || screen === "failed") return null;
   const steps = PAIRING_STEPS.filter(([name]) => name !== "wifi" || older || screen === "wifi");
   const at = steps.findIndex(([name]) => name === screen);
-  return steps.map(([name, label], index) =>
-    ({ name, label, state: index < at ? "done" : index === at ? "current" : "later" }));
+  return steps.map(([name, label], index) => ({ name, label, state: stepState(index, at) }));
 }
 
-// The short state beside the section's title.
+// The short state beside the section's title: { text, kind }, kind the badge's class.
 function pairingBadge(state) {
-  if (state.pair !== "idle") return "Pairing…";
-  return state.paired ? "Paired" : "Not paired yet";
+  if (state.pair !== "idle") return { text: "Pairing\u2026", kind: "pairing" };
+  return state.paired ? { text: "Paired", kind: "paired" } : { text: "Not paired yet", kind: "" };
+}
+
+// The state of the step at index in a row whose current step is at `at`.
+function stepState(index, at) {
+  return index < at ? "done" : index === at ? "current" : "later";
 }
 
 // What a line of the card says about its pairing (src/pairing.cpp, newer_session.cpp, older_session.cpp),
@@ -1574,6 +1569,12 @@ function searchLeftMs(search, now) {
   return Math.min(search.lengthMs, Math.max(0, search.startsAt + search.lengthMs - now));
 }
 
+// "2 minutes": a limit of whole minutes, as the texts say it.
+function minutesText(ms) {
+  const minutes = ms / 60000;
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
 // "2:00" down to "0:00", in whole seconds rounded up.
 function countdownText(ms) {
   const seconds = Math.ceil(Math.max(0, ms) / 1000);
@@ -1589,39 +1590,38 @@ function countdownLabel(ms) {
   return `${parts.join(" ")} left`;
 }
 
-const CONNECT_STAGES = ["Camera in pairing mode", "Connected over Bluetooth", "Introducing the card to the camera…",
+const CONNECT_STAGES = ["Camera in pairing mode", "Connected over Bluetooth", "Introducing the card to the camera",
   "Setting the camera's clock"];
 
 // Screen 3: the stages with `done` of them done and the next one current.
 function connectStages(done) {
-  return CONNECT_STAGES.map((label, index) =>
-    ({ label, state: index < done ? "done" : index === done ? "current" : "later" }));
+  return CONNECT_STAGES.map((label, index) => ({ label, state: stepState(index, done) }));
 }
 
 // Screen 2: the line under the countdown, [text, kind]. nearby: the card saw a camera, but not in pairing
 // mode; pauseLeftMs: of the pause between attempts, null when not known.
 function cameraStepText(variant, state, { nearby = false, pauseLeftMs = null } = {}) {
   switch (variant) {
-    case "gps": return [`Waiting for the GPS time – ${satellitesText(state.gpsSatellites)} so far. Don't ` +
+    case "gps": return [`Waiting for the GPS time \u2013 ${satellitesText(state.gpsSatellites)} so far. Do not ` +
       "start pairing on the camera yet.", "busy"];
     case "pause": {
       const when = pauseLeftMs === null ? "in a moment" : `in ${Math.ceil(pauseLeftMs / 1000)} s`;
-      return [`Attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS} didn't work – looking again ${when}. Keep ` +
+      return [`Attempt ${state.pairAttempt} of ${PAIR_ATTEMPTS} did not work \u2013 looking again ${when}. Keep ` +
         "the camera in pairing mode.", "warn"];
     }
     default:
       if (nearby) return ["A camera is nearby, but not in pairing mode yet.", "warn"];
       return [state.pairAttempt > 0 ? `Looking for the camera again (attempt ${state.pairAttempt + 1} of ` +
-        `${PAIR_ATTEMPTS})…` : "Looking for the camera…", "busy"];
+        `${PAIR_ATTEMPTS})\u2026` : "Looking for the camera\u2026", "busy"];
   }
 }
 
 // Screen 1: the GPS row, checked by itself from the card's state. { done, detail }
 function gpsCheck(state) {
   const satellites = satellitesText(state.gpsSatellites);
-  if (state.gpsFix) return { done: true, detail: `${satellites} – the card knows the time. Checked by itself.` };
+  if (state.gpsFix) return { done: true, detail: `${satellites} \u2013 the card knows the time.` };
   if (!state.gpsOn) return { done: false, detail: "The GPS switches on when pairing starts." };
-  return { done: false, detail: `Waiting for a fix – ${satellites} so far.` };
+  return { done: false, detail: `Waiting for a fix \u2013 ${satellites} so far.` };
 }
 
 // Screen 6: { title, text, older } for a pairing that ended without a camera; older: the box that offers
@@ -1629,18 +1629,18 @@ function gpsCheck(state) {
 // reason: the card's own words when it gave up (pairingEvent() gaveUp).
 function failedText(result, reason = null) {
   switch (result) {
-    case "no_camera": return { title: "The camera did not answer", text: `The card looked for ${PAIR_SEARCH_TEXT} ` +
-      "and didn't find a camera in pairing mode.", older: true };
+    case "no_camera": return { title: "The camera did not answer", text: `The card looked for ` +
+      `${minutesText(PAIR_SEARCH_MS)} and did not find a camera in pairing mode.`, older: true };
     case "not_in_pairing_mode": return { title: "The camera did not answer", text: "The card saw the camera, " +
-      `but not in pairing mode, for ${PAIR_SEARCH_TEXT}.`, older: true };
+      `but not in pairing mode, for ${minutesText(PAIR_SEARCH_MS)}.`, older: true };
     case "failed":
       if (reason !== null && reason.startsWith("no connection to the camera")) {
         return { title: "Pairing did not work", text: "The card could not connect to the camera: the connection " +
           "never came up.", older: true };
       }
       return { title: "Pairing did not work", text: `The camera did not take the card in ${PAIR_ATTEMPTS} attempts. ` +
-        "If it lists T1000‑E from an earlier pairing, delete it there.", older: true };
-    case "no_gps_fix": return { title: "No GPS time", text: `The card got no GPS time within ${PAIR_FIX_WAIT_TEXT}. ` +
+        "If it lists T1000\u2011E from an earlier pairing, delete it there.", older: true };
+    case "no_gps_fix": return { title: "No GPS time", text: `The card got no GPS time within ${minutesText(PAIR_FIX_WAIT_MS)}. ` +
       "Put it outdoors or by a window.", older: false };
     case "not_saved": return { title: "Pairing not saved", text: "The camera took the card, but the card could " +
       "not save the pairing.", older: false };
@@ -2187,7 +2187,7 @@ function startPage() {
     ui.checkGps.className = gps.done ? "check-done" : "";
     ui.checkGpsDetail.textContent = gps.detail;
     ui.pairKeep.classList.toggle("hidden", !lastState.paired);
-    ui.pairWaitNote.textContent = `Don't start pairing on the camera yet \u2013 ${inApp ? "the app" : "this page"} ` +
+    ui.pairWaitNote.textContent = `Do not start pairing on the camera yet \u2013 ${inApp ? "the app" : "this page"} ` +
       "tells you when.";
   };
 
@@ -2244,9 +2244,9 @@ function startPage() {
       return;
     }
     const { screen, variant } = pairingScreen(lastState, pairing);
-    ui.pairBadge.textContent = pairingBadge(lastState);
-    const badge = lastState.pair !== "idle" ? " pairing" : lastState.paired ? " paired" : "";
-    ui.pairBadge.className = `pair-badge${badge}`;
+    const badge = pairingBadge(lastState);
+    ui.pairBadge.textContent = badge.text;
+    ui.pairBadge.className = `pair-badge ${badge.kind}`.trimEnd();
     showSteps(pairingSteps(screen, pairing.older));
     for (const name of PAIRING_SCREENS) element(`pair-screen-${name}`).classList.toggle("hidden", name !== screen);
     if (screen !== helpScreen) ui.pairingHelp.open = false; // opened by the user, it stays open on this screen only
