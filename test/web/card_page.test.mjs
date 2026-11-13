@@ -592,7 +592,8 @@ test("the page uses each name of its script, each class of its style and each id
   const markup = html;
   const code = appCode.replace(/\/\*[\s\S]*?\*\/|(?<![:"'\\])\/\/[^\n]*/g, "");
   const escaped = (name) => name.replace(/[$]/g, "\\$");
-  const uses = (text, name, part) => (text.match(new RegExp(`(?<!${part})${escaped(name)}(?!${part})`, "g")) || []).length;
+  const uses = (text, name, part) =>
+    (text.match(new RegExp(`(?<!${part})${escaped(name)}(?!${part})`, "g")) || []).length;
   // Classes and ids the script makes from a prefix: `tile level-${level}`, element(`pair-screen-${name}`).
   const prefixes = [...code.matchAll(/([\w-]+-)\$\{/g)].map((match) => match[1]);
   const madeByScript = (name) => uses(code, name, "[\\w-]") > 0 || prefixes.some((prefix) => name.startsWith(prefix));
@@ -1397,14 +1398,15 @@ test("the camera section's screen follows the card's pairing phase and how the l
   assert.deepEqual(screen({ pair: "searching" }, { ended: "no_camera" }), { screen: "camera", variant: "search" });
   // How the last pairing the page followed ended.
   assert.deepEqual(screen({ paired: true }, { ended: "paired" }), done);
-  for (const ended of ["no_camera", "not_in_pairing_mode"]) {
-    assert.deepEqual(screen({ paired: false }, { ended }), { screen: "failed", variant: "no-camera" }, ended);
+  const failed = { screen: "failed", variant: null };
+  for (const ended of ["no_camera", "not_in_pairing_mode", "failed", "no_gps_fix", "not_saved", "not_possible",
+    "wifi-given-up"]) {
+    assert.deepEqual(screen({ paired: false }, { ended }), failed, ended);
+    assert.deepEqual(screen({ paired: true }, { ended }), failed, ended);
   }
-  for (const ended of ["failed", "no_gps_fix", "not_saved", "not_possible", "wifi-given-up"]) {
-    assert.deepEqual(screen({ paired: true }, { ended }), { screen: "failed", variant: "other" }, ended);
-  }
+  // Cancelled: back to Prepare, or, on a card that keeps its camera, a screen that says so.
   assert.deepEqual(screen({ paired: false }, { ended: "cancelled" }), prepare);
-  assert.deepEqual(screen({ paired: true }, { ended: "cancelled" }), done);
+  assert.deepEqual(screen({ paired: true }, { ended: "cancelled" }), failed);
   assert.deepEqual(screen({ paired: false }, { ended: "none" }), prepare);
   // Every phase of the firmware but idle is a pairing under way.
   const phases = firmwareValues("pairPhaseValue");
@@ -1534,17 +1536,22 @@ test("Prepare checks the GPS by itself", () => {
   assert.equal(page.gpsCheck({ ...STATE, gpsOn: false, gpsFix: false }).detail, "The GPS switches on when pairing starts.");
 });
 
-test("every way a pairing can end without a camera is explained, the older-camera box only where it helps", () => {
+test("every way a pairing can end without a camera is explained, the tips and the older-camera box where they help",
+  () => {
   const results = firmwareValues("pairResultValue").filter((result) => !["none", "paired", "cancelled"].includes(result));
   assert.deepEqual(results, ["not_saved", "not_possible", "no_gps_fix", "no_camera", "not_in_pairing_mode", "failed"]);
   for (const result of [...results, "wifi-given-up"]) {
     assert.doesNotMatch(page.failedText(result).text, /^The card ended the pairing/, result);
   }
-  const older = [...results, "wifi-given-up"].filter((result) => page.failedText(result).older);
-  assert.deepEqual(older, ["no_camera", "not_in_pairing_mode", "failed"]);
+  const camera = [...results, "wifi-given-up"].filter((result) => page.failedText(result).camera);
+  assert.deepEqual(camera, ["no_camera", "not_in_pairing_mode", "failed"]);
   assert.deepEqual(json(page.failedText("no_camera")), { title: "The camera did not answer",
-    text: "The card looked for 2 minutes and did not find a camera in pairing mode.", older: true });
-  assert.match(page.failedText("failed").text, /^The camera did not take the card in 3 attempts\./);
+    text: "The card looked for 2 minutes and did not find a camera in pairing mode.", camera: true });
+  assert.equal(page.failedText("failed").text, "The camera did not take the card in 3 attempts.");
+  assert.deepEqual(json(page.failedText("cancelled")), { title: "Pairing cancelled", text: "", camera: false });
+  // A camera that lists the card from an earlier pairing refuses it as other failures do: the first tip.
+  assert.match(/<ul id="failed-tips" class="tips">\s*<li>([\s\S]*?)<\/li>/.exec(screenHtml("failed"))[1]
+    .replace(/\s+/g, " "), /^The camera may still list T1000&#8209;E from an earlier pairing &ndash; delete it there and try again\.$/);
   assert.equal(page.failedText("failed", "no connection to the camera after 5 quick retries (last: link not " +
     "established (0x3e))").text, "The card could not connect to the camera: the connection never came up.");
   assert.equal(page.failedText("failed", "all attempts failed").text, page.failedText("failed").text);
@@ -1722,11 +1729,32 @@ test("How pairing works folds on each new screen; a failed pairing of a paired c
   await ui["pair-start"].fire("click");
   assert.deepEqual(shownScreen(ui), ["camera"]);
   assert.equal(ui["pairing-help"].open, false);
-  answers.status = statusWith({ pair_result: "no_camera" }); // the card still has its camera
+  answers.status = statusWith({ pair_result: "failed" }); // the card still has its camera
   await ui.refresh.fire("click");
   assert.deepEqual(shownScreen(ui), ["failed"]);
+  assert.equal(ui["failed-title"].textContent, "Pairing did not work");
   assert.equal(ui["failed-paired"].hidden, false);
   assert.match(screenHtml("failed"), /<p id="failed-paired" class="hidden">Your camera stays paired as before\.<\/p>/);
+  assert.equal(ui["failed-tips"].hidden, false);
+  // A card that keeps its camera: Pair again from Prepare, or keep the camera; not Try again.
+  assert.deepEqual([ui["pair-retry"].hidden, ui["failed-again"].hidden, ui["failed-keep"].hidden], [true, false, false]);
+  await ui["failed-keep"].fire("click");
+  assert.deepEqual(shownScreen(ui), ["done"]);
+  // Cancelled: the same screen, its title says why.
+  await ui["pair-again"].fire("click");
+  answers.status = statusWith({ pair: "searching" });
+  await ui["pair-start"].fire("click");
+  answers["pair off"] = PAIR_OFF_ANSWER;
+  answers.status = statusWith({ pair_result: "cancelled" });
+  await ui["pair-stop"].fire("click");
+  assert.deepEqual(shownScreen(ui), ["failed"]);
+  assert.equal(ui["failed-title"].textContent, "Pairing cancelled");
+  assert.equal(ui["failed-text"].hidden, true);
+  assert.equal(ui["failed-paired"].hidden, false);
+  assert.equal(ui["failed-tips"].hidden, true);
+  assert.equal(ui["pair-status"].textContent, ""); // the title says it
+  await ui["failed-again"].fire("click");
+  assert.deepEqual(shownScreen(ui), ["prepare"]);
   await ui.disconnect.fire("click");
 });
 
@@ -2199,6 +2227,26 @@ test("in the app: after a failed Wi-Fi step, a card that stops waiting is shown 
   assert.equal(ui["pair-retry"].disabled, false);
   await ui.disconnect.fire("click");
 });
+
+test("in the app: a Wi-Fi step cancelled on a paired card is not shown as paired, and the card keeps its camera",
+  async () => {
+    const waiting = statusWith({ link: "off", pair: "waiting_wifi" }, STATUS_GPS_HOLD);
+    const cancelled = statusWith({ link: "on", pair_result: "cancelled" }, STATUS_GPS_HOLD);
+    const answers = { v: VERSION_1_4, p: CARD_ID_ANSWER, "pair off": PAIR_OFF_ANSWER,
+      status: (app) => (app.calls.includes("send pair off") ? cancelled : waiting) };
+    const app = simulatedApp(["/dev/ttyACM0"], answers);
+    app.registerOutcome = "wait";
+    const ui = openPage(null, { app });
+    await ui.connect.fire("click"); // the card waits for the Wi-Fi step: the app goes on with it
+    await until(() => app.registered.length === 1);
+    await ui["pair-stop"].fire("click");
+    await until(() => !ui["pair-screen-failed"].hidden);
+    assert.equal(ui["failed-title"].textContent, "Pairing cancelled");
+    assert.equal(ui["failed-paired"].hidden, false);
+    await ui["failed-keep"].fire("click");
+    assert.deepEqual(shownScreen(ui), ["done"]);
+    await ui.disconnect.fire("click");
+  });
 
 test("in the app: a cancelled Wi-Fi step stops the card's pairing", async () => {
   const cancelledWhenAsked = (app) => (app.calls.includes("send pair off") ? PAIR_CANCELLED : WAITING_WIFI);

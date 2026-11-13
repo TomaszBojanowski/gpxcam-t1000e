@@ -235,12 +235,18 @@
             <p id="failed-text"></p>
             <p id="failed-paired" class="hidden">Your camera stays paired as before.</p>
             <ul id="failed-tips" class="tips">
+              <li>The camera may still list T1000&#8209;E from an earlier pairing &ndash; delete it there and try
+                  again.</li>
               <li>Start pairing on the camera only when you are told to &ndash; some cameras stay in pairing mode
                   for just 30 seconds.</li>
               <li>Keep the camera within a metre of the card.</li>
               <li>Check that no phone is connected to the camera.</li>
             </ul>
-            <div class="row"><button id="pair-retry" type="button">Try again</button></div>
+            <div class="row">
+              <button id="pair-retry" type="button">Try again</button>
+              <button id="failed-again" type="button" class="hidden">Pair again</button>
+              <button id="failed-keep" type="button" class="secondary hidden">Keep the current camera</button>
+            </div>
           </div>
           <div id="older-box" class="older-box">
             <h3>An older camera? (S5, S1, GH5, GH6, G9, G100&hellip;)</h3>

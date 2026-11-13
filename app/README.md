@@ -39,7 +39,7 @@ phone.*
 
 *Paired.*
 
-![A pairing that found no camera: "The camera did not answer", "The card looked for 2 minutes and did not find a camera in pairing mode.", three tips and Try again; below it "An older camera? (S5, S1, GH5, GH6, G9, G100…)" with Pair as an older camera](../docs/images/app-pair-failed.png)
+![A pairing that found no camera: "The camera did not answer", "The card looked for 2 minutes and did not find a camera in pairing mode.", four tips (the first: the camera may still list T1000-E from an earlier pairing) and Try again; below it "An older camera? (S5, S1, GH5, GH6, G9, G100…)" with Pair as an older camera](../docs/images/app-pair-failed.png)
 
 *No camera found: why, what to check, and the only place that offers pairing as with an older camera.*
 
