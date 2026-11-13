@@ -102,7 +102,13 @@ bool answers(Request request, uint16_t handle, bool *accepted)
 
 uint16_t status(Request request, uint16_t handle)
 {
-    return matches(camera.refuse, request, handle) ? camera.refuseStatus : BLE_GATT_STATUS_SUCCESS;
+    if (!matches(camera.refuse, request, handle))
+        return BLE_GATT_STATUS_SUCCESS;
+    if (camera.refuse.skip > 0) {
+        camera.refuse.skip--;
+        return BLE_GATT_STATUS_SUCCESS;
+    }
+    return camera.refuseStatus;
 }
 
 void addNewer(camera_link::Event *event, camera_link::NewerCharacteristic which, uint16_t handle, uint8_t properties)

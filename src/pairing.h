@@ -10,6 +10,10 @@
 
 namespace pairing {
 
+// The GPS stays on for a pairing to come, so that it skips the wait for GPS time: after a session that
+// did not pair (another try), and after 'pair prepare' (the card page sends it on connecting).
+constexpr uint32_t GPS_HOLD_MS = 600000;
+
 // WaitingForWifi: the older dialect; the card has introduced itself and waits for the one-time
 // Wi-Fi registration a computer does (the desktop app). 'pair' enters it after it finds the camera
 // has no newer-dialect service; 'pair older' uses it throughout.

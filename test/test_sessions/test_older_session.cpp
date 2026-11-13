@@ -22,7 +22,7 @@ Reason runLasting()
 }
 
 // The steps of an older connection, as the card logs them.
-const char *const STEPS[] = {"older: connected", "older: MTU", "older: handles", "older: key read", " written",
+const char *const STEP_LINES[] = {"older: connected", "older: MTU", "older: handles", "older: key read", " written",
                              "older: notification", "older: the camera knows the card", "older: the camera took"};
 
 } // namespace
@@ -55,13 +55,6 @@ void test_older_session_without_01_is_a_card_not_taken_after_15_s()
     TEST_ASSERT_FALSE(fake::linkUp());
 }
 
-void test_older_session_refused_identifier_is_rejected()
-{
-    fake::camera.refuse = {fake::Request::Write, fake::OLDER_DEVICE_ID};
-    TEST_ASSERT_EQUAL(Reason::Refused, runLasting());
-    TEST_ASSERT_FALSE(fake::linkUp());
-}
-
 // A lasting connection: once the camera takes the card, the open connection is the caller's (link_control
 // sends the locations); the session sends none and its cancel() no longer closes it.
 void test_older_session_hands_a_lasting_connection_over()
@@ -81,7 +74,7 @@ void test_older_session_hands_a_lasting_connection_over()
 void test_older_session_only_sends_the_steps_of_a_lasting_connection()
 {
     TEST_ASSERT_EQUAL(Reason::Accepted, runLasting());
-    for (const char *step : STEPS) {
+    for (const char *step : STEP_LINES) {
         TEST_ASSERT_TRUE_MESSAGE(fake::logged(step), step);
         TEST_ASSERT_FALSE_MESSAGE(fake::kept(step), step);
     }
@@ -95,7 +88,7 @@ void test_older_session_keeps_the_steps_of_a_pairing()
     TEST_ASSERT_TRUE(older_session::start(fake::cameraIn(lumix::STATE_PAIRING), fake::record.uuid, false));
     TEST_ASSERT_TRUE(fake::runSession(older_session::poll));
     TEST_ASSERT_EQUAL(Reason::Accepted, camera_connection::endReason());
-    for (const char *step : STEPS)
+    for (const char *step : STEP_LINES)
         TEST_ASSERT_TRUE_MESSAGE(fake::kept(step), step);
 }
 
@@ -105,7 +98,6 @@ void runOlderSessionTests()
     RUN_TEST(test_older_session_takes_01_that_comes_before_the_device_name);
     RUN_TEST(test_older_session_takes_01_on_the_time_notify);
     RUN_TEST(test_older_session_without_01_is_a_card_not_taken_after_15_s);
-    RUN_TEST(test_older_session_refused_identifier_is_rejected);
     RUN_TEST(test_older_session_hands_a_lasting_connection_over);
     RUN_TEST(test_older_session_only_sends_the_steps_of_a_lasting_connection);
     RUN_TEST(test_older_session_keeps_the_steps_of_a_pairing);

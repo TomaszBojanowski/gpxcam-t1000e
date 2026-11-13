@@ -116,6 +116,7 @@ enum class Descriptors { NoCccd, Cccd, CccdInSecondAnswer }; // after the GPS no
 struct Trigger {
     Request request = Request::None;
     uint16_t handle = 0;
+    uint8_t skip = 0; // the first `skip` requests that match go through
 };
 
 struct Camera {
@@ -163,6 +164,34 @@ constexpr uint16_t OLDER_TIME = 0x004C;
 constexpr uint16_t OLDER_TIME_NOTIFY = 0x004E;
 constexpr uint16_t OLDER_LOCATION = 0x0050;
 constexpr uint16_t OLDER_LOCATION_NOTIFY = 0x0052;
+
+// The steps of an introduction after connecting, each started by its request: the camera can stay silent,
+// disconnect or refuse at it.
+struct Step {
+    Request request;
+    uint16_t handle;
+    const char *name; // as the failure texts say it
+};
+inline constexpr Step NEWER_STEPS[] = {
+    {Request::Mtu, 0, "MTU"},
+    {Request::Service, 0, "service"},
+    {Request::Characteristics, 0, "characteristics"},
+    {Request::Read, KEY, "key"},
+    {Request::Write, DEVICE_ID, "identifier"},
+    {Request::Write, APP_NAME, "app name"},
+    {Request::Write, DEVICE_NAME, "device name"},
+    {Request::Write, TIME, "time"},
+};
+inline constexpr Step OLDER_STEPS[] = {
+    {Request::Mtu, 0, "MTU"},
+    {Request::Characteristics, 0, "characteristics"},
+    {Request::Read, OLDER_KEY, "key"},
+    {Request::Write, OLDER_DEVICE_ID, "identifier"},
+    {Request::Write, OLDER_DEVICE_NAME, "device name"},
+    {Request::Read, OLDER_CAMERA_NAME, "camera name"},
+    {Request::Read, OLDER_CAMERA_TEXT, "camera text"},
+    {Request::Write, OLDER_TIME, "time"},
+};
 static_assert(Camera().knownAfter == OLDER_DEVICE_NAME && Camera().knownOn == OLDER_LOCATION_NOTIFY, "the default 01");
 
 // What the card asked camera_link, in order: "connect", "close", "mtu", "service", "characteristics",

@@ -18,49 +18,21 @@ using session_end::Reason;
 
 namespace {
 
-struct Step {
-    Request request;
-    uint16_t handle;
-    const char *name;
-};
-
-// The steps after connecting; the camera stays silent or disconnects at the request that starts each.
-const Step NEWER_STEPS[] = {
-    {Request::Mtu, 0, "MTU"},
-    {Request::Service, 0, "service"},
-    {Request::Characteristics, 0, "characteristics"},
-    {Request::Read, fake::KEY, "key"},
-    {Request::Write, fake::DEVICE_ID, "identifier"},
-    {Request::Write, fake::APP_NAME, "app name"},
-    {Request::Write, fake::DEVICE_NAME, "device name"},
-    {Request::Write, fake::TIME, "time"},
-};
-const Step OLDER_STEPS[] = {
-    {Request::Mtu, 0, "MTU"},
-    {Request::Characteristics, 0, "characteristics"},
-    {Request::Read, fake::OLDER_KEY, "key"},
-    {Request::Write, fake::OLDER_DEVICE_ID, "identifier"},
-    {Request::Write, fake::OLDER_DEVICE_NAME, "device name"},
-    {Request::Read, fake::OLDER_CAMERA_NAME, "camera name"},
-    {Request::Read, fake::OLDER_CAMERA_TEXT, "camera text"},
-    {Request::Write, fake::OLDER_TIME, "time"},
-};
-
 struct Dialect {
     const char *name;
     fake::Dialect camera;
     bool (*start)(const camera_list::Report &camera, const uint8_t *cardUuid, bool keepOpen);
     bool (*poll)();
     void (*cancel)();
-    const Step *steps;
+    const fake::Step *steps;
     size_t stepCount;
 };
 
 const Dialect DIALECTS[] = {
-    {"newer", fake::Dialect::Newer, newer_session::start, newer_session::poll, newer_session::cancel, NEWER_STEPS,
-     sizeof(NEWER_STEPS) / sizeof(NEWER_STEPS[0])},
-    {"older", fake::Dialect::Older, older_session::start, older_session::poll, older_session::cancel, OLDER_STEPS,
-     sizeof(OLDER_STEPS) / sizeof(OLDER_STEPS[0])},
+    {"newer", fake::Dialect::Newer, newer_session::start, newer_session::poll, newer_session::cancel,
+     fake::NEWER_STEPS, sizeof(fake::NEWER_STEPS) / sizeof(fake::NEWER_STEPS[0])},
+    {"older", fake::Dialect::Older, older_session::start, older_session::poll, older_session::cancel,
+     fake::OLDER_STEPS, sizeof(fake::OLDER_STEPS) / sizeof(fake::OLDER_STEPS[0])},
 };
 
 const Dialect &other(const Dialect &dialect)
@@ -158,7 +130,7 @@ void test_cancel_in_every_step_closes_the_connection_and_lets_the_next_session_s
 {
     for (const Dialect &dialect : DIALECTS) {
         for (size_t i = 0; i < dialect.stepCount; i++) {
-            const Step &step = dialect.steps[i];
+            const fake::Step &step = dialect.steps[i];
             fake::reset();
             fake::camera.silent = {step.request, step.handle};
             TEST_ASSERT_TRUE_MESSAGE(start(dialect), step.name);
@@ -176,7 +148,7 @@ void test_a_disconnect_in_every_step_ends_the_session_early()
 {
     for (const Dialect &dialect : DIALECTS) {
         for (size_t i = 0; i < dialect.stepCount; i++) {
-            const Step &step = dialect.steps[i];
+            const fake::Step &step = dialect.steps[i];
             fake::reset();
             fake::camera.disconnectAt = {step.request, step.handle};
             fake::camera.disconnectReason = BLE_HCI_CONNECTION_TIMEOUT;
@@ -232,8 +204,8 @@ void test_a_lasting_connection_is_given_to_the_link()
     }
 }
 
-// Pairing: the newer session closes the connection at the end; the older keeps it until pairing cancels it
-// (pairing.cpp).
+// Pairing: the newer session closes the connection at the end and waits for its Disconnected, so that
+// 'pair' can switch to the older dialect at once; the older keeps it until pairing closes it (pairing.cpp).
 void test_a_pairing_session_has_the_connection_until_it_ends()
 {
     for (const Dialect &dialect : DIALECTS) {
@@ -247,6 +219,20 @@ void test_a_pairing_session_has_the_connection_until_it_ends()
         }
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), dialect.name);
         assertNextSessionStarts(dialect, dialect.name);
+    }
+}
+
+// The second time write of a lasting connection only makes the zone of the first count: the newer dialect
+// lets a refusal of it go; in the older one every refused write is a refusal, which the link counts.
+void test_a_refused_second_time_write_is_a_refusal_only_in_the_older_dialect()
+{
+    for (const Dialect &dialect : DIALECTS) {
+        fake::reset();
+        const bool older = dialect.camera == fake::Dialect::Older;
+        fake::camera.refuse = {Request::Write, older ? fake::OLDER_TIME : fake::TIME, 1};
+        TEST_ASSERT_TRUE_MESSAGE(start(dialect), dialect.name);
+        TEST_ASSERT_EQUAL_MESSAGE(older ? Reason::Refused : Reason::Accepted, run(dialect), dialect.name);
+        TEST_ASSERT_EQUAL_MESSAGE(2, fake::askedCount(older ? "write 004c" : "write 001a"), dialect.name);
     }
 }
 
@@ -296,6 +282,7 @@ void runCameraConnectionTests()
     RUN_TEST(test_a_request_for_encryption_is_logged_and_the_session_goes_on);
     RUN_TEST(test_a_lasting_connection_is_given_to_the_link);
     RUN_TEST(test_a_pairing_session_has_the_connection_until_it_ends);
+    RUN_TEST(test_a_refused_second_time_write_is_a_refusal_only_in_the_older_dialect);
     RUN_TEST(test_the_mtu_is_the_cameras_up_to_the_cards);
     RUN_TEST(test_the_time_packet_is_fresh_or_from_the_last_fix);
 }

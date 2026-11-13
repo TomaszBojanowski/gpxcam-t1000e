@@ -29,23 +29,11 @@ Reason run(uint32_t *tookMs = nullptr)
     return camera_connection::endReason();
 }
 
-// The steps after the connection, the request that starts each and its time limit.
-struct StepCase {
-    Request request;
-    uint16_t handle;
-    const char *name;
-    uint32_t limitMs;
-};
-const StepCase STEPS[] = {
-    {Request::Mtu, 0, "MTU", 3000},
-    {Request::Service, 0, "service", 5000},
-    {Request::Characteristics, 0, "characteristics", 5000},
-    {Request::Read, fake::KEY, "key", 5000},
-    {Request::Write, fake::DEVICE_ID, "identifier", 5000},
-    {Request::Write, fake::APP_NAME, "app name", 5000},
-    {Request::Write, fake::DEVICE_NAME, "device name", 5000},
-    {Request::Write, fake::TIME, "time", 5000},
-};
+// The time limit of a step after connecting (camera_link.h).
+uint32_t limitOf(const fake::Step &step)
+{
+    return step.request == Request::Mtu ? camera_link::MTU_TIMEOUT_MS : camera_link::REQUEST_TIMEOUT_MS;
+}
 
 } // namespace
 
@@ -77,7 +65,7 @@ void test_session_with_the_clock_off_writes_no_time()
 
 void test_session_ends_when_the_camera_disconnects_in_any_step()
 {
-    for (const StepCase &step : STEPS) {
+    for (const fake::Step &step : fake::NEWER_STEPS) {
         for (const uint8_t reason : {BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION, BLE_HCI_CONNECTION_TIMEOUT}) {
             fake::reset();
             fake::camera.disconnectAt = {step.request, step.handle};
@@ -94,16 +82,16 @@ void test_session_ends_when_the_camera_disconnects_in_any_step()
 
 void test_session_ends_when_a_step_gets_no_answer()
 {
-    for (const StepCase &step : STEPS) {
+    for (const fake::Step &step : fake::NEWER_STEPS) {
         fake::reset();
         fake::camera.silent = {step.request, step.handle};
         TEST_ASSERT_TRUE(startSession(false));
         uint32_t took = 0;
         TEST_ASSERT_EQUAL_MESSAGE(Reason::Failed, run(&took), step.name);
         // The step's limit, then the session waits for the end of the connection it closes.
-        TEST_ASSERT_UINT32_WITHIN_MESSAGE(2 * fake::LOOP_STEP_MS, step.limitMs + fake::CLOSE_MS, took, step.name);
+        TEST_ASSERT_UINT32_WITHIN_MESSAGE(2 * fake::LOOP_STEP_MS, limitOf(step) + fake::CLOSE_MS, took, step.name);
         char expected[64];
-        snprintf(expected, sizeof(expected), "%s: no answer in %lu s", step.name, (unsigned long)(step.limitMs / 1000));
+        snprintf(expected, sizeof(expected), "%s: no answer in %lu s", step.name, (unsigned long)(limitOf(step) / 1000));
         TEST_ASSERT_EQUAL_STRING(expected, camera_connection::failure());
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), step.name); // closed by the card
     }
@@ -119,21 +107,6 @@ void test_session_without_an_answer_to_connect_cancels_it_after_5_s()
     TEST_ASSERT_EQUAL_STRING("connect: no answer in 5 s", camera_connection::failure());
     TEST_ASSERT_EQUAL(1, fake::askedCount("close"));
     TEST_ASSERT_FALSE(fake::connectionWanted()); // one that comes up now is closed at once
-}
-
-void test_session_tells_a_link_that_was_not_established()
-{
-    fake::camera.answer = fake::Answer::NotEstablished;
-    TEST_ASSERT_TRUE(startSession(false));
-    TEST_ASSERT_EQUAL(Reason::NotEstablished, run());
-}
-
-void test_session_finds_no_newer_dialect_on_an_older_camera()
-{
-    fake::camera.dialect = fake::Dialect::Older;
-    TEST_ASSERT_TRUE(startSession(false));
-    TEST_ASSERT_EQUAL(Reason::NoNewerService, run());
-    TEST_ASSERT_FALSE(fake::linkUp());
 }
 
 void test_session_takes_another_error_of_the_service_search_as_a_failure_only()
@@ -158,13 +131,6 @@ void test_session_refused_time_means_an_unknown_card_but_other_refusals_do_not()
     TEST_ASSERT_EQUAL_STRING("identifier: refused (GATT 0x0103)", camera_connection::failure());
 }
 
-void test_session_never_connects_to_a_camera_in_standby()
-{
-    fake::gpsOn = fake::gpsFix = true;
-    TEST_ASSERT_FALSE(newer_session::start(fake::cameraIn(lumix::STATE_STANDBY), fake::record.uuid, true));
-    TEST_ASSERT_EQUAL(0, fake::askedCount("connect"));
-}
-
 void runNewerSessionTests()
 {
     RUN_TEST(test_session_introduces_the_card_and_closes_the_connection);
@@ -173,9 +139,6 @@ void runNewerSessionTests()
     RUN_TEST(test_session_ends_when_the_camera_disconnects_in_any_step);
     RUN_TEST(test_session_ends_when_a_step_gets_no_answer);
     RUN_TEST(test_session_without_an_answer_to_connect_cancels_it_after_5_s);
-    RUN_TEST(test_session_tells_a_link_that_was_not_established);
-    RUN_TEST(test_session_finds_no_newer_dialect_on_an_older_camera);
     RUN_TEST(test_session_takes_another_error_of_the_service_search_as_a_failure_only);
     RUN_TEST(test_session_refused_time_means_an_unknown_card_but_other_refusals_do_not);
-    RUN_TEST(test_session_never_connects_to_a_camera_in_standby);
 }

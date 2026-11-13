@@ -462,6 +462,8 @@ void handleEvent(const camera_link::Event &event)
         }
         break;
     case Step::TimeAgain:
+        // newer_session lets a refusal of this write go (endTimeAgain()); here every refused write is a
+        // refusal (session_end.h), and the link stops only after three in a row (link_policy).
         if (event.type == EventType::WriteDone && writeAccepted(event, camera_link::OLDER_TIME))
             accept();
         break;
@@ -512,8 +514,11 @@ bool poll()
     camera_link::Event event;
     while (step != Step::Idle && step != Step::Done && camera_link::nextEvent(&event))
         handleEvent(event);
+    // Done: the connection is the caller's. newer_session closes it and waits for its Disconnected, so that
+    // 'pair' can switch to the older dialect at once; nothing follows an older session: the link keeps the
+    // connection, and pairing closes it right after saving the pairing (pairing.cpp finish()).
     if (step == Step::Done) {
-        if (keepOpen) { // the connection is the caller's now; its events too
+        if (keepOpen) { // its events are the link's too
             step = Step::Idle;
             camera_connection::release();
         }
