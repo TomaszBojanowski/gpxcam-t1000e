@@ -1898,15 +1898,15 @@ const OLDER_IDENTITY = "4D454930-0100-1000-8001-A1B2C3D4E5F6 T1000-E";
 // The card's state while it waits for the Wi-Fi step.
 const WAITING_WIFI = statusWith({ ...NOT_PAIRED, pair: "waiting_wifi" }, STATUS_GPS_HOLD);
 
-// statusAfterStart: the card's state from 'pair older' on (by default it stays idle).
-async function olderWizard(registerOutcome, statusAfterStart = null) {
+// statusAfterStart: the card's state from 'pair older' on.
+async function olderWizard(registerOutcome, statusAfterStart) {
   const answers = { v: VERSION_1_4, status: statusWith(NOT_PAIRED, STATUS_GPS_HOLD), "pair older": OLDER_STARTED,
     "pair off": PAIR_OFF_ANSWER, "pair prepare": PREPARE_ANSWER };
   const app = simulatedApp(["/dev/ttyACM0"], answers);
   app.registerOutcome = registerOutcome;
   const ui = openPage(null, { app });
   await ui.connect.fire("click");
-  if (statusAfterStart) answers.status = statusAfterStart;
+  answers.status = statusAfterStart;
   await ui["pair-older"].fire("click");
   return { app, ui, answers };
 }
@@ -1971,6 +1971,44 @@ test("in the app: after a failed Wi-Fi step, Cancel cancels without a red messag
   await ui.disconnect.fire("click");
 });
 
+test("in the app: unplugged in the Wi-Fi step, the step stops; connected again, it goes on and Cancel stops it",
+  async () => {
+    const cancelledWhenAsked = (app) => (app.calls.includes("send pair off") ? PAIR_CANCELLED : WAITING_WIFI);
+    const answers = { v: VERSION_1_4, status: cancelledWhenAsked, p: CARD_ID_ANSWER, "pair off": PAIR_OFF_ANSWER };
+    const app = simulatedApp(["/dev/ttyACM0"], answers);
+    app.registerOutcome = "wait";
+    const ui = openPage(null, { app });
+    await ui.connect.fire("click"); // the card waits for the Wi-Fi step: the app goes on with it
+    await until(() => app.registered.length === 1);
+    app.unplug();
+    await until(() => app.calls.includes("cancel_older")); // the step stops with its card
+    await ui.connect.fire("click"); // plugged in again: the card still waits
+    await until(() => app.registered.length === 2);
+    assert.equal(ui["pair-stop"].disabled, false);
+    await ui["pair-stop"].fire("click");
+    await until(() => !ui["pair-screen-prepare"].hidden);
+    assert.equal(app.calls.filter((call) => call === "cancel_older").length, 2);
+    assert.equal(ui["pair-status"].textContent, "Pairing cancelled.");
+    await ui.disconnect.fire("click");
+  });
+
+test("in the app: Pair as an older camera keeps its screen until the card answers, and a refusal says why",
+  async () => {
+    const answers = { v: VERSION_1_4, status: statusWith({ pair: "searching" }, STATUS_GPS_HOLD),
+      "pair older": ["pair: not possible - BLE or the pairing file is not available\r\n"] };
+    const { ui } = await connectedApp(answers);
+    answers.status = statusWith({ pair_result: "no_camera" }, STATUS_GPS_HOLD); // the card still has its camera
+    await ui.refresh.fire("click");
+    assert.deepEqual(shownScreen(ui), ["failed"]);
+    answers.status = statusWith({ pair_result: "not_possible" }, STATUS_GPS_HOLD);
+    const pairing = ui["pair-older"].fire("click");
+    assert.deepEqual(shownScreen(ui), ["failed"]); // not the paired camera's screen before the card answers
+    await until(() => !ui["pair-start"].disabled);
+    assert.equal(ui["failed-title"].textContent, "The card cannot pair now");
+    await pairing;
+    await ui.disconnect.fire("click");
+  });
+
 // Pair again used to leave its last stage ("Connecting to the camera...") in a second section of its own.
 test("in the app: Pair again shows Prepare, Keep the current camera goes back, and Pair runs to the end", async () => {
   const answers = { v: VERSION_1_4, status: STATUS_GPS_HOLD, pair: PAIR_STARTED };
@@ -1999,8 +2037,9 @@ test("in the app: Pair as an older camera follows the card on the same screens, 
     "pair older": ["link: off\r\npair: older started - waiting for GPS time (up to 120 s)\r\n"],
     "pair off": PAIR_OFF_ANSWER };
   const { app, ui } = await connectedApp(answers);
+  answers.status = statusWith({ ...NOT_PAIRED, pair: "waiting_gps" }, STATUS_GPS_HOLD); // as the card answers
   const run = ui["pair-older"].fire("click");
-  await until(() => app.calls.includes("send pair older"));
+  await until(() => !ui["pair-screen-camera"].hidden); // the card waits for GPS time
   assert.equal(ui["pair-stop-row"].hidden, false);
   assert.equal(ui["pair-start"].disabled, true);
   answers.status = statusWith({ ...NOT_PAIRED, pair: "searching" }, STATUS_GPS_HOLD);

@@ -1488,6 +1488,25 @@ const PAIR_SEARCH_MS = 120 * 1000;
 // pairAgain: Pair again was chosen on a paired card. introducing: an older camera's introduction the page
 // saw start has not reached the Wi-Fi step yet (the card is in waiting_wifi for all of it).
 // { screen, variant }: camera "gps", "search" or "pause"; failed "no-camera" or "other".
+// What the page knows of one pairing (startPage()): a new object when a pairing starts and when the card goes.
+//   kind: what Try again repeats, "pair" or "older" (Pair as an older camera);
+//   watching: the card is pairing, or was asked to: how it ends is shown;
+//   ended, endedReason: how it ended (pairingScreen(), failedText()), and the card's own words when it gave up;
+//   pairAgain: Pair again was chosen on a paired card: Prepare shows;
+//   older, introducing: the camera is an older one, and its introduction runs before its Wi-Fi step;
+//   nearby: the card sees a camera, but not in pairing mode;
+//   search, searchMs: the card's search for the camera, { startsAt, lengthMs }, and how long one lasts;
+//   stagesDone: of the connection (connectStages());
+//   note: [text, kind] on the status line (cancelled, forgotten, no answer);
+//   running, cancelled: a run of the older-camera wizard holds the buttons, and Cancel was pressed in it;
+//   wifiText, wifiAccepted, wifiRetry: the Wi-Fi step's progress, the camera took the card, it failed and
+//   can be tried again.
+function newPairing(kind = "pair") {
+  return { kind, watching: false, ended: null, endedReason: null, pairAgain: false, older: false,
+    introducing: false, nearby: false, search: null, searchMs: PAIR_SEARCH_MS, stagesDone: 0, note: null,
+    running: false, cancelled: false, wifiText: null, wifiAccepted: false, wifiRetry: false };
+}
+
 function pairingScreen(state, { ended = null, pairAgain = false, introducing = false } = {}) {
   switch (state.pair) {
     case "idle": break;
@@ -2073,26 +2092,9 @@ function startPage() {
   let updatesSetting = null; // the same
   let oldVersion = null; // gpxcam before 1.3.0: the page only sets its time zone
   let lastState = null; // the card's last answer to 'status'
-  // A pairing as the page follows it: the card's 'status' gives its phase, the card's lines the rest.
-  let watchingPairing = false; // a pairing ran since the last answer: how it ends is shown
-  let ended = null; // how the last pairing the page followed ended (pairingScreen())
-  let endedReason = null; // the card's own words when it gave up
-  let pairAgain = false; // Pair again was chosen on a paired card: Prepare shows
-  let pairKind = "pair"; // what Try again repeats: "pair", or "older" (Pair as an older camera)
-  let older = false; // the pairing is with an older camera: its Wi-Fi step comes
-  let introducing = false; // an older camera's introduction runs, before its Wi-Fi step
-  let nearby = false; // the card saw a camera, but not in pairing mode
-  let search = null; // the card's search for the camera, { startsAt, lengthMs }, when its line was seen
-  let searchMs = PAIR_SEARCH_MS; // how long a search lasts, as the card said
-  let stagesDone = 0; // of the connection (connectStages())
-  let pairNote = null; // [text, kind] on the status line around a pairing (cancelled, forgotten, no answer)
+  let pairing = newPairing(); // the card's 'status' gives its phase, its lines and the wizard the rest
   let countdownTimer = null;
   let helpScreen = null; // the screen How pairing works was last shown on: folded again on another one
-  let olderCancelled = false; // the user pressed Cancel during older-camera pairing
-  let olderRunning = false; // the older-camera pairing or a Wi-Fi step is under way
-  let olderRetry = false; // the last Wi-Fi step failed: it can be tried again
-  let wifiText = null; // [text, kind] of the Wi-Fi step, shown until the pairing ends
-  let wifiAccepted = false; // the camera accepted the card; the card finishes the pairing by itself
   const transport = chooseTransport(navigator, window);
   const inApp = transport !== null && transport.name === "app"; // only the app can do the Wi-Fi step
 
@@ -2134,7 +2136,7 @@ function startPage() {
     ui.pairAgain.disabled = locked || pairingUnderWay() || storageDamaged();
     ui.pairKeep.disabled = locked;
     ui.wifiRetry.disabled = locked;
-    ui.pairStop.disabled = card === null || (busy && !olderRunning); // it also stops a Wi-Fi step
+    ui.pairStop.disabled = card === null || (busy && !pairing.running); // it also stops a Wi-Fi step
     for (const button of [ui.forget, ui.forgetYes]) button.disabled = locked || storageDamaged();
     ui.copyLog.disabled = locked;
     ui.scan.disabled = locked;
@@ -2143,11 +2145,11 @@ function startPage() {
 
   // Screen 2's countdown, while it shows a search whose start the page saw.
   const showCountdown = () => {
-    const left = searchLeftMs(search, Date.now());
+    const left = searchLeftMs(pairing.search, Date.now());
     ui.pairCountdown.classList.toggle("hidden", left === null);
     if (left === null) return;
     ui.pairCountdownTime.textContent = countdownText(left);
-    ui.pairCountdownBar.max = search.lengthMs / 1000;
+    ui.pairCountdownBar.max = pairing.search.lengthMs / 1000;
     ui.pairCountdownBar.value = Math.ceil(left / 1000);
     ui.pairCountdownBar.setAttribute("aria-valuetext", countdownLabel(left));
   };
@@ -2192,12 +2194,13 @@ function startPage() {
   // Screen 2: the call to start pairing on the camera (not while the card waits for GPS time); its status line.
   const showCamera = (variant) => {
     ui.pairCallout.classList.toggle("hidden", variant === "gps");
+    const { search, nearby } = pairing;
     const pauseLeftMs = variant === "pause" && search ? Math.max(0, search.startsAt - Date.now()) : null;
     return cameraStepText(variant, lastState, { nearby, pauseLeftMs });
   };
 
   const showStages = () => {
-    connectStages(Math.max(stagesDone, 1)).forEach((stage, index) => {
+    connectStages(Math.max(pairing.stagesDone, 1)).forEach((stage, index) => {
       const item = element(`connect-stage-${index + 1}`);
       item.textContent = stage.label;
       item.className = stage.state;
@@ -2208,13 +2211,13 @@ function startPage() {
   const showWifiStep = () => {
     ui.wifiApp.classList.toggle("hidden", !inApp);
     ui.wifiBrowser.classList.toggle("hidden", inApp);
-    ui.wifiRetry.classList.toggle("hidden", !inApp || !olderRetry || olderRunning || wifiAccepted);
-    if (wifiText) return wifiText;
+    ui.wifiRetry.classList.toggle("hidden", !inApp || !pairing.wifiRetry || pairing.running || pairing.wifiAccepted);
+    if (pairing.wifiText) return pairing.wifiText;
     return inApp ? [WIFI_WAIT_TEXT, "warn"] : ["", ""];
   };
 
   const showFailed = (variant) => {
-    const failed = failedText(ended, endedReason);
+    const failed = failedText(pairing.ended, pairing.endedReason);
     ui.failedTitle.textContent = failed.title;
     ui.failedText.textContent = failed.text;
     ui.failedPaired.classList.toggle("hidden", !lastState.paired); // a failed pairing keeps the camera paired
@@ -2240,15 +2243,15 @@ function startPage() {
       refreshButtons();
       return;
     }
-    const { screen, variant } = pairingScreen(lastState, { ended, pairAgain, introducing });
+    const { screen, variant } = pairingScreen(lastState, pairing);
     ui.pairBadge.textContent = pairingBadge(lastState);
     const badge = lastState.pair !== "idle" ? " pairing" : lastState.paired ? " paired" : "";
     ui.pairBadge.className = `pair-badge${badge}`;
-    showSteps(pairingSteps(screen, older));
+    showSteps(pairingSteps(screen, pairing.older));
     for (const name of PAIRING_SCREENS) element(`pair-screen-${name}`).classList.toggle("hidden", name !== screen);
     if (screen !== helpScreen) ui.pairingHelp.open = false; // opened by the user, it stays open on this screen only
     helpScreen = screen;
-    let status = pairNote || ["", ""];
+    let status = pairing.note || ["", ""];
     if (screen === "prepare") showPrepare();
     else if (screen === "camera") status = showCamera(variant);
     else if (screen === "connect") status = ["", ""];
@@ -2256,80 +2259,56 @@ function startPage() {
     else if (screen === "failed") showFailed(variant);
     if (screen === "connect") showStages();
     if (screen !== "done") ui.forgetConfirm.classList.add("hidden");
-    runCountdown(screen === "camera" && variant === "search" && search !== null);
+    runCountdown(screen === "camera" && variant === "search" && pairing.search !== null);
     setStatus(ui.pairStatus, ...status);
-    ui.pairStopRow.classList.toggle("hidden", lastState.pair === "idle" && !olderRunning);
+    ui.pairStopRow.classList.toggle("hidden", lastState.pair === "idle" && !pairing.running);
     refreshButtons();
   };
 
   // The Wi-Fi step's progress, shown until the pairing ends.
   const showWifi = (text, kind) => {
-    wifiText = [text, kind];
+    pairing.wifiText = [text, kind];
     showPairing();
-  };
-
-  // A new pairing: what the page knew of the last one goes.
-  const resetPairing = () => {
-    ended = null;
-    endedReason = null;
-    pairAgain = false;
-    older = false;
-    introducing = false;
-    nearby = false;
-    search = null;
-    stagesDone = 0;
-    pairNote = null;
-    olderRetry = false;
-    wifiText = null;
-    wifiAccepted = false;
   };
 
   // The card's lines say what its 'status' does not: when a search starts, a camera nearby, the stages.
   const followCardLine = (line) => {
-    const event = pairingEvent(line, Date.now(), searchMs);
+    const event = pairingEvent(line, Date.now(), pairing.searchMs);
     if (!event) return;
     if (event.search) {
-      search = event.search;
-      searchMs = event.search.lengthMs;
+      pairing.search = event.search;
+      pairing.searchMs = event.search.lengthMs;
     }
-    if (event.nearby) nearby = true;
-    if (event.stages) {
-      stagesDone = event.stages === 1 ? 1 : Math.max(stagesDone, event.stages); // a new attempt starts again
-      nearby = false; // the camera is in pairing mode now
+    if (event.nearby) pairing.nearby = true;
+    if (event.stages) { // a new attempt starts again; the camera is in pairing mode now
+      pairing.stagesDone = event.stages === 1 ? 1 : Math.max(pairing.stagesDone, event.stages);
+      pairing.nearby = false;
     }
     if (event.older) {
-      older = true;
-      introducing = true;
+      pairing.older = true;
+      pairing.introducing = true;
     }
     if (event.wifiStep) {
-      older = true;
-      introducing = false;
+      pairing.older = true;
+      pairing.introducing = false;
     }
-    if (event.gaveUp) endedReason = event.gaveUp;
+    if (event.gaveUp) pairing.endedReason = event.gaveUp;
     if (lastState !== null) showPairing();
   };
 
-  // Follows a pairing, also one started with the card's button, to its end.
+  // Follows a pairing, also one started with the card's button, to its end, shown until the next one.
   const followPairing = (state) => {
     if (state.pair !== "idle") {
-      if (!watchingPairing) pairNote = null;
-      watchingPairing = true;
-      if (state.pair === "waiting_wifi") older = true;
+      if (!pairing.watching) pairing.note = null;
+      pairing.watching = true;
+      if (state.pair === "waiting_wifi") pairing.older = true;
       return;
     }
-    if (!watchingPairing) return;
-    watchingPairing = false;
+    if (!pairing.watching) return;
     // After a failed Wi-Fi step the card waits up to 300 s for another; then it gives up.
-    ended = olderRetry && state.pairResult !== "paired" ? "wifi-given-up" : state.pairResult;
-    if (ended === "none") ended = null;
-    pairNote = ended === "cancelled" ? ["Pairing cancelled.", ""] : null;
-    pairAgain = false;
-    older = false;
-    introducing = false;
-    nearby = false;
-    search = null;
-    stagesDone = 0;
-    olderRetry = false;
+    const ended = pairing.wifiRetry && state.pairResult !== "paired" ? "wifi-given-up" : state.pairResult;
+    const note = ended === "cancelled" ? ["Pairing cancelled.", ""] : null;
+    pairing = { ...newPairing(pairing.kind), ended, endedReason: pairing.endedReason, note };
   };
 
   // The switch as the card has it; the time zone can be chosen unless the clock is off.
@@ -2399,10 +2378,6 @@ function startPage() {
     // and when the page finds the card waiting there (a reconnect).
     const reachedWifiStep = inApp && (lastState === null || lastState.pair !== "waiting_wifi") &&
       state.pair === "waiting_wifi";
-    if (state.pair === "idle") {
-      wifiText = null;
-      wifiAccepted = false;
-    }
     lastState = state;
     if (!busy) { // a change being saved is shown when it is done
       clockOn = state.clockOn;
@@ -2412,7 +2387,7 @@ function startPage() {
     }
     showSelected();
     followPairing(state);
-    if (reachedWifiStep && !olderRunning) resumeOlder(); // shows its first step at once
+    if (reachedWifiStep && !pairing.running) resumeOlder(); // shows its first step at once
     showPairing();
   };
 
@@ -2445,9 +2420,9 @@ function startPage() {
     setStatus(ui.soundAnswer, "");
     setStatus(ui.updatesAnswer, "");
     lastState = null;
-    watchingPairing = false;
     helpScreen = null;
-    resetPairing();
+    if (pairing.running) transport.cancelOlder(); // a Wi-Fi step for this card stops with it
+    pairing = newPairing();
     if (ui.diagStatus.className === "busy") { // a log or a scan cut short
       ui.diagProgress.classList.add("hidden");
       setStatus(ui.diagStatus, "Stopped: the connection to the card ended.", "bad");
@@ -2651,18 +2626,21 @@ function startPage() {
 
   // Sends a pairing command and then shows the card's state; the stages and the result come
   // with it (showPairing()).
-  const pairCommand = async (send) => {
+  // Sends a pairing command and follows the card's answer; the screen stays as it is until then. kind: a new
+  // pairing of that kind starts (Pair, Try again); null: the one under way goes on (Cancel).
+  const pairCommand = async (send, kind = null) => {
     const asked = card;
     if (!asked) return;
     busy = true;
     ui.forgetConfirm.classList.add("hidden");
-    pairNote = null;
+    pairing.note = null;
     showPairing();
     const lines = await send(asked).catch(() => []);
     if (card !== asked) return;
     busy = false;
-    if (lines.length === 0) pairNote = [NO_ANSWER_TEXT, "bad"];
-    else watchingPairing = true; // also when the card refused at once: the result says why
+    if (kind !== null) pairing = newPairing(kind);
+    if (lines.length === 0) pairing.note = [NO_ANSWER_TEXT, "bad"];
+    else pairing.watching = true; // also when the card refused at once: the result says why
     await refresh();
     showPairing();
   };
@@ -2677,8 +2655,8 @@ function startPage() {
     if (card !== asked) return;
     busy = false;
     ui.forgetConfirm.classList.add("hidden");
-    resetPairing();
-    pairNote = unpairAnswerText(answer);
+    pairing = newPairing();
+    pairing.note = unpairAnswerText(answer);
     await refresh();
     showPairing();
   };
@@ -2690,7 +2668,7 @@ function startPage() {
   const runWifiStep = async (asked, info, show) => {
     show(WIFI_WAIT_TEXT, "warn");
     const outcome = await transport.registerOlder(info.identity, info.name, (stage) => {
-      if (card !== asked || olderCancelled) return;
+      if (card !== asked || pairing.cancelled) return;
       if (stage === "on-network") show("On the camera's network \u2013 registering the card\u2026", "busy");
       else if (stage === "registering") {
         show("Registering \u2013 allow the connection on the camera if it asks\u2026", "busy");
@@ -2703,8 +2681,7 @@ function startPage() {
   // once; register_older returns "cancelled". A cancel before the Wi-Fi wait is seen at the wizard's
   // next check (Start: within 0.4 s; Resume: after the card's answer to 'p').
   const cancelOlder = () => {
-    if (!busy) return;
-    olderCancelled = true;
+    pairing.cancelled = true;
     setStatus(ui.pairStatus, "Cancelling\u2026", "busy");
     transport.cancelOlder();
   };
@@ -2712,17 +2689,19 @@ function startPage() {
   // A run of the wizard (Start, Resume) holds the buttons; when it ends they follow the card's state.
   const olderStarted = () => {
     busy = true;
-    olderRunning = true;
-    olderCancelled = false;
-    wifiText = null;
-    wifiAccepted = false;
-    pairNote = null;
+    pairing.running = true;
+    pairing.cancelled = false;
+    pairing.wifiText = null;
+    pairing.wifiAccepted = false;
+    pairing.note = null;
     showPairing();
   };
 
-  const olderEnded = () => {
+  // The end of a run for the card it was started with; the card's pairing went with it if the card went.
+  const olderEnded = (asked) => {
+    if (card !== asked) return;
     busy = false;
-    olderRunning = false;
+    pairing.running = false;
     showPairing();
   };
 
@@ -2731,21 +2710,18 @@ function startPage() {
   const finishWifiStep = async (asked, info) => {
     const outcome = await runWifiStep(asked, info, showWifi);
     if (outcome === null) return;
-    wifiAccepted = outcome === "accepted";
-    olderRetry = !wifiAccepted && outcome !== "cancelled";
+    pairing.wifiAccepted = outcome === "accepted";
+    pairing.wifiRetry = !pairing.wifiAccepted && outcome !== "cancelled";
     showWifi(...olderOutcomeText(outcome));
     if (outcome === "cancelled") await asked.cancelPairing().catch(() => {});
     await refresh();
   };
 
   // Pair as an older camera (app only): 'pair older', then the Wi-Fi step with the identity the card prints.
+  // The screen stays as it is until the card answers; a card that refuses at once ends at once, saying why.
   const pairOlder = async () => {
     const asked = card;
     if (!asked || busy) return;
-    resetPairing();
-    pairKind = "older";
-    older = true;
-    introducing = true;
     olderStarted();
     let info = null;
     // The card prints one line with the identity and name when it reaches the Wi-Fi step; catch it
@@ -2755,33 +2731,31 @@ function startPage() {
     });
     try {
       await asked.send("pair older");
+      if (card !== asked) return;
+      pairing = { ...newPairing("older"), older: true, introducing: true, watching: true, running: true,
+        cancelled: pairing.cancelled };
+      await refresh(); // the card's console answers in order: its state after 'pair older'
       // Wait as long as the card does (a GPS fix, then the camera, then the introduction); each status
-      // refresh shows its phase. Stop when it reaches the Wi-Fi step, gives up, is cancelled, or the
-      // time runs out.
+      // refresh shows its phase. Stop when it reaches the Wi-Fi step, ends, is cancelled, or the time runs out.
       const deadline = Date.now() + OLDER_START_TIMEOUT_MS;
-      let started = false;
-      while (!info && !olderCancelled && Date.now() < deadline) {
+      while (!info && !pairing.cancelled && pairingUnderWay() && Date.now() < deadline) {
         await sleep(400);
         if (card !== asked) return;
-        if (pairingUnderWay()) started = true;
-        else if (started) break; // the card ended its pairing before the Wi-Fi step: its result shows
       }
-      if (card !== asked) return;
-      if (info && !olderCancelled) {
+      if (info && !pairing.cancelled) {
         stopWatch();
-        watchingPairing = true; // the card reached the Wi-Fi step, also before a refresh saw it pairing
         await finishWifiStep(asked, info);
         return;
       }
-      const ranOut = !olderCancelled && pairingUnderWay();
+      const ranOut = !pairing.cancelled && pairingUnderWay();
       if (pairingUnderWay()) await asked.cancelPairing().catch(() => {}); // the card may still be waiting
       await refresh();
-      if (ranOut) pairNote = ["The card did not reach the Wi-Fi step. Try again.", "bad"];
+      if (ranOut) pairing.note = ["The card did not reach the Wi-Fi step. Try again.", "bad"];
     } catch (error) {
-      if (card === asked) pairNote = ["Pairing failed. Try again.", "bad"];
+      if (card === asked) pairing.note = ["Pairing failed. Try again.", "bad"];
     } finally {
       stopWatch();
-      olderEnded();
+      olderEnded(asked);
     }
   };
 
@@ -2795,7 +2769,7 @@ function startPage() {
     try {
       const cardId = await asked.cardId();
       if (card !== asked) return;
-      if (olderCancelled) {
+      if (pairing.cancelled) {
         showWifi("Cancelled.", "");
         await asked.cancelPairing().catch(() => {});
         await refresh();
@@ -2807,20 +2781,16 @@ function startPage() {
     } catch (error) {
       if (card === asked) showWifi("Pairing failed. Try again.", "bad");
     } finally {
-      olderEnded();
+      olderEnded(asked);
     }
   };
 
-  const startPair = () => {
-    resetPairing();
-    pairKind = "pair";
-    return pairCommand((asked) => asked.pair());
-  };
+  const startPair = () => pairCommand((asked) => asked.pair(), "pair");
 
   // Cancel while no run of the wizard is under way: the card's pairing stops, also one that waits for a
   // failed Wi-Fi step to be tried again, and its result follows like any pairing's.
   const cancelPairing = () => {
-    olderRetry = false;
+    pairing.wifiRetry = false;
     return pairCommand((asked) => asked.cancelPairing());
   };
 
@@ -2934,18 +2904,17 @@ function startPage() {
     refreshButtons();
   });
   ui.pairStart.addEventListener("click", startPair);
-  ui.pairRetry.addEventListener("click", () => (pairKind === "older" ? pairOlder() : startPair()));
+  ui.pairRetry.addEventListener("click", () => (pairing.kind === "older" ? pairOlder() : startPair()));
   ui.pairOlder.addEventListener("click", pairOlder);
   ui.pairAgain.addEventListener("click", () => {
-    resetPairing();
-    pairAgain = true;
+    pairing = { ...newPairing(), pairAgain: true };
     showPairing();
   });
   ui.pairKeep.addEventListener("click", () => {
-    pairAgain = false;
+    pairing.pairAgain = false;
     showPairing();
   });
-  ui.pairStop.addEventListener("click", () => (olderRunning ? cancelOlder() : cancelPairing()));
+  ui.pairStop.addEventListener("click", () => (pairing.running ? cancelOlder() : cancelPairing()));
   ui.wifiRetry.addEventListener("click", resumeOlder);
   ui.forget.addEventListener("click", () => ui.forgetConfirm.classList.remove("hidden"));
   ui.forgetNo.addEventListener("click", () => ui.forgetConfirm.classList.add("hidden"));
