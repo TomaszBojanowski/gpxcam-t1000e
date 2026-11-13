@@ -8,8 +8,7 @@ mod commands;
 mod lines;
 mod older_wifi;
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::ipc::Channel;
@@ -17,13 +16,11 @@ use tauri::{State, Url};
 
 /// The card the page has open, at most one.
 #[derive(Default)]
-struct OpenCard(Mutex<Option<card::Connection>>);
+struct OpenCard(Mutex<card::Slot>);
 
-/// The cancel flag of a running older-camera Wi-Fi step (register_older); cancel_older sets it.
+/// The older-camera Wi-Fi steps (register_older), one at a time; cancel_older stops the newest.
 #[derive(Default)]
-struct OlderPairing {
-    cancel: Arc<AtomicBool>,
-}
+struct OlderPairing(older_wifi::Steps);
 
 /// What went wrong, as the word the page explains (docs/index.html openProblemText(),
 /// olderOutcomeText(), readErrorText()): why a command failed, or why the card's port closed.
@@ -56,32 +53,28 @@ fn list_cards() -> Vec<CardInfo> {
 /// the connection come over `on_event`.
 #[tauri::command]
 fn open_card(path: String, on_event: Channel<card::Event>, open: State<'_, OpenCard>) -> Result<(), Problem> {
-    let mut slot = open.0.lock().map_err(|_| Problem::Failed)?;
-    if slot.is_some() {
-        return Err(Problem::Busy); // the page closes a card before it opens one
-    }
     if !card::list().contains(&path) {
         return Err(Problem::NotFound);
     }
     let events = move |event| {
         let _ = on_event.send(event); // the window may be closing
     };
-    *slot = Some(card::Connection::open(&card::SystemPorts, &path, events)?);
-    Ok(())
+    let mut slot = open.0.lock().map_err(|_| Problem::Failed)?;
+    slot.open(&card::SystemPorts, &path, events)
 }
 
 #[tauri::command]
 fn send(command: String, open: State<'_, OpenCard>) -> Result<(), Problem> {
-    let slot = open.0.lock().map_err(|_| Problem::Failed)?;
-    slot.as_ref().ok_or(Problem::NotOpen)?.send(&command)
+    open.0.lock().map_err(|_| Problem::Failed)?.send(&command)
 }
 
+/// Closes the card, and stops a Wi-Fi step for it.
 #[tauri::command]
-fn close_card(open: State<'_, OpenCard>) {
-    let connection = open.0.lock().ok().and_then(|mut slot| slot.take());
-    if let Some(connection) = connection {
-        connection.close();
+fn close_card(open: State<'_, OpenCard>, older: State<'_, OlderPairing>) {
+    if let Ok(mut slot) = open.0.lock() {
+        slot.close();
     }
+    older.0.cancel();
 }
 
 /// The one-time Wi-Fi step for pairing an older camera (older_wifi): the page passes the identity
@@ -98,21 +91,23 @@ async fn register_older(
 ) -> Result<older_wifi::Outcome, Problem> {
     older_wifi::check_identity(&identity)?;
     older_wifi::check_name(&name)?;
-    let cancel = older.cancel.clone(); // cloned out of State before the await, not held across it
-    cancel.store(false, Ordering::SeqCst);
+    let steps = older.0.clone(); // out of State before the await, not held across it
+    let cancel = steps.begin();
     // The step blocks on sockets and waits; run it off the main thread so the window stays responsive.
     tauri::async_runtime::spawn_blocking(move || {
         let mut send = |event| {
             let _ = on_event.send(event); // the window may be closing
         };
-        older_wifi::register(
-            &older_wifi::camera_target(),
-            &identity,
-            &name,
-            &older_wifi::Timing::live(),
-            &cancel,
-            &mut send,
-        )
+        steps.run(|| {
+            older_wifi::register(
+                &older_wifi::camera_target(),
+                &identity,
+                &name,
+                &older_wifi::Timing::live(),
+                &cancel,
+                &mut send,
+            )
+        })
     })
     .await
     .map_err(|error| {
@@ -121,10 +116,10 @@ async fn register_older(
     })
 }
 
-/// Stops a running register_older, which checks the flag between connection attempts and requests.
+/// Stops the newest register_older, which checks its flag between connection attempts and requests.
 #[tauri::command]
 fn cancel_older(older: State<'_, OlderPairing>) {
-    older.cancel.store(true, Ordering::SeqCst);
+    older.0.cancel();
 }
 
 /// The window shows only the app's own page: tauri://localhost on Linux and macOS,

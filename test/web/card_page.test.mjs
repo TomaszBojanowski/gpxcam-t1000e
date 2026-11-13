@@ -776,6 +776,10 @@ test("in the app: no chooser for one card, the same state, and words without the
   await tick();
   assert.equal(ui["card-status"].textContent, "The connection to the card ended (the card's port failed).");
   assert.equal(ui.connect.disabled, false);
+  await ui.connect.fire("click"); // plugged in again
+  assert.equal(ui["card-status"].textContent, "Connected to the card");
+  assert.equal(app.calls.filter((call) => call === "open_card /dev/ttyACM0").length, 2);
+  await ui.disconnect.fire("click");
 });
 
 test("in the app: a choice between two cards, Cancel, and no card at all", async () => {

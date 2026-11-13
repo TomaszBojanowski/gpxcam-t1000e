@@ -11,6 +11,7 @@
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -346,12 +347,50 @@ pub fn register(
     })
 }
 
+/// The Wi-Fi steps the page starts, one at a time. A new step asks the one before to stop and runs
+/// after it has ended: after a reconnect the page can start the step again, and two registrations
+/// never run at once.
+#[derive(Clone, Default)]
+pub struct Steps {
+    newest: Arc<Mutex<Option<Arc<AtomicBool>>>>, // the cancel flag of the newest step
+    running: Arc<Mutex<()>>,                     // held while a step runs
+}
+
+impl Steps {
+    /// The cancel flag of a new step; the step before is asked to stop.
+    pub fn begin(&self) -> Arc<AtomicBool> {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let before = self
+            .newest
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .replace(Arc::clone(&cancel));
+        if let Some(before) = before {
+            before.store(true, Ordering::SeqCst);
+        }
+        cancel
+    }
+
+    /// Runs `step` once the step before has ended.
+    pub fn run<T>(&self, step: impl FnOnce() -> T) -> T {
+        let _one_at_a_time = self.running.lock().unwrap_or_else(PoisonError::into_inner);
+        step()
+    }
+
+    /// Asks the newest step to stop.
+    pub fn cancel(&self) {
+        if let Some(newest) = self.newest.lock().unwrap_or_else(PoisonError::into_inner).as_ref() {
+            newest.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::{HashMap, VecDeque};
     use std::net::TcpListener;
-    use std::sync::{Arc, Mutex};
+    use std::sync::mpsc;
     use std::thread;
 
     // The made-up identity and name of test/device_identity_vectors.txt, shared with the card's
@@ -614,5 +653,43 @@ mod tests {
             }
         });
         assert_eq!(run(&target, false).0, Outcome::Failed);
+    }
+
+    #[test]
+    fn a_new_step_stops_the_one_before_and_runs_after_it() {
+        let steps = Steps::default();
+        let first = steps.begin();
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let (started, has_started) = mpsc::channel();
+        let running = {
+            let (steps, first, order) = (steps.clone(), Arc::clone(&first), Arc::clone(&order));
+            thread::spawn(move || {
+                steps.run(|| {
+                    started.send(()).unwrap();
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    while !first.load(Ordering::SeqCst) && Instant::now() < deadline {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    order.lock().unwrap().push("first ended");
+                });
+            })
+        };
+        has_started.recv().unwrap();
+        let second = steps.begin();
+        assert!(first.load(Ordering::SeqCst), "the step before is asked to stop");
+        assert!(!second.load(Ordering::SeqCst));
+        steps.run(|| order.lock().unwrap().push("second ran"));
+        running.join().unwrap();
+        assert_eq!(*order.lock().unwrap(), ["first ended", "second ran"]);
+    }
+
+    #[test]
+    fn cancel_stops_the_newest_step() {
+        let steps = Steps::default();
+        steps.cancel(); // no step yet: nothing to stop
+        let cancel = steps.begin();
+        assert!(!cancel.load(Ordering::SeqCst));
+        steps.cancel();
+        assert!(cancel.load(Ordering::SeqCst));
     }
 }

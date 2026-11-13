@@ -133,6 +133,7 @@ pub fn list() -> Vec<String> {
 pub struct Connection {
     writer: Mutex<Box<dyn CardPort>>,
     stop: Arc<AtomicBool>,
+    ended: Arc<AtomicBool>, // the reading has ended: set before the page gets Closed
     reader: Option<JoinHandle<()>>,
 }
 
@@ -148,13 +149,24 @@ impl Connection {
         port.set_dtr(true).map_err(|_| Problem::Failed)?;
         let reading = port.try_clone_port().map_err(|_| Problem::Failed)?;
         let stop = Arc::new(AtomicBool::new(false));
-        let stopped = Arc::clone(&stop);
-        let reader = std::thread::spawn(move || read_lines(reading, &stopped, events));
+        let ended = Arc::new(AtomicBool::new(false));
+        let (stopped, reading_ended) = (Arc::clone(&stop), Arc::clone(&ended));
+        let reader = std::thread::spawn(move || {
+            let error = read_lines(reading, &stopped, &events);
+            reading_ended.store(true, Ordering::SeqCst);
+            events(Event::Closed { error });
+        });
         Ok(Connection {
             writer: Mutex::new(port),
             stop,
+            ended,
             reader: Some(reader),
         })
+    }
+
+    /// The card's port is still read: not unplugged or failed, not closed.
+    fn reading(&self) -> bool {
+        !self.ended.load(Ordering::SeqCst)
     }
 
     /// Sends a command of test/commands.json with its newline; anything else never reaches the card.
@@ -187,10 +199,12 @@ impl Drop for Connection {
     }
 }
 
-fn read_lines(mut port: Box<dyn CardPort>, stop: &AtomicBool, events: impl Fn(Event)) {
+/// Passes the card's lines to `events` until close() or the end of the port; gives that end's
+/// problem (None after close()).
+fn read_lines(mut port: Box<dyn CardPort>, stop: &AtomicBool, events: &impl Fn(Event)) -> Option<Problem> {
     let mut lines = LineAssembler::default();
     let mut buffer = [0u8; 256];
-    let error = loop {
+    loop {
         if stop.load(Ordering::Relaxed) {
             break None;
         }
@@ -207,8 +221,39 @@ fn read_lines(mut port: Box<dyn CardPort>, stop: &AtomicBool, events: impl Fn(Ev
                 break Some(Problem::PortFailed);
             }
         }
-    };
-    events(Event::Closed { error });
+    }
+}
+
+/// The card the page has open, at most one.
+#[derive(Default)]
+pub struct Slot(Option<Connection>);
+
+impl Slot {
+    /// Opens the card at `path`. Refused while another card is open and read; one that ended by
+    /// itself (unplugged) is closed first, so the page can connect again.
+    pub fn open(
+        &mut self,
+        opener: &dyn Opener,
+        path: &str,
+        events: impl Fn(Event) + Send + 'static,
+    ) -> Result<(), Problem> {
+        if self.0.as_ref().is_some_and(Connection::reading) {
+            return Err(Problem::Busy); // the page closes a card before it opens one
+        }
+        self.close();
+        self.0 = Some(Connection::open(opener, path, events)?);
+        Ok(())
+    }
+
+    pub fn send(&self, command: &str) -> Result<(), Problem> {
+        self.0.as_ref().ok_or(Problem::NotOpen)?.send(command)
+    }
+
+    pub fn close(&mut self) {
+        if let Some(connection) = self.0.take() {
+            connection.close();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -483,5 +528,28 @@ mod tests {
             libc::close(follower);
             libc::close(leader);
         }
+    }
+
+    #[test]
+    fn an_unplugged_card_can_be_opened_again_but_not_one_still_read() {
+        let port = StandIn::default();
+        let opener = StandInOpener {
+            port: port.clone(),
+            opened: Arc::default(),
+        };
+        let mut slot = Slot::default();
+        let (events, sink) = collector();
+        slot.open(&opener, "/dev/ttyACM0", sink).unwrap();
+        let (_, sink) = collector();
+        assert_eq!(slot.open(&opener, "/dev/ttyACM0", sink), Err(Problem::Busy));
+        port.reads
+            .lock()
+            .unwrap()
+            .push_back(Err(io::Error::other("Input/output error")));
+        wait_for(&events, closed); // unplugged: the page gets Closed and connects again at once
+        let (_, sink) = collector();
+        assert_eq!(slot.open(&opener, "/dev/ttyACM0", sink), Ok(()));
+        assert_eq!(opener.opened.lock().unwrap().len(), 2);
+        slot.close();
     }
 }
