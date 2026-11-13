@@ -560,6 +560,13 @@ test("motion is short, changes only colours and the toggle's knob, and stops wit
   assert.match(reduced, /\*, \*::before, \*::after \{ animation: none !important; transition: none !important;/);
 });
 
+test("the page's texts end with an ellipsis, not three dots", () => {
+  // Three dots not followed by a name or a bracket: in the code that is text, as spread syntax is followed by one.
+  const code = appCode.replace(/\/\*[\s\S]*?\*\/|(?<![:"'\\])\/\/[^\n]*/g, "");
+  assert.deepEqual(code.match(/.{0,30}\.\.\.(?![\w$([{]).{0,10}/g), null);
+  assert.deepEqual(html.replace(/<!--[\s\S]*?-->/g, "").match(/.{0,30}\.\.\..{0,10}/g), null);
+});
+
 test("what a returning reader does not need is folded: How pairing works, and About", () => {
   assert.match(html, /<details id="pairing-help" class="help">\s*<summary>How pairing works<\/summary>/);
   assert.match(html, /<details class="about">\s*<summary id="about-title">About this page<\/summary>/);
