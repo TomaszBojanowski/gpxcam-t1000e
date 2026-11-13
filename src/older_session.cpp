@@ -522,7 +522,7 @@ bool poll()
     if (step == Step::Idle)
         return false;
     if (gone) {
-        fail("the connection ended without its event");
+        fail("%s", camera_link::LOST_WITHOUT_EVENT);
         return false;
     }
     if (camera_connection::overLimit()) {

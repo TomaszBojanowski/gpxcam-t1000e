@@ -158,17 +158,10 @@ void writeDeviceName()
     startWrite(camera_link::DEVICE_NAME, length, Step::DeviceName);
 }
 
-// The time of this moment with the time zone set by 'tz' into txData, as the camera expects
-// (docs/PROTOCOL.md). False without a fresh GPS time.
-bool makeTimePacket(camera_connection::TimeSource *source)
-{
-    return camera_connection::timePacket(camera_connection::FRESH_TIME_ONLY, txData, source);
-}
-
 void writeTime()
 {
     camera_connection::TimeSource source;
-    if (!makeTimePacket(&source)) {
+    if (!camera_connection::timePacket(camera_connection::FRESH_TIME_ONLY, txData, &source)) {
         setFailure("time: no GPS time any more");
         fail();
         return;
@@ -203,7 +196,7 @@ void endTimeAgain(const char *what)
 void writeTimeAgain()
 {
     camera_connection::TimeSource source;
-    if (!makeTimePacket(&source))
+    if (!camera_connection::timePacket(camera_connection::FRESH_TIME_ONLY, txData, &source))
         endTimeAgain("not sent: no GPS time any more");
     else if (!camera_link::write(info.valueHandle[camera_link::TIME], txData, lumix::TIME_LENGTH))
         endTimeAgain("not sent: write refused by the SoftDevice");
