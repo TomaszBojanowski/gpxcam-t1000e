@@ -640,6 +640,12 @@ function webSerialTransport(navigatorObject, windowObject) {
     // Calls listener(port) when a port is unplugged.
     onDisconnect: (listener) =>
       navigatorObject.serial.addEventListener("disconnect", (event) => listener(event.target)),
+    // Calls listener(port) when a card the user chose before is plugged in; gives the function that stops it.
+    watchForCard: (listener) => {
+      const pluggedIn = (event) => listener(event.target);
+      navigatorObject.serial.addEventListener("connect", pluggedIn);
+      return () => navigatorObject.serial.removeEventListener("connect", pluggedIn);
+    },
   };
 }
 
@@ -702,6 +708,9 @@ function readErrorText(error) {
 // Thrown when no card is plugged in: the app has no chooser that would show an empty list.
 class NoCardError extends Error {}
 
+// How soon the app notices a card plugged in again: its list of cards is read this often meanwhile.
+const CARD_RETURN_POLL_MS = 1000;
+
 // The app lists the cards itself (USB 2886:8057): one is taken at once; with more, choose(paths)
 // lets the user pick one and gives its path, or null. It also does an older camera's Wi-Fi step.
 function appTransport(windowObject) {
@@ -718,6 +727,26 @@ function appTransport(windowObject) {
     },
     // An unplugged card ends the app's channel with an error, and with it the reading.
     onDisconnect: () => {},
+    // Calls listener(port) once one card is listed (with more, the user chooses); gives the function that
+    // stops it.
+    watchForCard: (listener) => {
+      let stopped = false;
+      let timer = null;
+      const look = async () => {
+        const paths = (await core.invoke("list_cards").catch(() => [])).map((card) => card.path);
+        if (stopped) return;
+        if (paths.length === 1) {
+          listener(new AppPort(core, paths[0]));
+          return;
+        }
+        timer = setTimeout(look, CARD_RETURN_POLL_MS);
+      };
+      timer = setTimeout(look, CARD_RETURN_POLL_MS);
+      return () => {
+        stopped = true;
+        clearTimeout(timer);
+      };
+    },
     // Registers the identity and name over the camera's Wi-Fi (app/src-tauri/src/older_wifi.rs); onStage
     // gets each stage. Gives the outcome, or fails with the word of the app's problem.
     registerOlder: (identity, name, onStage) => {

@@ -431,6 +431,7 @@ function startPage() {
   const soundChoices = new Map(SOUND_SETTINGS.map((setting) => [setting, element(`sound-${setting}`)]));
   const updatesChoices = new Map(UPDATES_SETTINGS.map((setting) => [setting, element(`updates-${setting}`)]));
   let card = null;
+  let stopWatchingForCard = null; // the card was unplugged: stops waiting for it to come back
   const computer = computerZone();
   let selected = computer;
   let busy = false;
@@ -875,7 +876,14 @@ function startPage() {
     ui.chooseCard.classList.remove("hidden");
   });
 
+  // Stops waiting for an unplugged card to come back (openPort()).
+  const stopWaitingForCard = () => {
+    if (stopWatchingForCard) stopWatchingForCard();
+    stopWatchingForCard = null;
+  };
+
   const connect = async () => {
+    stopWaitingForCard();
     let port;
     try {
       port = await transport.requestPort(chooseCard);
@@ -885,6 +893,12 @@ function startPage() {
       }
       return; // no card chosen
     }
+    await openPort(port);
+  };
+
+  // Connects to the card at port: its state, and the pairing it is in. A connection that ends by itself
+  // (unplugged, not Disconnect) is made again when the card is plugged back in.
+  const openPort = async (port) => {
     busy = true;
     refreshButtons();
     const opened = new Card(port);
@@ -913,8 +927,13 @@ function startPage() {
     opened.watchLines(followCardLine);
     ui.intro.classList.add("hidden");
     card.onClosed = () => {
+      if (card !== opened) return; // Disconnect
       const why = opened.readError ? ` (${readErrorText(opened.readError)})` : "";
-      if (card === opened) disconnected(`The connection to the card ended${why}.`, "bad");
+      disconnected(`The connection to the card ended${why}. Plug the card back in to connect again.`, "bad");
+      stopWatchingForCard = transport.watchForCard((returned) => {
+        stopWaitingForCard();
+        if (card === null && !busy) openPort(returned);
+      });
     };
     busy = false;
     if (status.kind === "ok") {

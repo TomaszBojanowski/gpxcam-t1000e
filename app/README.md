@@ -126,8 +126,9 @@ after a pairing that did not succeed, so it starts looking for the camera at onc
 
 If the Wi-Fi step fails on the camera's network (for example the camera did not confirm), the card
 keeps waiting for it, up to 5 minutes from its introduction: click *Try the Wi-Fi step again*.
-If the app was closed or the cable came off in the middle, connect again: the app opens on the step
-the card is at, with *Cancel*; at the Wi-Fi step it goes on with it by itself.
+If the cable came off in the middle, plug it back in: the app connects by itself. After the app was
+closed, click *Connect*. Either way the app opens on the step the card is at, with *Cancel*; at the
+Wi-Fi step it goes on with it by itself.
 
 After it succeeds, the card connects to the camera over Bluetooth alone, like any other pairing.
 The protocol is in [docs/PROTOCOL.md](../docs/PROTOCOL.md).

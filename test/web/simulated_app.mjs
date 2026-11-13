@@ -8,11 +8,12 @@
 // stages, app.registerStages, over a channel, then app.registerOutcome; "wait": until cancel_older)
 // and cancel_older for older-camera pairing; app.registerError: the word register_older fails with. An
 // answer can be a function of app (for a state that follows the commands sent). openError: the word
-// open_card fails with. unplug(): the card's port ends with a word, as when the card is unplugged.
+// open_card fails with. unplug(): the card leaves the list of cards and its port, if open, ends with a word,
+// as when the card is unplugged; plugIn(): the card is listed again.
 export function simulatedApp(paths, answers, { openError = null } = {}) {
   const app = {
     calls: [], channel: null, registerOutcome: "accepted", registerError: null,
-    registerStages: ["on-network", "registering"], registered: [],
+    registerStages: ["on-network", "registering"], registered: [], paths: [...paths],
   };
   const core = {
     Channel: class {
@@ -20,10 +21,10 @@ export function simulatedApp(paths, answers, { openError = null } = {}) {
     },
     invoke: async (command, args = {}) => {
       app.calls.push([command, args.path ?? args.command].filter((part) => part !== undefined).join(" "));
-      if (command === "list_cards") return paths.map((path) => ({ path }));
+      if (command === "list_cards") return app.paths.map((path) => ({ path }));
       if (command === "open_card") {
         if (openError) throw openError; // Tauri rejects with the command's error value
-        if (!paths.includes(args.path)) throw "not-found";
+        if (!app.paths.includes(args.path)) throw "not-found";
         if (app.open && app.reading) throw "busy"; // a card unplugged before is closed first
         app.open = true;
         app.reading = true;
@@ -59,8 +60,11 @@ export function simulatedApp(paths, answers, { openError = null } = {}) {
   };
   app.window = { isSecureContext: true, __TAURI__: { core } };
   app.unplug = (word = "port-failed") => {
+    app.paths = [];
+    if (!app.reading) return;
     app.reading = false;
     app.channel.onmessage({ kind: "closed", error: word });
   };
+  app.plugIn = () => { app.paths = [...paths]; };
   return app;
 }

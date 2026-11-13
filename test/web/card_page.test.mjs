@@ -210,7 +210,11 @@ function openPage(port, { serial = true, serialEvents = {}, app = null, clipboar
     createElement: () => new FakeElement(),
   };
   const navigator = serial && !app ? {
-    serial: { requestPort: async () => port, addEventListener: (type, listener) => { serialEvents[type] = listener; } },
+    serial: {
+      requestPort: async () => port,
+      addEventListener: (type, listener) => { serialEvents[type] = listener; },
+      removeEventListener: (type, listener) => { if (serialEvents[type] === listener) delete serialEvents[type]; },
+    },
   } : {};
   if (clipboard) navigator.clipboard = clipboard;
   runPage({
@@ -850,12 +854,28 @@ test("in the app: no chooser for one card, the same state, and words without the
   assert.equal(ui["updates-normal"].checked, true);
   app.unplug();
   await tick();
-  assert.equal(ui["card-status"].textContent, "The connection to the card ended (the card's port failed).");
+  assert.equal(ui["card-status"].textContent,
+    "The connection to the card ended (the card's port failed). Plug the card back in to connect again.");
   assert.equal(ui.connect.disabled, false);
-  await ui.connect.fire("click"); // plugged in again
-  assert.equal(ui["card-status"].textContent, "Connected to the card");
+  await tick(1500); // not before the card is back
+  assert.equal(app.calls.filter((call) => call === "open_card /dev/ttyACM0").length, 1);
+  app.plugIn();
+  await until(() => ui["card-status"].textContent === "Connected to the card");
   assert.equal(app.calls.filter((call) => call === "open_card /dev/ttyACM0").length, 2);
   await ui.disconnect.fire("click");
+});
+
+test("in the app: after Disconnect the page does not connect by itself", async () => {
+  const app = simulatedApp(["/dev/ttyACM0"], { v: VERSION_1_4, status: STATUS_1_4 });
+  const ui = openPage(null, { app });
+  await ui.connect.fire("click");
+  await ui.disconnect.fire("click");
+  app.unplug();
+  await tick(1500);
+  app.plugIn();
+  await tick(1500);
+  assert.equal(app.calls.filter((call) => call.startsWith("open_card")).length, 1);
+  assert.equal(ui["card-status"].textContent, "Not connected.");
 });
 
 test("in the app: a choice between two cards, Cancel, and no card at all", async () => {
@@ -895,7 +915,7 @@ test("in the app: a port without permission or in use is explained", async () =>
   }
 });
 
-test("unplugging the card ends the connection on the page", async () => {
+test("unplugging the card ends the connection on the page; plugged in again, it connects by itself", async () => {
   const port = simulatedCard(CARD_1_3);
   const serialEvents = {};
   const ui = openPage(port, { serialEvents });
@@ -906,8 +926,19 @@ test("unplugging the card ends the connection on the page", async () => {
   serialEvents.disconnect({ target: port });
   await until(() => port.closed);
   assert.equal(port.closed, true);
-  assert.match(ui["card-status"].textContent, /^The connection to the card ended/);
+  assert.match(ui["card-status"].textContent, /^The connection to the card ended.*Plug the card back in/);
   assert.equal(ui.connect.disabled, false);
+  // Chrome tells of a port the user chose before when it is plugged in again.
+  const again = simulatedCard(CARD_1_3);
+  serialEvents.connect({ target: again });
+  await until(() => ui["card-status"].textContent === "Connected to the card");
+  assert.deepEqual(json(again.openedWith), { baudRate: 115200 });
+  await ui.disconnect.fire("click"); // then nothing connects by itself
+  const after = simulatedCard(CARD_1_3);
+  serialEvents.connect?.({ target: after });
+  await tick();
+  assert.equal(after.openedWith, null);
+  assert.equal(ui["card-status"].textContent, "Not connected.");
 });
 
 test("a browser without Web Serial gets only the explanation", () => {
@@ -2083,7 +2114,7 @@ test("in the app: unplugged in the Wi-Fi step, the step stops; connected again, 
     await until(() => app.registered.length === 1);
     app.unplug();
     await until(() => app.calls.includes("cancel_older")); // the step stops with its card
-    await ui.connect.fire("click"); // plugged in again: the card still waits
+    app.plugIn(); // the page connects by itself: the card still waits
     await until(() => app.registered.length === 2);
     assert.equal(ui["pair-stop"].disabled, false);
     await ui["pair-stop"].fire("click");
