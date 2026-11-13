@@ -2,8 +2,8 @@
 //! DTR on), passing its lines to the page from a thread, and sending it the allowed commands.
 
 use std::io::{self, Read, Write};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -14,7 +14,7 @@ use crate::commands;
 use crate::lines::LineAssembler;
 
 /// The only baud rate the app knows. Any rate works over USB, but 1200 would reset the card into
-/// its bootloader (docs/index.html BAUD_RATE).
+/// its bootloader (docs/card.js BAUD_RATE).
 pub const BAUD_RATE: u32 = 115_200;
 
 /// Seeed, T1000-E running gpxcam (boards/t1000-e.json).
@@ -25,7 +25,7 @@ pub const USB_PRODUCT_ID: u16 = 0x8057;
 /// close(). A command is under 50 bytes, and the card reads its console at once.
 const PORT_TIMEOUT: Duration = Duration::from_millis(100);
 
-/// What the page gets over its channel (docs/index.html AppPort): the card's lines, then once
+/// What the page gets over its channel (docs/card.js AppPort): the card's lines, then once
 /// Closed, with PortClosed or PortFailed when the port ended by itself (the card was unplugged),
 /// without one after close().
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -35,7 +35,7 @@ pub enum Event {
     Closed { error: Option<Problem> },
 }
 
-/// A port as the app uses it: the card's (SystemPort, opened by SystemPorts) or a stand-in in the tests.
+/// A port as the app uses it: the card's (opened by SystemPorts) or a stand-in in the tests.
 pub trait CardPort: Read + Write + Send {
     fn set_dtr(&mut self, on: bool) -> io::Result<()>;
     /// Another handle to the same port, for the reading thread.
@@ -59,34 +59,16 @@ impl Opener for SystemPorts {
             .timeout(PORT_TIMEOUT)
             .open()
             .map_err(open_error)?;
-        Ok(Box::new(SystemPort(port)))
+        Ok(Box::new(port))
     }
 }
 
-struct SystemPort(Box<dyn serialport::SerialPort>);
-
-impl Read for SystemPort {
-    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buffer)
-    }
-}
-
-impl Write for SystemPort {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.0.write(bytes)
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()
-    }
-}
-
-impl CardPort for SystemPort {
+impl CardPort for Box<dyn serialport::SerialPort> {
     fn set_dtr(&mut self, on: bool) -> io::Result<()> {
-        self.0.write_data_terminal_ready(on).map_err(io::Error::from)
+        self.write_data_terminal_ready(on).map_err(io::Error::from)
     }
     fn try_clone_port(&self) -> io::Result<Box<dyn CardPort>> {
-        let clone = self.0.try_clone().map_err(io::Error::from)?;
-        Ok(Box::new(SystemPort(clone)))
+        Ok(Box::new(self.try_clone().map_err(io::Error::from)?))
     }
 }
 
@@ -131,8 +113,9 @@ pub fn list() -> Vec<String> {
 
 /// An open card: the port for writing here, a thread reading it.
 pub struct Connection {
-    writer: Mutex<Box<dyn CardPort>>,
+    writer: Box<dyn CardPort>,
     stop: Arc<AtomicBool>,
+    ended: Arc<AtomicBool>, // the reading has ended: set before the page gets Closed
     reader: Option<JoinHandle<()>>,
 }
 
@@ -148,23 +131,34 @@ impl Connection {
         port.set_dtr(true).map_err(|_| Problem::Failed)?;
         let reading = port.try_clone_port().map_err(|_| Problem::Failed)?;
         let stop = Arc::new(AtomicBool::new(false));
-        let stopped = Arc::clone(&stop);
-        let reader = std::thread::spawn(move || read_lines(reading, &stopped, events));
+        let ended = Arc::new(AtomicBool::new(false));
+        let (stopped, reading_ended) = (Arc::clone(&stop), Arc::clone(&ended));
+        let reader = std::thread::spawn(move || {
+            let error = read_lines(reading, &stopped, &events);
+            reading_ended.store(true, Ordering::SeqCst);
+            events(Event::Closed { error });
+        });
         Ok(Connection {
-            writer: Mutex::new(port),
+            writer: port,
             stop,
+            ended,
             reader: Some(reader),
         })
     }
 
+    /// The card's port is still read: not unplugged or failed, not closed.
+    fn reading(&self) -> bool {
+        !self.ended.load(Ordering::SeqCst)
+    }
+
     /// Sends a command of test/commands.json with its newline; anything else never reaches the card.
-    pub fn send(&self, command: &str) -> Result<(), Problem> {
+    pub fn send(&mut self, command: &str) -> Result<(), Problem> {
         if !commands::allowed(command) {
             return Err(Problem::Refused);
         }
-        let mut port = self.writer.lock().map_err(|_| Problem::Failed)?;
-        port.write_all(format!("{command}\n").as_bytes())
-            .and_then(|()| port.flush())
+        self.writer
+            .write_all(format!("{command}\n").as_bytes())
+            .and_then(|()| self.writer.flush())
             .map_err(|_| Problem::Failed)
     }
 
@@ -187,10 +181,12 @@ impl Drop for Connection {
     }
 }
 
-fn read_lines(mut port: Box<dyn CardPort>, stop: &AtomicBool, events: impl Fn(Event)) {
+/// Passes the card's lines to `events` until close() or the end of the port; gives that end's
+/// problem (None after close()).
+fn read_lines(mut port: Box<dyn CardPort>, stop: &AtomicBool, events: &impl Fn(Event)) -> Option<Problem> {
     let mut lines = LineAssembler::default();
     let mut buffer = [0u8; 256];
-    let error = loop {
+    loop {
         if stop.load(Ordering::Relaxed) {
             break None;
         }
@@ -207,14 +203,46 @@ fn read_lines(mut port: Box<dyn CardPort>, stop: &AtomicBool, events: impl Fn(Ev
                 break Some(Problem::PortFailed);
             }
         }
-    };
-    events(Event::Closed { error });
+    }
+}
+
+/// The card the page has open, at most one.
+#[derive(Default)]
+pub struct Slot(Option<Connection>);
+
+impl Slot {
+    /// Opens the card at `path`. Refused while another card is open and read; one that ended by
+    /// itself (unplugged) is closed first, so the page can connect again.
+    pub fn open(
+        &mut self,
+        opener: &dyn Opener,
+        path: &str,
+        events: impl Fn(Event) + Send + 'static,
+    ) -> Result<(), Problem> {
+        if self.0.as_ref().is_some_and(Connection::reading) {
+            return Err(Problem::Busy); // the page closes a card before it opens one
+        }
+        self.close();
+        self.0 = Some(Connection::open(opener, path, events)?);
+        Ok(())
+    }
+
+    pub fn send(&mut self, command: &str) -> Result<(), Problem> {
+        self.0.as_mut().ok_or(Problem::NotOpen)?.send(command)
+    }
+
+    pub fn close(&mut self) {
+        if let Some(connection) = self.0.take() {
+            connection.close();
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::VecDeque;
+    use std::sync::Mutex;
     use std::time::Instant;
 
     /// A port that gives the queued reads, then times out, and records what it gets.
@@ -395,7 +423,7 @@ mod tests {
             opened: Arc::default(),
         };
         let (_events, sink) = collector();
-        let connection = Connection::open(&opener, "/dev/ttyACM0", sink).unwrap();
+        let mut connection = Connection::open(&opener, "/dev/ttyACM0", sink).unwrap();
         assert_eq!(connection.send("status"), Ok(()));
         assert_eq!(connection.send("tz Europe/Warsaw"), Ok(()));
         for refused in ["dfu", "off", "link off", "status\ndfu", "tz europe/warsaw", ""] {
@@ -483,5 +511,28 @@ mod tests {
             libc::close(follower);
             libc::close(leader);
         }
+    }
+
+    #[test]
+    fn an_unplugged_card_can_be_opened_again_but_not_one_still_read() {
+        let port = StandIn::default();
+        let opener = StandInOpener {
+            port: port.clone(),
+            opened: Arc::default(),
+        };
+        let mut slot = Slot::default();
+        let (events, sink) = collector();
+        slot.open(&opener, "/dev/ttyACM0", sink).unwrap();
+        let (_, sink) = collector();
+        assert_eq!(slot.open(&opener, "/dev/ttyACM0", sink), Err(Problem::Busy));
+        port.reads
+            .lock()
+            .unwrap()
+            .push_back(Err(io::Error::other("Input/output error")));
+        wait_for(&events, closed); // unplugged: the page gets Closed and connects again at once
+        let (_, sink) = collector();
+        assert_eq!(slot.open(&opener, "/dev/ttyACM0", sink), Ok(()));
+        assert_eq!(opener.opened.lock().unwrap().len(), 2);
+        slot.close();
     }
 }

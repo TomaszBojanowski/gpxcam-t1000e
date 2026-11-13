@@ -1,36 +1,36 @@
-// Tests of the card page, docs/index.html, on the PC:
+// Tests of the card page, docs/index.html with page.css, card.js and page.js, on the PC:
 // node --test test/web/card_page.test.mjs
 // The page's scripts run in a separate context without a browser; the card is simulated with
 // answers in the form of the real card's console (src/main.cpp, src/tz_store.cpp), made-up values.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import vm from "node:vm";
 
 import { simulatedApp } from "./simulated_app.mjs";
 
-const PAGE = new URL("../../docs/index.html", import.meta.url);
-const html = readFileSync(PAGE, "utf8");
-// The page's scripts in its order: the zone data it loads from docs/zones.js, then its own.
-const zonesScript = readFileSync(new URL("../../docs/zones.js", import.meta.url), "utf8");
-assert.match(html, /<script src="zones\.js"><\/script>\s*<script>/);
-const scripts = [zonesScript, ...[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1])];
-const appCode = scripts[1];
-const page = vm.runInContext(
-  scripts.join("\n") +
-    "\n;({ TZ_DATA, BAUD_RATE, CARD_USB, MAX_RESULTS, findZone, searchZones, utcOffsetText, allowedCommand," +
-    " tzCommand, parseVersion, classifyTzAnswer, LineSplitter, Card, preferredZone, noAnswerText, tzProblemText," +
-    " startList, parseStatus, cameraTile, gpsTile, batteryTile, zoneTile, CLOCK_ANSWERS, SOUND_ANSWERS," +
-    " UPDATES_ANSWERS, clockNoteText, classifyUnpairAnswer, unpairAnswerText," +
-    " SOUND_SETTINGS, soundNoteText, soundText, UPDATES_SETTINGS, updatesNoteText, updatesText, updatesNowText," +
-    " storageNoteText, chooseTransport, tzAnswerText, statusProblemText," +
-    " openProblemText, parseOlderRegister, olderOutcomeText, FIXED_COMMANDS, isLogLine," +
-    " belongsToScan, scanEnded, scanResultText, diagnosticsText, SCAN_RUN_MS, shouldPrepareGps," +
-    " maskIdentifiers, parseCardId, olderIdentity, PAIRING_STATUS_PERIOD_MS, AppReadError, readErrorText," +
-    " PAIR_SEARCH_MS, pairingScreen, pairingSteps, pairingBadge, pairingEvent, searchLeftMs, countdownText," +
-    " countdownLabel, connectStages, cameraStepText, gpsCheck, failedText, canPairOlder, WIFI_WAIT_TEXT })",
-  vm.createContext({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console }),
-);
+const DOCS = new URL("../../docs/", import.meta.url);
+const read = (name) => readFileSync(new URL(name, DOCS), "utf8");
+const html = read("index.html");
+const css = read("page.css");
+// The page's scripts in its order: zones.js (the card's time zone table, made by tools/gen_tz_table.py), then
+// its own, whose code the tests also read.
+const PAGE_SCRIPTS = [...html.matchAll(/<script src="([a-z_]+\.js)"><\/script>/g)].map((match) => match[1]);
+const scripts = PAGE_SCRIPTS.map((name) => [name, read(name)]);
+const appCode = scripts.filter(([name]) => name !== "zones.js").map(([, code]) => code).join("\n");
+
+// Runs the page's scripts one after another in a new context with `globals`, as a browser loads them.
+function runPage(globals) {
+  const context = vm.createContext(globals);
+  for (const [name, code] of scripts) vm.runInContext(code, context, { filename: `docs/${name}` });
+  return context;
+}
+
+// The page's functions, constants and classes by name: its functions are properties of its context, the
+// others are read in it.
+const page = new Proxy(runPage({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout,
+  console }), { get: (context, name) => (typeof name === "symbol" || name in context ? context[name]
+  : vm.runInContext(name, context)) });
 
 // Values made in the page's context: compared as JSON, since their prototypes are not ours.
 const json = (value) => JSON.parse(JSON.stringify(value));
@@ -174,6 +174,26 @@ class FakeElement {
   append(...children) { this.children.push(...children); }
 }
 
+// The timers of the pages a test opened, cleared after it: a test that fails half-way does not leave its
+// page refreshing the card's state, which would keep the test run from ending.
+const pageTimers = new Set();
+function pageSetTimeout(run, ms, ...args) {
+  const timer = setTimeout(() => {
+    pageTimers.delete(timer);
+    run(...args);
+  }, ms);
+  pageTimers.add(timer);
+  return timer;
+}
+function pageClearTimeout(timer) {
+  pageTimers.delete(timer);
+  clearTimeout(timer);
+}
+afterEach(() => {
+  for (const timer of pageTimers) clearTimeout(timer);
+  pageTimers.clear();
+});
+
 // Starts the page with every element that has an id, with its classes from the HTML, and a
 // browser whose port chooser gives the simulated card (serial: false - a browser without Web Serial).
 // serialEvents collects the listeners the page adds to navigator.serial. app: the desktop app
@@ -190,13 +210,17 @@ function openPage(port, { serial = true, serialEvents = {}, app = null, clipboar
     createElement: () => new FakeElement(),
   };
   const navigator = serial && !app ? {
-    serial: { requestPort: async () => port, addEventListener: (type, listener) => { serialEvents[type] = listener; } },
+    serial: {
+      requestPort: async () => port,
+      addEventListener: (type, listener) => { serialEvents[type] = listener; },
+      removeEventListener: (type, listener) => { if (serialEvents[type] === listener) delete serialEvents[type]; },
+    },
   } : {};
   if (clipboard) navigator.clipboard = clipboard;
-  vm.runInContext(scripts.join("\n"), vm.createContext({
-    TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console, document, navigator,
-    window: app ? app.window : { isSecureContext: true },
-  }));
+  runPage({
+    TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout: pageSetTimeout,
+    clearTimeout: pageClearTimeout, console, document, navigator, window: app ? app.window : { isSecureContext: true },
+  });
   return elements;
 }
 
@@ -344,6 +368,7 @@ test("offsets come from the browser's own data", () => {
 
 // The same vectors as the desktop app's Rust side (cargo test).
 const COMMANDS = JSON.parse(readFileSync(new URL("../commands.json", import.meta.url), "utf8"));
+const APP_WORDS = JSON.parse(readFileSync(new URL("../app_words.json", import.meta.url), "utf8"));
 
 test("only the commands of test/commands.json can be sent, and About names each fixed one", () => {
   assert.deepEqual([...page.FIXED_COMMANDS].sort(), [...COMMANDS.fixed].sort());
@@ -371,11 +396,20 @@ test("the older-camera wizard reads the card's line and explains the Wi-Fi step'
   for (const bad of ["not-confirmed", "not-on-network", "bad-identity", "bad-name", "failed", "anything"]) {
     assert.equal(page.olderOutcomeText(bad)[1], "bad");
   }
-  const general = page.olderOutcomeText("anything")[0]; // a word the page does not know
-  assert.equal(page.olderOutcomeText("failed")[0], general);
   for (const word of ["bad-identity", "bad-name"]) {
     assert.match(page.olderOutcomeText(word)[0], /^The app cannot register the identity this card gave\./, word);
   }
+});
+
+test("the page has its own text for the app's words of test/app_words.json it can get", () => {
+  // The words whose text is not that of a word the page does not know.
+  const own = (explain, words) => words.filter((word) =>
+    JSON.stringify(explain(word)) !== JSON.stringify(explain("anything")));
+  assert.deepEqual(own(page.openProblemText, APP_WORDS.problems), ["permission", "not-found"]);
+  assert.deepEqual(own((word) => page.readErrorText(new page.AppReadError(word)), APP_WORDS.problems),
+    ["port-closed", "port-failed"]);
+  assert.deepEqual(own(page.olderOutcomeText, [...APP_WORDS.outcomes, ...APP_WORDS.problems]),
+    ["accepted", "not-confirmed", "not-on-network", "cancelled", "bad-identity", "bad-name"]);
 });
 
 test("pairing as with an older camera is offered to gpxcam 1.5.0 and later", () => {
@@ -402,7 +436,7 @@ test("parseCardId reads the card's id from 'p', and olderIdentity makes the iden
 test("the port is opened only at 115200 baud, with DTR", async () => {
   assert.equal(page.BAUD_RATE, 115200);
   assert.deepEqual(json(page.CARD_USB), { usbVendorId: 0x2886, usbProductId: 0x8057 });
-  assert.doesNotMatch(html, /1200/);
+  for (const source of [html, css, appCode]) assert.doesNotMatch(source, /1200/);
   // Every open() with options is the port's (Card.open() itself takes none).
   const opens = [...appCode.matchAll(/\.open\(([^)]*)\)/g)].map((match) => match[1]).filter(Boolean);
   assert.deepEqual(opens, ["{ baudRate: BAUD_RATE }"]);
@@ -469,7 +503,7 @@ test("a card without tz and a card that does not answer tz get different message
 
 // The colours of a theme from the page's style: light from :root, dark from the media query.
 function themeColours(dark) {
-  const style = /<style>([\s\S]*?)<\/style>/.exec(html)[1];
+  const style = css;
   const darkStart = style.indexOf("@media (prefers-color-scheme: dark)");
   const light = Object.fromEntries([...style.slice(0, darkStart).matchAll(/(--[a-z-]+): (#[0-9a-f]{6});/g)]
     .map((match) => [match[1], match[2]]));
@@ -514,7 +548,7 @@ test("each part of the page is a card with its heading and icon; the favicon is 
 });
 
 test("motion is short, changes only colours and the toggle's knob, and stops with reduced motion", () => {
-  const style = /<style>([\s\S]*?)<\/style>/.exec(html)[1];
+  const style = css;
   const durations = [...style.matchAll(/(\d*\.?\d+)s\b/g)].map((match) => Number(match[1]));
   assert.ok(durations.length > 0);
   for (const duration of durations) assert.ok(duration <= 0.25 || duration === 1.2, `${duration} s`); // 1.2: the pulse
@@ -530,24 +564,71 @@ test("motion is short, changes only colours and the toggle's knob, and stops wit
   assert.match(reduced, /\*, \*::before, \*::after \{ animation: none !important; transition: none !important;/);
 });
 
+test("the page's texts end with an ellipsis, not three dots", () => {
+  // Three dots not followed by a name or a bracket: in the code that is text, as spread syntax is followed by one.
+  const code = appCode.replace(/\/\*[\s\S]*?\*\/|(?<![:"'\\])\/\/[^\n]*/g, "");
+  assert.deepEqual(code.match(/.{0,30}\.\.\.(?![\w$([{]).{0,10}/g), null);
+  assert.deepEqual(html.replace(/<!--[\s\S]*?-->/g, "").match(/.{0,30}\.\.\..{0,10}/g), null);
+});
+
 test("what a returning reader does not need is folded: How pairing works, and About", () => {
   assert.match(html, /<details id="pairing-help" class="help">\s*<summary>How pairing works<\/summary>/);
   assert.match(html, /<details class="about">\s*<summary id="about-title">About this page<\/summary>/);
 });
 
 test("hidden parts stay hidden whatever display their own rule gives", () => {
-  assert.match(html, /^\.hidden \{ display: none !important; \}/m);
+  assert.match(css, /^\.hidden \{ display: none !important; \}/m);
 });
 
-test("the page fetches nothing but its zone data, next to it: content security policy", () => {
+// Ids nothing on the page refers to, and why they stay.
+const IDS_FOR_OTHERS = {
+  "about-version": "tools/app_frontend.py writes the app's version there",
+  "check-list": "the user's own reminder: the page does not read it, so it does not hold Pair back",
+  "check-phone": "the user's own reminder, as check-list",
+};
+
+test("the page uses each name of its script, each class of its style and each id", () => {
+  const style = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const markup = html;
+  const code = appCode.replace(/\/\*[\s\S]*?\*\/|(?<![:"'\\])\/\/[^\n]*/g, "");
+  const escaped = (name) => name.replace(/[$]/g, "\\$");
+  const uses = (text, name, part) =>
+    (text.match(new RegExp(`(?<!${part})${escaped(name)}(?!${part})`, "g")) || []).length;
+  // Classes and ids the script makes from a prefix: `tile level-${level}`, element(`pair-screen-${name}`).
+  const prefixes = [...code.matchAll(/([\w-]+-)\$\{/g)].map((match) => match[1]);
+  const madeByScript = (name) => uses(code, name, "[\\w-]") > 0 || prefixes.some((prefix) => name.startsWith(prefix));
+
+  const names = [...appCode.matchAll(/^(?:async function |function |const |let |class )([\w$]+)/gm)].map((m) => m[1]);
+  assert.ok(names.length > 100);
+  assert.deepEqual(names.filter((name) => uses(code, name, "[\\w$]") < 2), [], "declared, never used");
+
+  const selectors = style.replace(/\{[^{}]*\}/g, "{}");
+  const styled = new Set([...selectors.matchAll(/\.(-?[a-zA-Z_][\w-]*)/g)].map((match) => match[1]));
+  const inMarkup = new Set([...markup.matchAll(/ class="([^"]*)"/g)].flatMap((match) => match[1].split(/\s+/)));
+  assert.deepEqual([...styled].filter((name) => !inMarkup.has(name) && !madeByScript(name)), [], "styled, never used");
+  assert.deepEqual([...inMarkup].filter((name) => !styled.has(name) && !madeByScript(name)), [],
+    "in the markup, neither styled nor used by the script");
+
+  const references = markup.replace(/ id="[^"]+"/g, "");
+  const referred = (id) => madeByScript(id) || uses(style, `#${id}`, "[\\w-]") > 0 ||
+    references.includes(`="${id}"`) || references.includes(`="#${id}"`);
+  const ids = [...markup.matchAll(/ id="([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(ids.filter((id) => !referred(id)).sort(), Object.keys(IDS_FOR_OTHERS).sort());
+});
+
+test("the page fetches nothing but its own files next to it, and has nothing inline: content security policy", () => {
   const policy = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(html);
   assert.ok(policy);
   assert.match(policy[1], /^default-src 'none';/);
-  assert.match(policy[1], /script-src 'self' 'unsafe-inline';/); // docs/zones.js and the page's own script
-  assert.doesNotMatch(policy[1], /connect-src|https?:/);
+  assert.match(policy[1], /script-src 'self';/);
+  assert.match(policy[1], /style-src 'self';/);
+  assert.doesNotMatch(policy[1], /unsafe|connect-src|https?:/);
   assert.match(policy[1], /img-src data:/); // the favicon is a data: image
-  assert.deepEqual([...html.matchAll(/<script[^>]+src="([^"]*)"/g)].map((match) => match[1]), ["zones.js"]);
-  assert.doesNotMatch(html, /<link[^>]+href="(?!data:)/);
+  assert.deepEqual([...html.matchAll(/<script\b[^>]*>/g)].map((match) => match[0]), PAGE_SCRIPTS.map((name) =>
+    `<script src="${name}">`));
+  assert.deepEqual(PAGE_SCRIPTS, ["zones.js", "card.js", "page.js"]);
+  assert.deepEqual([...html.matchAll(/<link[^>]+href="(?!data:)([^"]*)"/g)].map((match) => match[1]), ["page.css"]);
+  assert.doesNotMatch(html, /<style| style=| on[a-z]+=/); // the policy would block them
 });
 
 test("a refused command is not written; no answer ends after the time limit", async () => {
@@ -774,8 +855,28 @@ test("in the app: no chooser for one card, the same state, and words without the
   assert.equal(ui["updates-normal"].checked, true);
   app.unplug();
   await tick();
-  assert.equal(ui["card-status"].textContent, "The connection to the card ended (the card's port failed).");
+  assert.equal(ui["card-status"].textContent,
+    "The connection to the card ended (the card's port failed). Plug the card back in to connect again.");
   assert.equal(ui.connect.disabled, false);
+  await tick(1500); // not before the card is back
+  assert.equal(app.calls.filter((call) => call === "open_card /dev/ttyACM0").length, 1);
+  app.plugIn();
+  await until(() => ui["card-status"].textContent === "Connected to the card");
+  assert.equal(app.calls.filter((call) => call === "open_card /dev/ttyACM0").length, 2);
+  await ui.disconnect.fire("click");
+});
+
+test("in the app: after Disconnect the page does not connect by itself", async () => {
+  const app = simulatedApp(["/dev/ttyACM0"], { v: VERSION_1_4, status: STATUS_1_4 });
+  const ui = openPage(null, { app });
+  await ui.connect.fire("click");
+  await ui.disconnect.fire("click");
+  app.unplug();
+  await tick(1500);
+  app.plugIn();
+  await tick(1500);
+  assert.equal(app.calls.filter((call) => call.startsWith("open_card")).length, 1);
+  assert.equal(ui["card-status"].textContent, "Not connected.");
 });
 
 test("in the app: a choice between two cards, Cancel, and no card at all", async () => {
@@ -815,7 +916,7 @@ test("in the app: a port without permission or in use is explained", async () =>
   }
 });
 
-test("unplugging the card ends the connection on the page", async () => {
+test("unplugging the card ends the connection on the page; plugged in again, it connects by itself", async () => {
   const port = simulatedCard(CARD_1_3);
   const serialEvents = {};
   const ui = openPage(port, { serialEvents });
@@ -826,8 +927,19 @@ test("unplugging the card ends the connection on the page", async () => {
   serialEvents.disconnect({ target: port });
   await until(() => port.closed);
   assert.equal(port.closed, true);
-  assert.match(ui["card-status"].textContent, /^The connection to the card ended/);
+  assert.match(ui["card-status"].textContent, /^The connection to the card ended.*Plug the card back in/);
   assert.equal(ui.connect.disabled, false);
+  // Chrome tells of a port the user chose before when it is plugged in again.
+  const again = simulatedCard(CARD_1_3);
+  serialEvents.connect({ target: again });
+  await until(() => ui["card-status"].textContent === "Connected to the card");
+  assert.deepEqual(json(again.openedWith), { baudRate: 115200 });
+  await ui.disconnect.fire("click"); // then nothing connects by itself
+  const after = simulatedCard(CARD_1_3);
+  serialEvents.connect?.({ target: after });
+  await tick();
+  assert.equal(after.openedWith, null);
+  assert.equal(ui["card-status"].textContent, "Not connected.");
 });
 
 test("a browser without Web Serial gets only the explanation", () => {
@@ -1215,12 +1327,12 @@ test("with gpxcam 1.2 the sound stays loud and cannot be changed", async () => {
 
 // ---- The camera section's pairing screens ----
 
-// A line as the card prints it, from the format string in its source that starts with `start`; each
-// conversion takes the next value.
+// A line as the card prints it, from the format string in its source (logger::line, logger::transient, or
+// older_session's logStep) that starts with `start`; each conversion takes the next value.
 function firmwareLine(file, start, ...values) {
   const source = readFileSync(new URL(`../../src/${file}`, import.meta.url), "utf8");
   const escaped = start.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const format = new RegExp(`logger::(?:line|transient)\\("(${escaped}[^"]*)"`).exec(source);
+  const format = new RegExp(`(?:logger::line|logger::transient|logStep)\\("(${escaped}[^"]*)"`).exec(source);
   assert.ok(format, `${file}: ${start}`);
   let next = 0;
   return format[1].replace(/%(02x|lu|u|d|s)/g, () => String(values[next++]));
@@ -1246,7 +1358,7 @@ test("the pairing screens are made of real buttons, labelled checkboxes and one 
   }
   assert.match(pairingHtml, /<progress id="pair-countdown-bar" [^>]*aria-label="Time left to find the camera"/);
   assert.equal(pairingHtml.match(/role="status"/g).length, 1);
-  assert.match(html, /\.pairing button \{ min-height: 44px; \}/);
+  assert.match(css, /\.pairing button \{ min-height: 44px; \}/);
   // One element for each step and stage the functions give.
   for (const step of page.pairingSteps("wifi", true)) {
     assert.match(pairingHtml, new RegExp(`id="pair-step-${step.name}"`));
@@ -1258,11 +1370,14 @@ test("the pairing screens are made of real buttons, labelled checkboxes and one 
   assert.match(screenHtml("failed"), /id="pair-older"/);
   // How pairing works is folded, and its words fit the page and the app alike.
   assert.match(pairingHtml, /<details id="pairing-help" class="help">/);
-  assert.match(pairingHtml, /When this screen says <em>Start Bluetooth pairing on the camera now<\/em>/);
-  assert.doesNotMatch(pairingHtml, /the page says/);
+  // It says what the screens do not: the GPS outdoors, the older cameras' Wi-Fi step.
+  const help = /<details id="pairing-help"[\s\S]*?<\/details>/.exec(pairingHtml)[0];
+  assert.match(help, /outdoors or by a\s+window/);
+  assert.match(help, /Older cameras \(LUMIX Sync generation\) need one more step/);
+  assert.doesNotMatch(help, /Start Bluetooth pairing|T1000&#8209;E|the page says/);
   // Paired: the panel's mark and words in the middle.
-  assert.match(html, /\.done-panel \{[^}]*text-align: center;/);
-  assert.match(html, /\.done-panel \.row \{ justify-content: center; \}/);
+  assert.match(css, /\.done-panel \{[^}]*text-align: center;/);
+  assert.match(css, /\.done-panel \.row \{ justify-content: center; \}/);
 });
 
 test("the camera section's screen follows the card's pairing phase and how the last pairing ended", () => {
@@ -1283,14 +1398,15 @@ test("the camera section's screen follows the card's pairing phase and how the l
   assert.deepEqual(screen({ pair: "searching" }, { ended: "no_camera" }), { screen: "camera", variant: "search" });
   // How the last pairing the page followed ended.
   assert.deepEqual(screen({ paired: true }, { ended: "paired" }), done);
-  for (const ended of ["no_camera", "not_in_pairing_mode"]) {
-    assert.deepEqual(screen({ paired: false }, { ended }), { screen: "failed", variant: "no-camera" }, ended);
+  const failed = { screen: "failed", variant: null };
+  for (const ended of ["no_camera", "not_in_pairing_mode", "failed", "no_gps_fix", "not_saved", "not_possible",
+    "wifi-given-up"]) {
+    assert.deepEqual(screen({ paired: false }, { ended }), failed, ended);
+    assert.deepEqual(screen({ paired: true }, { ended }), failed, ended);
   }
-  for (const ended of ["failed", "no_gps_fix", "not_saved", "not_possible", "wifi-given-up"]) {
-    assert.deepEqual(screen({ paired: true }, { ended }), { screen: "failed", variant: "other" }, ended);
-  }
+  // Cancelled: back to Prepare, or, on a card that keeps its camera, a screen that says so.
   assert.deepEqual(screen({ paired: false }, { ended: "cancelled" }), prepare);
-  assert.deepEqual(screen({ paired: true }, { ended: "cancelled" }), done);
+  assert.deepEqual(screen({ paired: true }, { ended: "cancelled" }), failed);
   assert.deepEqual(screen({ paired: false }, { ended: "none" }), prepare);
   // Every phase of the firmware but idle is a pairing under way.
   const phases = firmwareValues("pairPhaseValue");
@@ -1316,9 +1432,10 @@ test("the row of steps shows where the pairing is, with the Wi-Fi step only for 
 });
 
 test("the badge beside the title says whether the card is paired or pairing", () => {
-  assert.equal(page.pairingBadge({ ...STATE, paired: false }), "Not paired yet");
-  assert.equal(page.pairingBadge({ ...STATE, paired: true }), "Paired");
-  assert.equal(page.pairingBadge({ ...STATE, paired: true, pair: "searching" }), "Pairing…");
+  assert.deepEqual(json(page.pairingBadge({ ...STATE, paired: false })), { text: "Not paired yet", kind: "" });
+  assert.deepEqual(json(page.pairingBadge({ ...STATE, paired: true })), { text: "Paired", kind: "paired" });
+  assert.deepEqual(json(page.pairingBadge({ ...STATE, paired: true, pair: "searching" })),
+    { text: "Pairing\u2026", kind: "pairing" });
 });
 
 test("the card's lines start the countdown, tell the stages, the older camera and why the card gave up", () => {
@@ -1365,9 +1482,14 @@ test("the card's lines start the countdown, tell the stages, the older camera an
   }
 });
 
-test("the page's search time is the card's", () => {
+test("the page's pairing limits are the card's", () => {
   const source = readFileSync(new URL("../../src/pairing.cpp", import.meta.url), "utf8");
-  assert.equal(page.PAIR_SEARCH_MS, Number(/constexpr uint32_t SEARCH_MS = (\d+);/.exec(source)[1]));
+  const constant = (name) => Number(new RegExp(`constexpr (?:uint32_t|int) ${name} = (\\d+);`).exec(source)[1]);
+  assert.equal(page.PAIR_SEARCH_MS, constant("SEARCH_MS"));
+  assert.equal(page.PAIR_FIX_WAIT_MS, constant("FIX_WAIT_MS"));
+  assert.equal(page.PAIR_ATTEMPTS, constant("MAX_ATTEMPTS"));
+  assert.equal(page.minutesText(page.PAIR_SEARCH_MS), "2 minutes");
+  assert.equal(page.minutesText(60000), "1 minute");
 });
 
 test("the countdown runs from 2:00 to 0:00, also for a screen reader", () => {
@@ -1391,40 +1513,45 @@ test("the stages of the connection: done, then the current one, then those to co
   assert.deepEqual(stages(3), ["done", "done", "done", "current"]);
   assert.deepEqual(stages(4), ["done", "done", "done", "done"]);
   assert.deepEqual(json(page.connectStages(0).map((stage) => stage.label)), ["Camera in pairing mode",
-    "Connected over Bluetooth", "Introducing the card to the camera…", "Setting the camera's clock"]);
+    "Connected over Bluetooth", "Introducing the card to the camera", "Setting the camera's clock"]);
 });
 
 test("under the countdown the page says what the card does", () => {
   const text = (variant, state, context) => json(page.cameraStepText(variant, { ...STATE, ...state }, context));
   assert.deepEqual(text("gps", { gpsSatellites: 3 }),
-    ["Waiting for the GPS time – 3 satellites so far. Don't start pairing on the camera yet.", "busy"]);
+    ["Waiting for the GPS time – 3 satellites so far. Do not start pairing on the camera yet.", "busy"]);
   assert.deepEqual(text("search", {}), ["Looking for the camera…", "busy"]);
   assert.deepEqual(text("search", { pairAttempt: 1 }), ["Looking for the camera again (attempt 2 of 3)…", "busy"]);
   assert.deepEqual(text("search", {}, { nearby: true }), ["A camera is nearby, but not in pairing mode yet.", "warn"]);
   assert.deepEqual(text("pause", { pairAttempt: 1 }, { pauseLeftMs: 9500 }),
-    ["Attempt 1 of 3 didn't work – looking again in 10 s. Keep the camera in pairing mode.", "warn"]);
-  assert.match(text("pause", { pairAttempt: 2 })[0], /^Attempt 2 of 3 didn't work – looking again in a moment\./);
+    ["Attempt 1 of 3 did not work – looking again in 10 s. Keep the camera in pairing mode.", "warn"]);
+  assert.match(text("pause", { pairAttempt: 2 })[0], /^Attempt 2 of 3 did not work – looking again in a moment\./);
 });
 
 test("Prepare checks the GPS by itself", () => {
   assert.deepEqual(json(page.gpsCheck({ ...STATE, gpsFix: true, gpsSatellites: 11 })),
-    { done: true, detail: "11 satellites – the card knows the time. Checked by itself." });
+    { done: true, detail: "11 satellites – the card knows the time." });
   assert.deepEqual(json(page.gpsCheck({ ...STATE, gpsFix: false, gpsSatellites: 1 })),
     { done: false, detail: "Waiting for a fix – 1 satellite so far." });
   assert.equal(page.gpsCheck({ ...STATE, gpsOn: false, gpsFix: false }).detail, "The GPS switches on when pairing starts.");
 });
 
-test("every way a pairing can end without a camera is explained, the older-camera box only where it helps", () => {
+test("every way a pairing can end without a camera is explained, the tips and the older-camera box where they help",
+  () => {
   const results = firmwareValues("pairResultValue").filter((result) => !["none", "paired", "cancelled"].includes(result));
   assert.deepEqual(results, ["not_saved", "not_possible", "no_gps_fix", "no_camera", "not_in_pairing_mode", "failed"]);
   for (const result of [...results, "wifi-given-up"]) {
     assert.doesNotMatch(page.failedText(result).text, /^The card ended the pairing/, result);
   }
-  const older = [...results, "wifi-given-up"].filter((result) => page.failedText(result).older);
-  assert.deepEqual(older, ["no_camera", "not_in_pairing_mode", "failed"]);
+  const camera = [...results, "wifi-given-up"].filter((result) => page.failedText(result).camera);
+  assert.deepEqual(camera, ["no_camera", "not_in_pairing_mode", "failed"]);
   assert.deepEqual(json(page.failedText("no_camera")), { title: "The camera did not answer",
-    text: "The card looked for 2 minutes and didn't find a camera in pairing mode.", older: true });
-  assert.match(page.failedText("failed").text, /^The camera did not take the card in 3 attempts\./);
+    text: "The card looked for 2 minutes and did not find a camera in pairing mode.", camera: true });
+  assert.equal(page.failedText("failed").text, "The camera did not take the card in 3 attempts.");
+  assert.deepEqual(json(page.failedText("cancelled")), { title: "Pairing cancelled", text: "", camera: false });
+  // A camera that lists the card from an earlier pairing refuses it as other failures do: the first tip.
+  assert.match(/<ul id="failed-tips" class="tips">\s*<li>([\s\S]*?)<\/li>/.exec(screenHtml("failed"))[1]
+    .replace(/\s+/g, " "), /^The camera may still list T1000&#8209;E from an earlier pairing &ndash; delete it there and try again\.$/);
   assert.equal(page.failedText("failed", "no connection to the camera after 5 quick retries (last: link not " +
     "established (0x3e))").text, "The card could not connect to the camera: the connection never came up.");
   assert.equal(page.failedText("failed", "all attempts failed").text, page.failedText("failed").text);
@@ -1468,7 +1595,7 @@ test("pairing from the page: Prepare, the camera, the connection, done, then for
   assert.equal(ui["check-gps"].className, "check-done"); // a fix: checked by itself
   assert.match(ui["check-gps-detail"].textContent, /^11 satellites – the card knows the time/);
   assert.equal(ui["pair-wait-note"].textContent,
-    "Don't start pairing on the camera yet – this page tells you when.");
+    "Do not start pairing on the camera yet – this page tells you when.");
   assert.equal(ui["pair-keep"].hidden, true); // nothing paired to keep
   assert.equal(ui["check-list"].checked, false); // the reminders do not hold Pair back
   assert.equal(ui["pair-start"].disabled, false);
@@ -1481,7 +1608,7 @@ test("pairing from the page: Prepare, the camera, the connection, done, then for
   assert.deepEqual(shownScreen(ui), ["camera"]);
   assert.equal(ui["pair-callout"].hidden, true); // not the user's turn yet
   assert.equal(ui["pair-status"].textContent,
-    "Waiting for the GPS time – 3 satellites so far. Don't start pairing on the camera yet.");
+    "Waiting for the GPS time – 3 satellites so far. Do not start pairing on the camera yet.");
   assert.equal(ui["pair-status"].className, "busy");
   assert.equal(ui["pair-badge"].textContent, "Pairing…");
   assert.equal(ui["pair-stop-row"].hidden, false);
@@ -1602,11 +1729,32 @@ test("How pairing works folds on each new screen; a failed pairing of a paired c
   await ui["pair-start"].fire("click");
   assert.deepEqual(shownScreen(ui), ["camera"]);
   assert.equal(ui["pairing-help"].open, false);
-  answers.status = statusWith({ pair_result: "no_camera" }); // the card still has its camera
+  answers.status = statusWith({ pair_result: "failed" }); // the card still has its camera
   await ui.refresh.fire("click");
   assert.deepEqual(shownScreen(ui), ["failed"]);
+  assert.equal(ui["failed-title"].textContent, "Pairing did not work");
   assert.equal(ui["failed-paired"].hidden, false);
   assert.match(screenHtml("failed"), /<p id="failed-paired" class="hidden">Your camera stays paired as before\.<\/p>/);
+  assert.equal(ui["failed-tips"].hidden, false);
+  // A card that keeps its camera: Pair again from Prepare, or keep the camera; not Try again.
+  assert.deepEqual([ui["pair-retry"].hidden, ui["failed-again"].hidden, ui["failed-keep"].hidden], [true, false, false]);
+  await ui["failed-keep"].fire("click");
+  assert.deepEqual(shownScreen(ui), ["done"]);
+  // Cancelled: the same screen, its title says why.
+  await ui["pair-again"].fire("click");
+  answers.status = statusWith({ pair: "searching" });
+  await ui["pair-start"].fire("click");
+  answers["pair off"] = PAIR_OFF_ANSWER;
+  answers.status = statusWith({ pair_result: "cancelled" });
+  await ui["pair-stop"].fire("click");
+  assert.deepEqual(shownScreen(ui), ["failed"]);
+  assert.equal(ui["failed-title"].textContent, "Pairing cancelled");
+  assert.equal(ui["failed-text"].hidden, true);
+  assert.equal(ui["failed-paired"].hidden, false);
+  assert.equal(ui["failed-tips"].hidden, true);
+  assert.equal(ui["pair-status"].textContent, ""); // the title says it
+  await ui["failed-again"].fire("click");
+  assert.deepEqual(shownScreen(ui), ["prepare"]);
   await ui.disconnect.fire("click");
 });
 
@@ -1894,15 +2042,15 @@ const OLDER_IDENTITY = "4D454930-0100-1000-8001-A1B2C3D4E5F6 T1000-E";
 // The card's state while it waits for the Wi-Fi step.
 const WAITING_WIFI = statusWith({ ...NOT_PAIRED, pair: "waiting_wifi" }, STATUS_GPS_HOLD);
 
-// statusAfterStart: the card's state from 'pair older' on (by default it stays idle).
-async function olderWizard(registerOutcome, statusAfterStart = null) {
+// statusAfterStart: the card's state from 'pair older' on.
+async function olderWizard(registerOutcome, statusAfterStart) {
   const answers = { v: VERSION_1_4, status: statusWith(NOT_PAIRED, STATUS_GPS_HOLD), "pair older": OLDER_STARTED,
     "pair off": PAIR_OFF_ANSWER, "pair prepare": PREPARE_ANSWER };
   const app = simulatedApp(["/dev/ttyACM0"], answers);
   app.registerOutcome = registerOutcome;
   const ui = openPage(null, { app });
   await ui.connect.fire("click");
-  if (statusAfterStart) answers.status = statusAfterStart;
+  answers.status = statusAfterStart;
   await ui["pair-older"].fire("click");
   return { app, ui, answers };
 }
@@ -1954,6 +2102,22 @@ test("in the app: an identity the app refuses is explained, and the card keeps w
   await ui.disconnect.fire("click");
 });
 
+test("in the app: the Wi-Fi step shows each stage of test/app_words.json the app reports", async () => {
+  const shown = [];
+  for (const stage of APP_WORDS.progress) {
+    const answers = { v: VERSION_1_4, status: WAITING_WIFI, p: CARD_ID_ANSWER, "pair off": PAIR_OFF_ANSWER };
+    const app = simulatedApp(["/dev/ttyACM0"], answers);
+    Object.assign(app, { registerOutcome: "wait", registerStages: [stage] });
+    const ui = openPage(null, { app });
+    await ui.connect.fire("click"); // the card waits for the Wi-Fi step: the app goes on with it
+    await until(() => app.registered.length === 1 && ui["pair-status"].className === "busy");
+    shown.push(ui["pair-status"].textContent);
+    await ui.disconnect.fire("click");
+  }
+  assert.deepEqual(shown, ["On the camera's network – registering the card…",
+    "Registering – allow the connection on the camera if it asks…"]);
+});
+
 test("in the app: after a failed Wi-Fi step, Cancel cancels without a red message", async () => {
   const cancelledWhenAsked = (app) => (app.calls.includes("send pair off") ? PAIR_CANCELLED : WAITING_WIFI);
   const { app, ui } = await olderWizard("not-on-network", cancelledWhenAsked);
@@ -1967,7 +2131,44 @@ test("in the app: after a failed Wi-Fi step, Cancel cancels without a red messag
   await ui.disconnect.fire("click");
 });
 
-// Pair again used to leave its last stage ("Connecting to the camera...") in a second section of its own.
+test("in the app: unplugged in the Wi-Fi step, the step stops; connected again, it goes on and Cancel stops it",
+  async () => {
+    const cancelledWhenAsked = (app) => (app.calls.includes("send pair off") ? PAIR_CANCELLED : WAITING_WIFI);
+    const answers = { v: VERSION_1_4, status: cancelledWhenAsked, p: CARD_ID_ANSWER, "pair off": PAIR_OFF_ANSWER };
+    const app = simulatedApp(["/dev/ttyACM0"], answers);
+    app.registerOutcome = "wait";
+    const ui = openPage(null, { app });
+    await ui.connect.fire("click"); // the card waits for the Wi-Fi step: the app goes on with it
+    await until(() => app.registered.length === 1);
+    app.unplug();
+    await until(() => app.calls.includes("cancel_older")); // the step stops with its card
+    app.plugIn(); // the page connects by itself: the card still waits
+    await until(() => app.registered.length === 2);
+    assert.equal(ui["pair-stop"].disabled, false);
+    await ui["pair-stop"].fire("click");
+    await until(() => !ui["pair-screen-prepare"].hidden);
+    assert.equal(app.calls.filter((call) => call === "cancel_older").length, 2);
+    assert.equal(ui["pair-status"].textContent, "Pairing cancelled.");
+    await ui.disconnect.fire("click");
+  });
+
+test("in the app: Pair as an older camera keeps its screen until the card answers, and a refusal says why",
+  async () => {
+    const answers = { v: VERSION_1_4, status: statusWith({ pair: "searching" }, STATUS_GPS_HOLD),
+      "pair older": ["pair: not possible - BLE or the pairing file is not available\r\n"] };
+    const { ui } = await connectedApp(answers);
+    answers.status = statusWith({ pair_result: "no_camera" }, STATUS_GPS_HOLD); // the card still has its camera
+    await ui.refresh.fire("click");
+    assert.deepEqual(shownScreen(ui), ["failed"]);
+    answers.status = statusWith({ pair_result: "not_possible" }, STATUS_GPS_HOLD);
+    const pairing = ui["pair-older"].fire("click");
+    assert.deepEqual(shownScreen(ui), ["failed"]); // not the paired camera's screen before the card answers
+    await until(() => !ui["pair-start"].disabled);
+    assert.equal(ui["failed-title"].textContent, "The card cannot pair now");
+    await pairing;
+    await ui.disconnect.fire("click");
+  });
+
 test("in the app: Pair again shows Prepare, Keep the current camera goes back, and Pair runs to the end", async () => {
   const answers = { v: VERSION_1_4, status: STATUS_GPS_HOLD, pair: PAIR_STARTED };
   const { ui } = await connectedApp(answers);
@@ -1975,7 +2176,7 @@ test("in the app: Pair again shows Prepare, Keep the current camera goes back, a
   await ui["pair-again"].fire("click");
   assert.deepEqual(shownScreen(ui), ["prepare"]);
   assert.equal(ui["pair-keep"].hidden, false);
-  assert.equal(ui["pair-wait-note"].textContent, "Don't start pairing on the camera yet – the app tells you when.");
+  assert.equal(ui["pair-wait-note"].textContent, "Do not start pairing on the camera yet – the app tells you when.");
   await ui["pair-keep"].fire("click");
   assert.deepEqual(shownScreen(ui), ["done"]);
   await ui["pair-again"].fire("click");
@@ -1995,8 +2196,9 @@ test("in the app: Pair as an older camera follows the card on the same screens, 
     "pair older": ["link: off\r\npair: older started - waiting for GPS time (up to 120 s)\r\n"],
     "pair off": PAIR_OFF_ANSWER };
   const { app, ui } = await connectedApp(answers);
+  answers.status = statusWith({ ...NOT_PAIRED, pair: "waiting_gps" }, STATUS_GPS_HOLD); // as the card answers
   const run = ui["pair-older"].fire("click");
-  await until(() => app.calls.includes("send pair older"));
+  await until(() => !ui["pair-screen-camera"].hidden); // the card waits for GPS time
   assert.equal(ui["pair-stop-row"].hidden, false);
   assert.equal(ui["pair-start"].disabled, true);
   answers.status = statusWith({ ...NOT_PAIRED, pair: "searching" }, STATUS_GPS_HOLD);
@@ -2025,6 +2227,26 @@ test("in the app: after a failed Wi-Fi step, a card that stops waiting is shown 
   assert.equal(ui["pair-retry"].disabled, false);
   await ui.disconnect.fire("click");
 });
+
+test("in the app: a Wi-Fi step cancelled on a paired card is not shown as paired, and the card keeps its camera",
+  async () => {
+    const waiting = statusWith({ link: "off", pair: "waiting_wifi" }, STATUS_GPS_HOLD);
+    const cancelled = statusWith({ link: "on", pair_result: "cancelled" }, STATUS_GPS_HOLD);
+    const answers = { v: VERSION_1_4, p: CARD_ID_ANSWER, "pair off": PAIR_OFF_ANSWER,
+      status: (app) => (app.calls.includes("send pair off") ? cancelled : waiting) };
+    const app = simulatedApp(["/dev/ttyACM0"], answers);
+    app.registerOutcome = "wait";
+    const ui = openPage(null, { app });
+    await ui.connect.fire("click"); // the card waits for the Wi-Fi step: the app goes on with it
+    await until(() => app.registered.length === 1);
+    await ui["pair-stop"].fire("click");
+    await until(() => !ui["pair-screen-failed"].hidden);
+    assert.equal(ui["failed-title"].textContent, "Pairing cancelled");
+    assert.equal(ui["failed-paired"].hidden, false);
+    await ui["failed-keep"].fire("click");
+    assert.deepEqual(shownScreen(ui), ["done"]);
+    await ui.disconnect.fire("click");
+  });
 
 test("in the app: a cancelled Wi-Fi step stops the card's pairing", async () => {
   const cancelledWhenAsked = (app) => (app.calls.includes("send pair off") ? PAIR_CANCELLED : WAITING_WIFI);

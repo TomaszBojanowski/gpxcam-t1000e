@@ -11,6 +11,7 @@
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -41,12 +42,12 @@ pub struct Timing {
     pub network_wait: Duration, // total time to wait for the user to join the camera's network
     pub network_poll: Duration, // between "are we on the network yet?" checks
     pub connect_timeout: Duration,
-    pub io_timeout: Duration,
-    pub tries: u32,    // req_acc_e attempts while the camera has not decided
-    pub gap: Duration, // between those attempts
+    pub io_timeout: Duration, // each request with its whole reply
+    pub tries: u32,           // req_acc_e attempts while the camera has not decided
+    pub gap: Duration,        // between those attempts
     // The warm-up before the registration: a UPnP read, `after_read`, the SSDP search (its socket
     // open for `search_open`), `before_second_read`, a second UPnP read, `after_read`.
-    pub upnp_timeout: Duration, // connect, write and read of each UPnP read
+    pub upnp_timeout: Duration, // the connection, and the request with its whole reply, of each UPnP read
     pub after_read: Duration,
     pub search_open: Duration,
     pub before_second_read: Duration,
@@ -70,7 +71,7 @@ impl Timing {
     }
 }
 
-/// What the page is told while the step runs (the final answer is the command's `Outcome`).
+/// What the page is told while the step runs (test/app_words.json); the final answer is the `Outcome`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Progress {
@@ -78,7 +79,7 @@ pub enum Progress {
     Registering, // sent the registration; the camera (and the user) must accept
 }
 
-/// How the step ended.
+/// How the step ended, as the word the page explains (test/app_words.json).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Outcome {
@@ -91,6 +92,10 @@ pub enum Outcome {
 
 const USER_AGENT: &str = "gpxcam-card";
 const UPNP_PATH: &str = "/Lumix/Server0/ddd";
+
+/// Far more than the step needs: the registration's replies are a few dozen bytes (docs/PROTOCOL.md),
+/// and the UPnP description is read only to warm the camera up.
+const MAX_REPLY: usize = 64 * 1024;
 
 /// The identity text the card shows (device_identity::identityText): the 10-byte prefix and the
 /// 6-byte seed as 36 upper-case characters. The app registers exactly this.
@@ -156,38 +161,58 @@ fn content_length(headers: &[u8]) -> Option<usize> {
     None
 }
 
-/// One HTTP/1.1 GET on an open connection, returning the body as trimmed text. No gzip is asked for,
-/// so the camera's short replies come as plain text.
-fn http_get(stream: &mut TcpStream, host: &str, path: &str) -> io::Result<String> {
+fn too_long() -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, "a reply longer than the camera's")
+}
+
+/// Adds what has come to `reply`, waiting until `deadline` at most; 0 at the end of the stream.
+fn read_more(stream: &mut TcpStream, reply: &mut Vec<u8>, deadline: Instant) -> io::Result<usize> {
+    let left = deadline.saturating_duration_since(Instant::now());
+    if left.is_zero() {
+        return Err(io::ErrorKind::TimedOut.into());
+    }
+    stream.set_read_timeout(Some(left))?;
+    let mut chunk = [0u8; 512];
+    let read = stream.read(&mut chunk)?;
+    reply.extend_from_slice(&chunk[..read]);
+    if reply.len() > MAX_REPLY {
+        return Err(too_long());
+    }
+    Ok(read)
+}
+
+/// One HTTP/1.1 GET on an open connection, returning the body as trimmed text: the request and the
+/// whole reply within `limit`, the reply at most MAX_REPLY bytes. No gzip is asked for, so the
+/// camera's short replies come as plain text.
+fn http_get(stream: &mut TcpStream, host: &str, path: &str, limit: Duration) -> io::Result<String> {
+    let deadline = Instant::now() + limit;
     let request =
         format!("GET {path} HTTP/1.1\r\nUser-Agent: {USER_AGENT}\r\nHost: {host}\r\nConnection: Keep-Alive\r\n\r\n");
+    stream.set_write_timeout(Some(limit))?;
     stream.write_all(request.as_bytes())?;
     stream.flush()?;
-    let mut buffer = Vec::new();
-    let mut chunk = [0u8; 512];
+    let mut reply = Vec::new();
     let header_end = loop {
-        if let Some(position) = find(&buffer, b"\r\n\r\n") {
+        if let Some(position) = find(&reply, b"\r\n\r\n") {
             break position;
         }
-        let read = stream.read(&mut chunk)?;
-        if read == 0 {
+        if read_more(stream, &mut reply, deadline)? == 0 {
             return Err(io::ErrorKind::UnexpectedEof.into());
         }
-        buffer.extend_from_slice(&chunk[..read]);
     };
-    let length = content_length(&buffer[..header_end]);
-    let mut body = buffer[header_end + 4..].to_vec();
-    if let Some(length) = length {
-        while body.len() < length {
-            let read = stream.read(&mut chunk)?;
-            if read == 0 {
+    let body_start = header_end + 4;
+    if let Some(length) = content_length(&reply[..header_end]) {
+        if length > MAX_REPLY - body_start {
+            return Err(too_long());
+        }
+        while reply.len() < body_start + length {
+            if read_more(stream, &mut reply, deadline)? == 0 {
                 break;
             }
-            body.extend_from_slice(&chunk[..read]);
         }
-        body.truncate(length);
+        reply.truncate(body_start + length);
     }
-    Ok(String::from_utf8_lossy(&body).trim().to_string())
+    Ok(String::from_utf8_lossy(&reply[body_start..]).trim().to_string())
 }
 
 /// "ok,<hex>" from req_acc_g gives the four-byte session token.
@@ -209,10 +234,13 @@ fn request_access(
     cancel: &AtomicBool,
 ) -> io::Result<Outcome> {
     let mut stream = TcpStream::connect_timeout(&target.camera, timing.connect_timeout)?;
-    stream.set_read_timeout(Some(timing.io_timeout))?;
-    stream.set_write_timeout(Some(timing.io_timeout))?;
     let host = host_header(&target.camera);
-    let reply = http_get(&mut stream, &host, "/cam.cgi?mode=accctrl&type=req_acc_g")?;
+    let reply = http_get(
+        &mut stream,
+        &host,
+        "/cam.cgi?mode=accctrl&type=req_acc_g",
+        timing.io_timeout,
+    )?;
     let Some(token) = parse_token(&reply) else {
         eprintln!("older camera Wi-Fi step: req_acc_g answered {reply:?}");
         return Ok(Outcome::Failed);
@@ -226,7 +254,7 @@ fn request_access(
         if cancel.load(Ordering::SeqCst) {
             return Ok(Outcome::Cancelled);
         }
-        let reply = http_get(&mut stream, &host, &path)?;
+        let reply = http_get(&mut stream, &host, &path, timing.io_timeout)?;
         if reply.starts_with("ok_under_research") || reply.starts_with("err_user_refused") {
             if attempt + 1 < timing.tries {
                 std::thread::sleep(timing.gap);
@@ -277,9 +305,7 @@ fn warm_up(target: &Target, local: Option<Ipv4Addr>, timing: &Timing) {
     let upnp = SocketAddr::new(target.camera.ip(), target.upnp_port);
     let ddd = || {
         if let Ok(mut stream) = TcpStream::connect_timeout(&upnp, timing.upnp_timeout) {
-            let _ = stream.set_read_timeout(Some(timing.upnp_timeout));
-            let _ = stream.set_write_timeout(Some(timing.upnp_timeout));
-            let _ = http_get(&mut stream, &host_header(&upnp), UPNP_PATH);
+            let _ = http_get(&mut stream, &host_header(&upnp), UPNP_PATH, timing.upnp_timeout);
         }
         std::thread::sleep(timing.after_read);
     };
@@ -346,12 +372,50 @@ pub fn register(
     })
 }
 
+/// The Wi-Fi steps the page starts, one at a time. A new step asks the one before to stop and runs
+/// after it has ended: after a reconnect the page can start the step again, and two registrations
+/// never run at once.
+#[derive(Clone, Default)]
+pub struct Steps {
+    newest: Arc<Mutex<Option<Arc<AtomicBool>>>>, // the cancel flag of the newest step
+    running: Arc<Mutex<()>>,                     // held while a step runs
+}
+
+impl Steps {
+    /// The cancel flag of a new step; the step before is asked to stop.
+    pub fn begin(&self) -> Arc<AtomicBool> {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let before = self
+            .newest
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .replace(Arc::clone(&cancel));
+        if let Some(before) = before {
+            before.store(true, Ordering::SeqCst);
+        }
+        cancel
+    }
+
+    /// Runs `step` once the step before has ended.
+    pub fn run<T>(&self, step: impl FnOnce() -> T) -> T {
+        let _one_at_a_time = self.running.lock().unwrap_or_else(PoisonError::into_inner);
+        step()
+    }
+
+    /// Asks the newest step to stop.
+    pub fn cancel(&self) {
+        if let Some(newest) = self.newest.lock().unwrap_or_else(PoisonError::into_inner).as_ref() {
+            newest.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::{HashMap, VecDeque};
     use std::net::TcpListener;
-    use std::sync::{Arc, Mutex};
+    use std::sync::mpsc;
     use std::thread;
 
     // The made-up identity and name of test/device_identity_vectors.txt, shared with the card's
@@ -601,6 +665,42 @@ mod tests {
     }
 
     #[test]
+    fn fails_on_a_reply_longer_than_the_cameras() {
+        let long = format!("ok,deadbeef,{}", "x".repeat(MAX_REPLY));
+        let camera = fake_camera(long.leak(), &["ok,CAM,remote,open,abcd"]);
+        assert_eq!(run(&camera.target, false).0, Outcome::Failed);
+    }
+
+    #[test]
+    fn fails_in_time_on_replies_that_trickle_in() {
+        // A camera that answers every request with 100 bytes, one every 50 ms: 5 s for each reply.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let ssdp = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let target = target_at(listener.local_addr().unwrap(), &ssdp);
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                thread::spawn(move || {
+                    while read_request(&mut stream).is_some() {
+                        let mut reply = b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n".to_vec();
+                        reply.resize(reply.len() + 100, b'x');
+                        for byte in reply {
+                            if stream.write_all(&[byte]).is_err() {
+                                return;
+                            }
+                            thread::sleep(Duration::from_millis(50));
+                        }
+                    }
+                });
+            }
+        });
+        let start = Instant::now();
+        assert_eq!(run(&target, false).0, Outcome::Failed);
+        // Two UPnP reads of upnp_timeout and req_acc_g of io_timeout (test_timing), with some leeway.
+        assert!(start.elapsed() < Duration::from_secs(2), "{:?}", start.elapsed());
+    }
+
+    #[test]
     fn fails_when_the_camera_does_not_answer() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let ssdp = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -614,5 +714,43 @@ mod tests {
             }
         });
         assert_eq!(run(&target, false).0, Outcome::Failed);
+    }
+
+    #[test]
+    fn a_new_step_stops_the_one_before_and_runs_after_it() {
+        let steps = Steps::default();
+        let first = steps.begin();
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let (started, has_started) = mpsc::channel();
+        let running = {
+            let (steps, first, order) = (steps.clone(), Arc::clone(&first), Arc::clone(&order));
+            thread::spawn(move || {
+                steps.run(|| {
+                    started.send(()).unwrap();
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    while !first.load(Ordering::SeqCst) && Instant::now() < deadline {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    order.lock().unwrap().push("first ended");
+                });
+            })
+        };
+        has_started.recv().unwrap();
+        let second = steps.begin();
+        assert!(first.load(Ordering::SeqCst), "the step before is asked to stop");
+        assert!(!second.load(Ordering::SeqCst));
+        steps.run(|| order.lock().unwrap().push("second ran"));
+        running.join().unwrap();
+        assert_eq!(*order.lock().unwrap(), ["first ended", "second ran"]);
+    }
+
+    #[test]
+    fn cancel_stops_the_newest_step() {
+        let steps = Steps::default();
+        steps.cancel(); // no step yet: nothing to stop
+        let cancel = steps.begin();
+        assert!(!cancel.load(Ordering::SeqCst));
+        steps.cancel();
+        assert!(cancel.load(Ordering::SeqCst));
     }
 }

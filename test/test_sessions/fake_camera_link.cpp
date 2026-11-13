@@ -2,6 +2,8 @@
 // answers at once through the event queue, as the real camera_link turns the SoftDevice's events
 // into Events. As there: connect() drops the events of an earlier connection, connected() is true
 // from the Connected event until the Disconnected one, and requests without a connection are refused.
+// close() only asks for the end, as sd_ble_gap_disconnect() does: the connection stays until its
+// Disconnected, at least one connection event later.
 #include <stdio.h>
 #include <string.h>
 
@@ -22,6 +24,8 @@ struct Queued {
 };
 std::deque<Queued> events;
 bool linkOpen = false;
+bool closing = false;        // close() asked for the end, its Disconnected comes at closedAtMs
+uint32_t closedAtMs = 0;
 bool wanted = false;         // connect() since the last close(), as camera_link's connectionWanted
 bool dropNext = false;       // loseNextEvent()
 bool dieOnFirstRequest = false; // Answer::NotEstablished: the camera sends nothing after connecting
@@ -39,14 +43,29 @@ void ask(const char *what, uint16_t handle = 0)
     requests.push_back(text);
 }
 
-void queue(const camera_link::Event &event)
+void queueAt(uint32_t readableAtMs, const camera_link::Event &event)
 {
     if (dropNext) {
         dropNext = false;
         lost++;
         return;
     }
-    events.push_back({now() + answerMs, event});
+    events.push_back({readableAtMs, event});
+}
+
+void queue(const camera_link::Event &event)
+{
+    queueAt(now() + answerMs, event);
+}
+
+// The connection as camera_link has it: open until the BLE task takes the Disconnected of a close().
+bool open()
+{
+    if (closing && (int32_t)(now() - closedAtMs) >= 0) {
+        linkOpen = false;
+        closing = false;
+    }
+    return linkOpen;
 }
 
 camera_link::Event made(camera_link::EventType type, uint16_t status = BLE_GATT_STATUS_SUCCESS)
@@ -66,8 +85,8 @@ bool matches(const Trigger &trigger, Request request, uint16_t handle)
 // connection or stay silent. True if the request gets its answer.
 bool answers(Request request, uint16_t handle, bool *accepted)
 {
-    *accepted = linkOpen;
-    if (!linkOpen)
+    *accepted = open() && !closing;
+    if (!*accepted)
         return false;
     if (dieOnFirstRequest) {
         dieOnFirstRequest = false;
@@ -83,7 +102,13 @@ bool answers(Request request, uint16_t handle, bool *accepted)
 
 uint16_t status(Request request, uint16_t handle)
 {
-    return matches(camera.refuse, request, handle) ? camera.refuseStatus : BLE_GATT_STATUS_SUCCESS;
+    if (!matches(camera.refuse, request, handle))
+        return BLE_GATT_STATUS_SUCCESS;
+    if (camera.refuse.skip > 0) {
+        camera.refuse.skip--;
+        return BLE_GATT_STATUS_SUCCESS;
+    }
+    return camera.refuseStatus;
 }
 
 void addNewer(camera_link::Event *event, camera_link::NewerCharacteristic which, uint16_t handle, uint8_t properties)
@@ -108,6 +133,7 @@ void resetCameraLink()
 {
     events.clear();
     linkOpen = false;
+    closing = false;
     wanted = false;
     dropNext = false;
     dieOnFirstRequest = false;
@@ -128,7 +154,7 @@ int askedCount(const char *request)
 
 bool linkUp()
 {
-    return linkOpen;
+    return open() && !closing;
 }
 
 bool connectionWanted()
@@ -157,9 +183,10 @@ void notify(uint16_t handle, uint8_t value)
 
 void endConnection(uint8_t reason)
 {
-    if (!linkOpen)
+    if (!open())
         return;
     linkOpen = false; // camera_link clears its handle before it queues the event
+    closing = false;
     queue(made(camera_link::EventType::Disconnected, reason));
 }
 
@@ -196,7 +223,7 @@ bool nextEvent(Event *event)
 bool connect(const camera_list::Report &)
 {
     fake::ask("connect");
-    if (fake::linkOpen)
+    if (fake::open())
         return false;
     fake::events.clear(); // answers from an earlier connection
     fake::wanted = true;
@@ -215,17 +242,18 @@ bool connect(const camera_list::Report &)
 
 bool connected()
 {
-    return fake::linkOpen;
+    return fake::open();
 }
 
 bool close()
 {
     fake::ask("close");
     fake::wanted = false;
-    if (!fake::linkOpen)
-        return false;
-    fake::linkOpen = false;
-    fake::queue(fake::made(EventType::Disconnected, BLE_HCI_LOCAL_HOST_TERMINATED_CONNECTION));
+    if (!fake::open() || fake::closing)
+        return false; // as sd_ble_gap_disconnect(): already disconnecting
+    fake::closing = true;
+    fake::closedAtMs = fake::now() + (fake::answerMs > fake::CLOSE_MS ? fake::answerMs : fake::CLOSE_MS);
+    fake::queueAt(fake::closedAtMs, fake::made(EventType::Disconnected, BLE_HCI_LOCAL_HOST_TERMINATED_CONNECTION));
     return true;
 }
 

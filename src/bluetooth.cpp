@@ -413,7 +413,7 @@ void scanOff(LogTo logTo)
 {
     if (!scanActive)
         return;
-    scanActive = false; // first, so the BLE task no longer resumes the scan
+    scanActive = false; // first, so the BLE task does not resume the scan
     // Stopping also works while the scan is paused after a report (ble_gap.h).
     const bool stopped = Bluefruit.Scanner.stop();
     const Counts counts = sinceScanStart();

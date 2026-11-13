@@ -201,7 +201,7 @@ void test_update_from_table()
     TEST_ASSERT_FALSE(tz_record::updateFromTable(&rule));
     assertRecord("", "<+0545>-5:45", rule);
 
-    Record removed = {}; // a name no longer in the table: its saved rule stays
+    Record removed = {}; // a name the table does not have: its saved rule stays
     strcpy(removed.name, "Old/Zone");
     strcpy(removed.rule, "<+03>-3");
     TEST_ASSERT_FALSE(tz_record::updateFromTable(&removed));

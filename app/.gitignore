@@ -1,4 +1,4 @@
-# Made by tools/app_frontend.py from docs/index.html
+# Made by tools/app_frontend.py from docs/index.html and the files it loads
 /dist/
 # Cargo and tauri-build output
 /src-tauri/target/

@@ -17,7 +17,7 @@ pairing, the camera's clock and time zone, location updates and sound.
 
 *After Connect: the card's state, refreshed every few seconds.*
 
-![Pairing, Prepare: the steps Prepare, Pair on camera, Connect and Done, with Prepare current; "GPS has a fix" checked by itself, two reminders to tick (T1000-E not on the camera's Bluetooth list, no phone connected to the camera), the Pair button and "Don't start pairing on the camera yet – the app tells you when."](../docs/images/app-pair-prepare.png)
+![Pairing, Prepare: the steps Prepare, Pair on camera, Connect and Done, with Prepare current; "GPS has a fix" checked by itself, two reminders to tick (T1000-E not on the camera's Bluetooth list, no phone connected to the camera), the Pair button and "Do not start pairing on the camera yet – the app tells you when."](../docs/images/app-pair-prepare.png)
 
 *Pairing, step by step: Prepare checks the GPS by itself and reminds of the camera's list and the
 phone.*
@@ -39,7 +39,7 @@ phone.*
 
 *Paired.*
 
-![A pairing that found no camera: "The camera did not answer", "The card looked for 2 minutes and didn't find a camera in pairing mode.", three tips and Try again; below it "An older camera? (S5, S1, GH5, GH6, G9, G100…)" with Pair as an older camera](../docs/images/app-pair-failed.png)
+![A pairing that found no camera: "The camera did not answer", "The card looked for 2 minutes and did not find a camera in pairing mode.", four tips (the first: the camera may still list T1000-E from an earlier pairing) and Try again; below it "An older camera? (S5, S1, GH5, GH6, G9, G100…)" with Pair as an older camera](../docs/images/app-pair-failed.png)
 
 *No camera found: why, what to check, and the only place that offers pairing as with an older camera.*
 
@@ -126,18 +126,19 @@ after a pairing that did not succeed, so it starts looking for the camera at onc
 
 If the Wi-Fi step fails on the camera's network (for example the camera did not confirm), the card
 keeps waiting for it, up to 5 minutes from its introduction: click *Try the Wi-Fi step again*.
-If the app was closed or the cable came off in the middle, connect again: the app opens on the step
-the card is at, with *Cancel*; at the Wi-Fi step it goes on with it by itself.
+If the cable came off in the middle, plug it back in: the app connects by itself. After the app was
+closed, click *Connect*. Either way the app opens on the step the card is at, with *Cancel*; at the
+Wi-Fi step it goes on with it by itself.
 
 After it succeeds, the card connects to the camera over Bluetooth alone, like any other pairing.
 The protocol is in [docs/PROTOCOL.md](../docs/PROTOCOL.md).
 
 ## How it is made
 
-- `../docs/index.html` is the page. `tools/app_frontend.py` copies it, with the script it loads
-  (`../docs/zones.js`), to `dist/` and makes two changes: its content security policy lets the page
-  talk to the app over Tauri's IPC, and "About this app" shows the version from
-  `src-tauri/Cargo.toml`.
+- `../docs/index.html` is the page. `tools/app_frontend.py` copies it, with the files it loads next
+  to it (`page.css`, `zones.js`, `card.js`, `page.js`), to `dist/` and makes two changes: its content
+  security policy lets the page talk to the app over Tauri's IPC, and "About this app" shows the
+  version from `src-tauri/Cargo.toml`.
 - `src-tauri/` is the Rust side. It finds the card, opens its port at 115200 baud with DTR, passes
   the card's lines to the page and sends the allowed commands.
 - The page finds the app through `window.__TAURI__`, and the page's Card class works over it as

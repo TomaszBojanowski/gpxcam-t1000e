@@ -37,16 +37,18 @@ class AppPage(unittest.TestCase):
             with self.assertRaises(ValueError, msg=page):
                 app_frontend.app_page(page + app_frontend.VERSION_SLOT, "1.2.3")
 
-    def test_the_scripts_of_the_page_are_its_files(self):
+    def test_the_style_and_the_scripts_of_the_page_are_its_files(self):
         page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
-        names = app_frontend.page_scripts(page)
-        self.assertEqual(names, ["zones.js"])
+        names = app_frontend.page_files(page)
+        self.assertEqual(names, ["page.css", "zones.js", "card.js", "page.js"])
         for name in names:
             self.assertTrue((ROOT / "docs" / name).is_file(), name)
-        for script in ['<script src="https://example.com/x.js"></script>', '<script src="../zones.js"></script>',
-                       '<script type="module" src="zones.js"></script>']:
-            with self.assertRaises(ValueError, msg=script):
-                app_frontend.page_scripts(script)
+        for element in ['<script src="https://example.com/x.js"></script>', '<script src="../zones.js"></script>',
+                        '<script type="module" src="zones.js"></script>',
+                        '<link rel="stylesheet" href="https://example.com/x.css">',
+                        '<link rel="stylesheet" href="../page.css">']:
+            with self.assertRaises(ValueError, msg=element):
+                app_frontend.page_files(element)
 
     def test_a_page_without_one_place_for_the_version_is_refused(self):
         meta = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:">'

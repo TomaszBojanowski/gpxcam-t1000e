@@ -1,8 +1,8 @@
 """Makes the desktop app's page, app/dist/index.html, from the card page docs/index.html with two
 changes: the content security policy lets the page talk to the app's Rust side over Tauri's IPC
 (connect-src ipc: http://ipc.localhost, as Tauri's documentation of security.csp gives it), and
-"About this app" shows the app's version from app/src-tauri/Cargo.toml. The scripts the page loads
-from docs/ (<script src="zones.js">) are copied as they are. Everything else stays as on GitHub
+"About this app" shows the app's version from app/src-tauri/Cargo.toml. The files the page loads
+from docs/ (its style sheet and scripts) are copied as they are. Everything else stays as on GitHub
 Pages. Run by tauri.conf.json before 'cargo tauri dev' and 'cargo tauri build'.
 Usage: python3 tools/app_frontend.py (Python 3.11 or newer, for tomllib)"""
 import pathlib
@@ -21,7 +21,9 @@ APP_POLICY_START = "default-src 'none'; connect-src ipc: http://ipc.localhost; "
 VERSION_SLOT = ('<p id="about-version" class="hidden">'
                 "<!-- the desktop app's version, written by tools/app_frontend.py --></p>")
 VERSION = re.compile(r"\d+\.\d+\.\d+")  # only digits and dots reach the page
-SCRIPT = re.compile(r'<script src="([a-z_]+\.js)"></script>')  # a file of docs/, next to the page
+# A file of docs/, next to the page.
+SCRIPT = re.compile(r'<script src="([a-z_]+\.js)"></script>')
+STYLE_SHEET = re.compile(r'<link rel="stylesheet" href="([a-z_]+\.css)">')
 
 
 def app_version(cargo_toml):
@@ -45,13 +47,14 @@ def app_page(html, version):
     return html.replace(VERSION_SLOT, f'<p id="about-version">gpxcam card {version}</p>')
 
 
-def page_scripts(html):
-    """The files of the scripts the page loads; ValueError for a script from anywhere else."""
-    sources = re.findall(r"<script\b[^>]*\bsrc=[^>]*>", html)
-    names = SCRIPT.findall(html)
-    if len(names) != len(sources):
-        raise ValueError("the page loads a script that is not a plain file next to it")
-    return names
+def page_files(html):
+    """The files the page loads, its style sheets and scripts; ValueError for one from anywhere else."""
+    scripts = SCRIPT.findall(html)
+    style_sheets = STYLE_SHEET.findall(html)
+    if (len(scripts) != len(re.findall(r"<script\b[^>]*\bsrc=", html))
+            or len(style_sheets) != len(re.findall(r"<link\b[^>]*\bstylesheet\b", html))):
+        raise ValueError("the page loads a file that is not a plain file next to it")
+    return style_sheets + scripts
 
 
 def main():
@@ -59,10 +62,10 @@ def main():
     html = PAGE.read_text(encoding="utf-8")
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text(app_page(html, version), encoding="utf-8")
-    scripts = page_scripts(html)
-    for name in scripts:
+    files = page_files(html)
+    for name in files:
         (OUT.parent / name).write_bytes((PAGE.parent / name).read_bytes())
-    print(f"app_frontend: wrote {OUT.relative_to(ROOT)} (gpxcam card {version}) and {', '.join(scripts)}")
+    print(f"app_frontend: wrote {OUT.relative_to(ROOT)} (gpxcam card {version}) and {', '.join(files)}")
 
 
 if __name__ == "__main__":

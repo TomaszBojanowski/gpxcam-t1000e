@@ -10,12 +10,8 @@
 #include "camera_link.h"
 #include "camera_list.h"
 #include "lumix.h"
-#include "session_end.h"
 
 namespace newer_session {
-
-// Rejected: a refusal that means the camera does not know the card (session_end::Reason::Refused).
-using Result = session_end::Result;
 
 // What the session found on the camera; valid after Accepted.
 struct Discovered {
@@ -27,21 +23,11 @@ struct Discovered {
 
 // Starts with a camera seen in the scan; scanning must be off. Never connects to a camera
 // in standby (state 06). keepOpen: the connection stays open after an accepted time.
-// False if it could not start; failure() says why.
+// False if it could not start; camera_connection::failure() says why.
 bool start(const camera_list::Report &camera, const uint8_t cardUuid[lumix::UUID_LENGTH], bool keepOpen);
 
-// Advances the session. Call from loop() while it returns Running.
-Result poll();
-
-// Why the last session failed, e.g. "time: refused (GATT 0x0080)".
-const char *failure();
-
-// Why the last session ended, once poll() returned something other than Running. NotEstablished
-// (HCI 0x3e) is seen on the S5II right after it was switched on, and now and then otherwise: a quick
-// second attempt usually works. NoNewerService: the service search ended with "attribute not found"
-// or found none; the camera speaks only the older dialect, so 'pair' switches to it (pairing.cpp).
-// Another error of that search is Failed.
-session_end::Reason endReason();
+// Advances the session; true while it runs. Then camera_connection::endReason() says why it ended.
+bool poll();
 
 const Discovered &discovered();
 

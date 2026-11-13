@@ -2,16 +2,18 @@
 // tests (card_page.test.mjs) and, injected into a browser, by tools/screenshots.mjs. The function
 // refers to nothing outside itself, so its source runs in a page as it is.
 //
-// As app/src-tauri gives it to the page: list_cards, open_card with a channel for the card's lines,
-// send (the answers come back over the channel, line by line) and close_card; register_older (its
+// As app/src-tauri gives it to the page: list_cards, open_card with a channel for the card's lines
+// ("busy" while another card is read; one unplugged is closed first), send (the answers come back over
+// the channel, line by line) and close_card (it also stops a Wi-Fi step); register_older (its
 // stages, app.registerStages, over a channel, then app.registerOutcome; "wait": until cancel_older)
 // and cancel_older for older-camera pairing; app.registerError: the word register_older fails with. An
 // answer can be a function of app (for a state that follows the commands sent). openError: the word
-// open_card fails with. unplug(): the card's port ends with a word, as when the card is unplugged.
+// open_card fails with. unplug(): the card leaves the list of cards and its port, if open, ends with a word,
+// as when the card is unplugged; plugIn(): the card is listed again.
 export function simulatedApp(paths, answers, { openError = null } = {}) {
   const app = {
     calls: [], channel: null, registerOutcome: "accepted", registerError: null,
-    registerStages: ["on-network", "registering"], registered: [],
+    registerStages: ["on-network", "registering"], registered: [], paths: [...paths],
   };
   const core = {
     Channel: class {
@@ -19,9 +21,13 @@ export function simulatedApp(paths, answers, { openError = null } = {}) {
     },
     invoke: async (command, args = {}) => {
       app.calls.push([command, args.path ?? args.command].filter((part) => part !== undefined).join(" "));
-      if (command === "list_cards") return paths.map((path) => ({ path }));
+      if (command === "list_cards") return app.paths.map((path) => ({ path }));
       if (command === "open_card") {
         if (openError) throw openError; // Tauri rejects with the command's error value
+        if (!app.paths.includes(args.path)) throw "not-found";
+        if (app.open && app.reading) throw "busy"; // a card unplugged before is closed first
+        app.open = true;
+        app.reading = true;
         app.channel = args.onEvent;
         return null;
       }
@@ -43,13 +49,22 @@ export function simulatedApp(paths, answers, { openError = null } = {}) {
         return null;
       }
       if (command === "close_card") {
-        setTimeout(() => app.channel.onmessage({ kind: "closed", error: null }), 1);
+        if (app.reading) setTimeout(() => app.channel.onmessage({ kind: "closed", error: null }), 1);
+        app.open = false;
+        app.reading = false;
+        if (app.stopRegister) app.stopRegister("cancelled"); // the app stops a Wi-Fi step for the card
         return null;
       }
       throw new Error(`no such command: ${command}`);
     },
   };
   app.window = { isSecureContext: true, __TAURI__: { core } };
-  app.unplug = (word = "port-failed") => app.channel.onmessage({ kind: "closed", error: word });
+  app.unplug = (word = "port-failed") => {
+    app.paths = [];
+    if (!app.reading) return;
+    app.reading = false;
+    app.channel.onmessage({ kind: "closed", error: word });
+  };
+  app.plugIn = () => { app.paths = [...paths]; };
   return app;
 }

@@ -44,20 +44,19 @@ template <class Poll> void pollFor(uint32_t ms, Poll poll)
     }
 }
 
-// Polls a session (newer_session::poll, older_session::poll) on the test clock until it is not
-// Running, at most 60 s; *tookMs: how long it ran.
-template <class Poll> auto runSession(Poll poll, uint32_t *tookMs = nullptr) -> decltype(poll())
+// Polls a session (newer_session::poll, older_session::poll) on the test clock until it ends, at most
+// 60 s; *tookMs: how long it ran. False if it still runs.
+template <class Poll> bool runSession(Poll poll, uint32_t *tookMs = nullptr)
 {
-    using Result = decltype(poll());
     const uint32_t start = now();
-    Result result = Result::Running;
-    while (result == Result::Running && now() - start < 60000) {
+    bool running = true;
+    while (running && now() - start < 60000) {
         advance(LOOP_STEP_MS);
-        result = poll();
+        running = poll();
     }
     if (tookMs != nullptr)
         *tookMs = now() - start;
-    return result;
+    return !running;
 }
 
 // ---- Log (logger::line and logger::transient)
@@ -117,6 +116,7 @@ enum class Descriptors { NoCccd, Cccd, CccdInSecondAnswer }; // after the GPS no
 struct Trigger {
     Request request = Request::None;
     uint16_t handle = 0;
+    uint8_t skip = 0; // the first `skip` requests that match go through
 };
 
 struct Camera {
@@ -140,6 +140,9 @@ camera_list::Report cameraIn(uint8_t state);
 extern uint32_t requestMs;
 // Milliseconds after which an event can be read (0: at once): a camera that answers in a later loop step.
 extern uint32_t answerMs;
+// After close() the connection lasts until its Disconnected, at the next connection event: 48.75 ms apart
+// with the card's parameters (camera_link.cpp), so this long (or answerMs, if longer).
+constexpr uint32_t CLOSE_MS = 50;
 
 // The test camera's value handles.
 constexpr uint16_t SERVICE_START = 0x0010;
@@ -161,6 +164,34 @@ constexpr uint16_t OLDER_TIME = 0x004C;
 constexpr uint16_t OLDER_TIME_NOTIFY = 0x004E;
 constexpr uint16_t OLDER_LOCATION = 0x0050;
 constexpr uint16_t OLDER_LOCATION_NOTIFY = 0x0052;
+
+// The steps of an introduction after connecting, each started by its request: the camera can stay silent,
+// disconnect or refuse at it.
+struct Step {
+    Request request;
+    uint16_t handle;
+    const char *name; // as the failure texts say it
+};
+inline constexpr Step NEWER_STEPS[] = {
+    {Request::Mtu, 0, "MTU"},
+    {Request::Service, 0, "service"},
+    {Request::Characteristics, 0, "characteristics"},
+    {Request::Read, KEY, "key"},
+    {Request::Write, DEVICE_ID, "identifier"},
+    {Request::Write, APP_NAME, "app name"},
+    {Request::Write, DEVICE_NAME, "device name"},
+    {Request::Write, TIME, "time"},
+};
+inline constexpr Step OLDER_STEPS[] = {
+    {Request::Mtu, 0, "MTU"},
+    {Request::Characteristics, 0, "characteristics"},
+    {Request::Read, OLDER_KEY, "key"},
+    {Request::Write, OLDER_DEVICE_ID, "identifier"},
+    {Request::Write, OLDER_DEVICE_NAME, "device name"},
+    {Request::Read, OLDER_CAMERA_NAME, "camera name"},
+    {Request::Read, OLDER_CAMERA_TEXT, "camera text"},
+    {Request::Write, OLDER_TIME, "time"},
+};
 static_assert(Camera().knownAfter == OLDER_DEVICE_NAME && Camera().knownOn == OLDER_LOCATION_NOTIFY, "the default 01");
 
 // What the card asked camera_link, in order: "connect", "close", "mtu", "service", "characteristics",

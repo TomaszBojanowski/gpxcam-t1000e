@@ -1,0 +1,7 @@
+{
+  "about": "The words the desktop app gives the card page (app/src-tauri/src/lib.rs Problem, older_wifi.rs Outcome and Progress; docs/card.js openProblemText() and readErrorText(), docs/page.js olderOutcomeText() and the Wi-Fi step's stages). Tested by cargo test and test/web/card_page.test.mjs.",
+  "problems": ["permission", "busy", "not-found", "not-open", "refused", "bad-identity", "bad-name", "port-closed",
+               "port-failed", "failed"],
+  "outcomes": ["accepted", "not-confirmed", "not-on-network", "failed", "cancelled"],
+  "progress": ["on-network", "registering"]
+}

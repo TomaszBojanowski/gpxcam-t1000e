@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "bluetooth.h"
+#include "camera_connection.h"
 #include "camera_list.h"
 #include "newer_session.h"
 #include "gps.h"
@@ -24,9 +25,6 @@ namespace {
 // looking, and needs the time to do so.
 constexpr uint32_t FIX_WAIT_MS = 120000;
 constexpr uint32_t SEARCH_MS = 120000;
-// The GPS stays on for a pairing to come, so that it skips the wait for GPS time: after a session that
-// did not pair (another try), and after 'pair prepare' (the card page sends it on connecting).
-constexpr uint32_t GPS_HOLD_MS = 600000;
 constexpr int MAX_ATTEMPTS = 3;
 constexpr uint32_t PAUSE_MS[MAX_ATTEMPTS - 1] = {10000, 30000}; // after attempts 1 and 2
 // A connection that never came up (session_end NoAnswer, NotEstablished) is tried again at once, at the
@@ -108,7 +106,7 @@ void finish(bool resumeLink = true)
     if (gpsWasOn)
         return;
     if (resumeLink)
-        holdGps(GPS_HOLD_MS, "for another try");
+        holdGps(pairing::GPS_HOLD_MS, "for another try");
     else
         gps::off(); // about 2 s: Backup mode for the next hot start
 }
@@ -187,7 +185,7 @@ void introduce(const camera_list::Entry &camera)
     const bool ok = olderMode ? older_session::start(camera.last, pairing_store::record().uuid, false)
                               : newer_session::start(camera.last, pairing_store::record().uuid, false);
     if (!ok) {
-        attemptFailed(olderMode ? older_session::failure() : newer_session::failure());
+        attemptFailed(camera_connection::failure());
         return;
     }
     enter(olderMode ? Phase::WaitingForWifi : Phase::Introducing);
@@ -259,7 +257,7 @@ void switchToOlder()
     olderMode = true;
     autoDialect = false;
     if (!older_session::start(lastCamera, pairing_store::record().uuid, false)) {
-        attemptFailed(older_session::failure());
+        attemptFailed(camera_connection::failure());
         return;
     }
     enter(Phase::WaitingForWifi);
@@ -269,10 +267,10 @@ void switchToOlder()
 // refusal: a failed attempt with its pause.
 void introducing()
 {
-    if ((olderMode ? older_session::poll() : newer_session::poll()) == session_end::Result::Running)
+    if (olderMode ? older_session::poll() : newer_session::poll())
         return;
-    const char *failure = olderMode ? older_session::failure() : newer_session::failure();
-    const session_end::Reason reason = olderMode ? older_session::endReason() : newer_session::endReason();
+    const char *failure = camera_connection::failure();
+    const session_end::Reason reason = camera_connection::endReason();
     switch (reason) {
     case session_end::Reason::Accepted:
         succeed();
@@ -380,7 +378,7 @@ void prepare()
         logger::line("pair: the link runs the GPS - nothing to prepare");
         return;
     }
-    holdGps(GPS_HOLD_MS, "ready for pairing");
+    holdGps(pairing::GPS_HOLD_MS, "ready for pairing");
 }
 
 uint32_t gpsHoldSeconds()

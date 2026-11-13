@@ -1,0 +1,527 @@
+/* The look of the author's other programs: light colours of gpxfoto, dark colours of gpxfilm, and
+   gpxfilm's red as the accent. Red text in the dark theme is lighter (--link), for contrast. */
+:root {
+  --bg: #f3f4f6;
+  --panel: #ffffff;
+  --field: #ffffff;
+  --text: #1f2328;
+  --muted: #5f6670;
+  --line: rgba(31, 35, 40, 0.14);
+  --hover: rgba(31, 35, 40, 0.07);
+  --accent: #e5202e;
+  --accent-text: #ffffff;
+  --accent-tint: rgba(229, 32, 46, 0.08);
+  --link: #d71a27; /* 4.5:1 also on the grey page */
+  --good: #1e7a43;
+  --warn: #9a5b00;
+  --warn-tint: rgba(196, 120, 0, 0.09);
+  --good-tint: rgba(30, 122, 67, 0.08);
+  --idle: #8a9099;
+  --error: #c42b1c;
+  --error-tint: rgba(196, 43, 28, 0.07);
+  --disabled-bg: #e9ebee;
+  --disabled-text: #8a9099;
+  --list-bg: #f6f7f8;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px rgba(0, 0, 0, 0.05);
+  --mark: #3d434a;
+  --field-line: #848d97; /* edges of fields and secondary buttons: 3:1 against the page (WCAG 1.4.11) */
+  --radius: 12px;        /* panels */
+  --radius-s: 8px;       /* buttons, fields, boxes */
+  /* One scale: spacing 4/8/12/16/24/48, text 13/15/16/18 (and 24 for the name). Inside the controls
+     and tiles the small gaps (2, 3, 6 px) and the list's indent (22 px) are their own. */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 48px;
+  --fs-small: 13px;
+  --fs: 15px;
+  --fs-tile: 16px;
+  --fs-h2: 18px;
+  --mono: ui-monospace, Menlo, Consolas, monospace;
+  --disabled-opacity: 0.5; /* a control that cannot be used now */
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1113;
+    --panel: #171c20;
+    --field: #0f1417;
+    --text: #e9ecee;
+    --muted: #98a3aa;
+    --line: #2a3238;
+    --hover: #222a30;
+    --accent-tint: rgba(229, 32, 46, 0.16);
+    --link: #ff5a64;
+    --good: #4cc47a;
+    --warn: #f0b048;
+    --warn-tint: rgba(240, 176, 72, 0.1);
+    --good-tint: rgba(76, 196, 122, 0.12);
+    --idle: #6e7881;
+    --error: #ff7b6e;
+    --error-tint: rgba(255, 123, 110, 0.1);
+    --disabled-bg: #222a30;
+    --disabled-text: #6e7881;
+    --list-bg: #12171a;
+    --shadow: none;
+    --mark: #c9d0d5;
+    --field-line: #5f6b75;
+  }
+}
+* { box-sizing: border-box; }
+html { scrollbar-gutter: stable; } /* the page does not move sideways when its scroll bar comes and goes */
+body {
+  margin: 0;
+  padding: var(--s5) var(--s4) var(--s6);
+  background: var(--bg);
+  color: var(--text);
+  font: var(--fs)/1.45 system-ui, -apple-system, "Segoe UI", Cantarell, sans-serif;
+}
+main { max-width: 46rem; margin: 0 auto; }
+h1 { margin: 0; font-size: 24px; line-height: 1; font-weight: 400; color: var(--muted); }
+.logo { font-weight: 800; color: var(--text); }
+.logo span { color: var(--accent); }
+h2 { font-size: var(--fs-h2); font-weight: 700; margin: 0 0 var(--s3); }
+p { margin: var(--s2) 0; }
+a { color: var(--link); }
+code { font: var(--fs-small) var(--mono); }
+.lead, .note, small { color: var(--muted); }
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: var(--s3) var(--s4);
+}
+.panel > :first-child { margin-top: 0; }
+.panel > :last-child { margin-bottom: 0; }
+.gap-top { margin-top: var(--s3); }
+/* The name and its mark */
+.top { display: flex; align-items: center; gap: var(--s3); }
+.lead { margin: var(--s1) 0 0; }
+.mark { width: 44px; height: 44px; flex: none; }
+.mark-body { fill: var(--mark); }
+.mark-lens { fill: var(--panel); }
+/* Each part of the page is a card with its heading and icon */
+.section { margin-top: var(--s4); padding: var(--s4); }
+.section > h2 { display: flex; align-items: center; gap: var(--s2); }
+.icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* A box with a coloured left edge: a question before what cannot be undone (.confirm), a note worth a
+   look (.slow-note), an error (p.bad) */
+.confirm, .slow-note, p.bad {
+  padding: var(--s2) var(--s3);
+  border-left: 4px solid var(--edge);
+  border-radius: var(--radius-s);
+  background: var(--edge-tint);
+}
+.confirm { --edge: var(--accent); --edge-tint: var(--accent-tint); padding: var(--s3); }
+.confirm > :first-child { margin-top: 0; }
+/* What a returning reader does not need folds away */
+details.help { margin: var(--s2) 0 var(--s3); }
+details.help > summary { cursor: pointer; color: var(--muted); font-size: var(--fs-small); font-weight: 600; }
+details.about { margin-top: var(--s5); color: var(--muted); font-size: var(--fs-small); }
+details.about > summary { cursor: pointer; font-weight: 600; }
+.hidden { display: none !important; } /* wins over the display of .row, .tiles and others */
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+button {
+  font: inherit;
+  font-weight: 600;
+  min-height: 40px;
+  padding: var(--s2) var(--s4);
+  border-radius: var(--radius-s);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+/* Red for the main action only; the others neutral, and red text for what cannot be undone */
+button.secondary { background: transparent; color: var(--text); border-color: var(--field-line); }
+button.danger { background: transparent; color: var(--link); border-color: currentColor; }
+button:hover:not(:disabled) { filter: brightness(1.08); }
+button.secondary:hover:not(:disabled) { background: var(--hover); filter: none; }
+button.danger:hover:not(:disabled) { background: var(--accent-tint); filter: none; }
+button:disabled {
+  background: var(--disabled-bg);
+  border-color: var(--disabled-bg);
+  color: var(--disabled-text);
+  cursor: default;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+label[for="search"] { display: block; margin: 0 0 var(--s1); font-size: var(--fs-small); color: var(--muted); }
+input[type="search"] {
+  width: 100%;
+  font: inherit;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-s);
+  border: 1px solid var(--field-line);
+  background: var(--field);
+  color: var(--text);
+}
+input[type="search"]:focus { border-color: var(--accent); }
+input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); }
+/* The clock as a toggle; on stays visible (red) also when it cannot be changed */
+label.switch { display: flex; gap: var(--s3); align-items: center; font-weight: 600; cursor: pointer; }
+label.switch:has(input:disabled) { cursor: default; }
+input.toggle {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 24px;
+  margin: 0;
+  border-radius: 12px;
+  background: var(--field-line);
+  cursor: pointer;
+}
+input.toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+input.toggle:checked { background: var(--accent); }
+input.toggle:checked::after { transform: translateX(16px); }
+input.toggle:disabled { opacity: var(--disabled-opacity); cursor: default; }
+/* A setting as one segmented choice; the chosen one stays visible (red) also when it cannot be changed */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--field-line);
+  border-radius: 999px;
+  background: var(--field);
+}
+.segmented label {
+  position: relative; /* holds its hidden radio */
+  min-width: 84px;
+  padding: 6px var(--s4);
+  border-radius: 999px;
+  text-align: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+.segmented input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
+.segmented label:hover:not(:has(input:disabled)) { background: var(--hover); }
+.segmented label:has(input:checked) { background: var(--accent); color: var(--accent-text); }
+.segmented label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.segmented label:has(input:disabled) { color: var(--disabled-text); cursor: default; }
+.segmented label:has(input:checked:disabled) { color: var(--accent-text); opacity: var(--disabled-opacity); }
+.says { min-height: 2.9em; margin: var(--s3) 0 0; } /* two lines: the page does not move between settings */
+/* In the colour of a tile that is worth a look: the card sends less often than chosen for a while, or
+   cannot read what it saved */
+.slow-note { --edge: var(--warn); --edge-tint: var(--warn-tint); margin: var(--s3) 0 0; }
+fieldset:disabled { opacity: var(--disabled-opacity); }
+ul.steps { margin: var(--s2) 0; padding-left: 22px; }
+ul.steps li { margin: var(--s1) 0; }
+/* A panel of a fixed height, about four and a half results, so what follows does not move while
+   typing and the empty part reads as part of the list */
+#results {
+  list-style: none;
+  margin: var(--s2) 0 0;
+  padding: var(--s1);
+  height: 18rem;
+  overflow-y: auto;
+  background: var(--list-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+#results li { border-bottom: 1px solid var(--line); }
+#results li:last-child { border-bottom: 0; }
+#results label {
+  display: flex;
+  gap: var(--s3);
+  align-items: baseline;
+  padding: var(--s2);
+  cursor: pointer;
+  border-radius: var(--s1); /* inside the list's 8 px corner and 4 px padding */
+}
+#results label:hover { background: var(--hover); }
+#results label:has(input:checked) { background: var(--accent-tint); box-shadow: inset 3px 0 0 var(--accent); }
+#results .name { font-weight: 600; overflow-wrap: anywhere; }
+#results .detail { color: var(--muted); font-size: var(--fs-small); overflow-wrap: anywhere; }
+#results .offset { margin-left: auto; color: var(--muted); font-size: var(--fs-small); white-space: nowrap; }
+/* The card's own lines: what it answered (.card-lines), and what 'log' or 'diag scan' gave (.diag-text) */
+.card-lines, .diag-text {
+  margin: var(--s2) 0 0;
+  padding: var(--s2) var(--s3);
+  background: var(--field);
+  border-radius: var(--radius-s);
+  font: var(--fs-small)/1.45 var(--mono);
+}
+.card-lines {
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.card-lines:empty { display: none; }
+/* To copy by hand if copying by itself did not work */
+.diag-text {
+  display: block;
+  width: 100%;
+  min-height: 12rem;
+  border: 1px solid var(--field-line);
+  color: var(--text);
+  resize: vertical;
+}
+.unmasked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+progress { display: block; width: 100%; height: 8px; margin: var(--s2) 0 0; accent-color: var(--accent); }
+.good { color: var(--good); font-weight: 600; }
+/* Under way: a pulsing dot before the text (connecting, saving, pairing) */
+.busy::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--s2);
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: 1px;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+/* Short colour changes when a state changes */
+button, .tile, .tile strong::before, input.toggle, input.toggle::after, .segmented label, #results label {
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+}
+.tile, .tile strong::before { transition-duration: 0.25s; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+/* An error is told apart from the red accent not only by its colour: a framed box headed "Error". */
+p.bad {
+  --edge: var(--error);
+  --edge-tint: var(--error-tint);
+  border: 1px solid var(--error);
+  border-left-width: 4px;
+  color: var(--text);
+}
+.panel:has(> p.bad) { padding: 0; border: 0; background: none; box-shadow: none; } /* the error's frame alone */
+p.bad::before {
+  content: "\26A0\FE0E  Error";
+  display: block;
+  margin-bottom: 2px;
+  font-weight: 700;
+  color: var(--error);
+}
+.row { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; }
+/* The connection: its state with a dot, the buttons on the right */
+.connect-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s3); }
+.connect-row #card-status { margin: 0; font-weight: 600; }
+.connect-row #card-status.bad { flex-basis: 100%; order: 1; font-weight: 400; } /* an error under the buttons */
+#card-status:not(.bad) { display: inline-flex; align-items: center; gap: var(--s2); }
+#card-status:not(.bad)::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--idle); }
+#card-status.good::before { background: var(--good); }
+#card-status.busy::before { margin: 0; background: var(--accent); }
+/* The state as four tiles: a word for the state, a dot of its colour, the detail below. A fixed height, so the
+   page does not move when the words change. */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s2); margin-top: var(--s4); }
+.tile {
+  min-height: 118px;
+  padding: var(--s3);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+.tile-head { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--fs-small); }
+.tile-head .icon { width: 18px; height: 18px; stroke: var(--muted); }
+.tile strong { display: flex; align-items: baseline; gap: 6px; margin-top: var(--s2); font-size: var(--fs-tile); }
+.tile strong::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--idle);
+  transform: translateY(-1px);
+}
+.tile-detail {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+.tile.level-good strong::before { background: var(--good); }
+.tile.level-warn { background: var(--warn-tint); }
+.tile.level-warn strong::before { background: var(--warn); }
+.tile.level-bad { background: var(--error-tint); border-color: var(--error); }
+.tile.level-bad strong::before { background: var(--error); }
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1) var(--s3);
+  margin-top: var(--s3);
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+.meta button { margin-left: auto; }
+button.small { min-height: 32px; padding: var(--s1) var(--s3); font-size: var(--fs-small); }
+/* Pairing: a row of steps and one screen at a time; its controls are at least 44 px high */
+.pairing button { min-height: 44px; }
+button.big { min-height: 48px; padding: var(--s2) var(--s6); font-size: var(--fs-tile); }
+.pair-badge { margin-left: auto; font-size: var(--fs-small); font-weight: 600; color: var(--muted); }
+.pair-badge.paired { color: var(--good); }
+.pair-badge.pairing { color: var(--link); }
+.pair-steps { display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s4); padding: 0; list-style: none; }
+.pair-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--s1) var(--s3);
+  border-radius: 999px;
+  background: var(--list-bg);
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+.pair-steps li.done { color: var(--good); }
+.pair-steps li.done::before { content: "\2713"; }
+.pair-steps li.current { background: var(--accent); color: var(--accent-text); }
+.pair-screen h3 { margin: 0 0 var(--s1); font-size: var(--fs-tile); }
+.checklist { margin: 0 0 var(--s4); padding: 0; list-style: none; }
+.checklist li {
+  display: flex;
+  gap: var(--s3);
+  align-items: flex-start;
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--line);
+}
+.checklist li:last-child { border-bottom: 0; }
+.checklist label { display: flex; flex: 1; gap: var(--s3); align-items: flex-start; min-height: 44px; cursor: pointer; }
+.checklist strong, .checklist small { display: block; }
+.checklist input[type="checkbox"] { width: 20px; height: 20px; margin: 2px 0 0; flex: none; }
+.check-mark {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  flex: none;
+  border: 2px solid var(--idle);
+  border-radius: 50%;
+  color: var(--panel);
+  font-size: 12px;
+  font-weight: 700;
+}
+.check-done .check-mark { border-color: var(--good); background: var(--good); }
+.check-done .check-mark::after { content: "\2713"; }
+.callout {
+  display: flex;
+  gap: var(--s4);
+  align-items: flex-start;
+  padding: var(--s4);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-s);
+  background: var(--accent-tint);
+}
+.callout > .icon, .wifi-box > .icon, .result-icon { width: 36px; height: 36px; }
+.callout > div { flex: 1; min-width: 0; }
+.countdown { margin-top: var(--s3); }
+.countdown progress { appearance: none; height: 8px; border: 0; border-radius: 4px; background: var(--line); }
+.countdown progress::-webkit-progress-bar { border-radius: 4px; background: var(--line); }
+.countdown progress::-webkit-progress-value { border-radius: 4px; background: var(--accent); }
+.countdown progress::-moz-progress-bar { border-radius: 4px; background: var(--accent); }
+.countdown-time {
+  display: block;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.stages { margin: var(--s3) 0; padding: 0; list-style: none; }
+.stages li { display: flex; align-items: center; gap: var(--s3); min-height: 32px; color: var(--muted); }
+.stages li::before {
+  content: "";
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: 2px solid var(--idle);
+  border-radius: 50%;
+  color: var(--panel);
+  font-size: 11px;
+  font-weight: 700;
+}
+.stages li.done { color: var(--text); }
+.stages li.done::before { content: "\2713"; border-color: var(--good); background: var(--good); }
+.stages li.current { color: var(--text); font-weight: 600; }
+.stages li.current::before {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.wifi-box {
+  display: flex;
+  gap: var(--s4);
+  align-items: flex-start;
+  margin: var(--s3) 0;
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+.done-panel, .warn-panel {
+  padding: var(--s4);
+  border-left: 4px solid var(--edge);
+  border-radius: var(--radius-s);
+  background: var(--edge-tint);
+}
+.done-panel { --edge: var(--good); --edge-tint: var(--good-tint); text-align: center; }
+.done-panel .result-icon { display: block; width: 48px; height: 48px; margin: 0 auto var(--s2); stroke: var(--good); }
+.done-panel .row { justify-content: center; }
+.done-panel .confirm { text-align: left; }
+.warn-panel { --edge: var(--warn); --edge-tint: var(--warn-tint); }
+.warn-panel .result-icon { stroke: var(--warn); }
+.tips { margin: var(--s2) 0 var(--s3); padding-left: 22px; }
+.tips li { margin: var(--s1) 0; }
+.older-box {
+  margin-top: var(--s4);
+  padding: var(--s3) var(--s4);
+  border: 1px dashed var(--field-line);
+  border-radius: var(--radius-s);
+}
+.older-box h3 { margin: 0 0 var(--s1); font-size: var(--fs); }
+/* The section's one status line: an amber dot while something waits on the user or goes wrong slowly */
+#pair-status.warn::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--s2);
+  border-radius: 50%;
+  background: var(--warn);
+  vertical-align: 1px;
+}
+@media (max-width: 640px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

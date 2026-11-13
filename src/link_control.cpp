@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "bluetooth.h"
+#include "camera_connection.h"
 #include "camera_link.h"
 #include "newer_session.h"
 #include "gps.h"
@@ -40,8 +41,8 @@ constexpr uint16_t LONG_STANDBY_SCAN_INTERVAL_MS = 10000;
 constexpr uint8_t CCCD_NOTIFICATIONS[] = {0x01, 0x00};
 constexpr uint8_t CCCD_INDICATIONS[] = {0x02, 0x00};
 
-enum class Phase { Off, Searching, Introducing, GpsMode, FindingCccd, EnablingNotifications, Connected, Older,
-                   Pausing, Rejected };
+enum class Phase { Off, Searching, Introducing, GpsMode, FindingCccd, EnablingNotifications, Connected, Pausing,
+                   Rejected };
 
 Phase phase = Phase::Off;
 uint32_t phaseStart = 0;
@@ -61,7 +62,9 @@ uint16_t serviceEnd = 0;
 // Locations of the current connection.
 bool sentBefore = false;
 link_policy::RateGuard rateGuard; // frequent locations ('updates'), normal while the camera lags
-uint8_t earlyEndsInARow = 0; // connections that ended before the camera took a location
+// Connections in a row in which the camera did not take the card: in the newer dialect ended before it took
+// a location, in the older one ended without it taking the card (link_policy decides when that stops the link).
+uint8_t notTakenInARow = 0;
 uint32_t lastSentMs = 0;
 int32_t lastLatitudeE7 = 0;
 int32_t lastLongitudeE7 = 0;
@@ -313,10 +316,10 @@ void rejectedWhileConnected(const char *what, uint16_t status)
 // True if it stopped.
 bool earlyEndStopped()
 {
-    if (!link_policy::earlyEndMeansUnknownCard(cameraKnowsCard(), &earlyEndsInARow))
+    if (!link_policy::earlyEndMeansUnknownCard(cameraKnowsCard(), &notTakenInARow))
         return false;
     logger::line("link: %u connections in a row ended before the camera took a location",
-                 (unsigned)earlyEndsInARow);
+                 (unsigned)notTakenInARow);
     rejectedByCamera();
     return true;
 }
@@ -468,7 +471,7 @@ void onLocationWritten(const camera_link::Event &event)
         return;
     }
     sentCount++;
-    earlyEndsInARow = 0;
+    notTakenInARow = 0;
     if (!sentBefore)
         logger::line("link: first location sent to camera %s, answer %lu ms, %s", serialText,
                      (unsigned long)answerMs, timingText());
@@ -519,8 +522,6 @@ void sendLocationIfDue(uint32_t now)
     pendingReason = due;
 }
 
-constexpr const char *LOST_WITHOUT_EVENT = "the connection ended without its event";
-
 void connected(uint32_t now)
 {
     // A connection gone with its Disconnected event lost (camera_link's queue was full; 'p' counts it):
@@ -537,7 +538,7 @@ void connected(uint32_t now)
     if (phase != Phase::Connected)
         return;
     if (gone) {
-        connectionFailed(LOST_WITHOUT_EVENT);
+        connectionFailed(camera_link::LOST_WITHOUT_EVENT);
         return;
     }
     if (writePending) {
@@ -596,7 +597,7 @@ void settingUp()
         }
     }
     if (phase == current && gone) {
-        connectionFailed(LOST_WITHOUT_EVENT);
+        connectionFailed(camera_link::LOST_WITHOUT_EVENT);
         return;
     }
     if (phase == current && millis() - phaseStart >= camera_link::REQUEST_TIMEOUT_MS)
@@ -651,13 +652,13 @@ void search(uint32_t now)
         olderLink = pairing_record::isOlderDialect(record);
         if (olderLink) {
             if (older_session::start(camera->last, record.uuid, true))
-                enter(Phase::Older);
+                enter(Phase::Introducing);
             else
-                connectionFailed(older_session::failure());
+                connectionFailed(camera_connection::failure());
         } else if (newer_session::start(camera->last, record.uuid, true)) {
             enter(Phase::Introducing);
         } else {
-            connectionFailed(newer_session::failure());
+            connectionFailed(camera_connection::failure());
         }
         return;
     }
@@ -677,8 +678,6 @@ const char *phaseText()
         return "connecting";
     case Phase::Connected:
         return "connected";
-    case Phase::Older:
-        return "connecting (older dialect)";
     case Phase::Pausing:
         return "pause";
     case Phase::Rejected:
@@ -692,12 +691,12 @@ const char *phaseText()
 // (link_policy::olderRefusalMeansUnknownCard()).
 void olderCardNotTaken(const char *failure)
 {
-    if (!link_policy::olderRefusalMeansUnknownCard(&earlyEndsInARow)) {
+    if (!link_policy::olderRefusalMeansUnknownCard(&notTakenInARow)) {
         connectionFailed(failure);
         return;
     }
     logger::line("link: %u connections in a row ended without camera %s taking the card (last: %s)",
-                 (unsigned)earlyEndsInARow, serialText, failure);
+                 (unsigned)notTakenInARow, serialText, failure);
     rejectedByCamera();
 }
 
@@ -753,15 +752,12 @@ void introductionEnded(session_end::Reason reason, const char *failure)
     }
 }
 
-// Phase::Introducing and Phase::Older: the session of the connection's dialect.
+// Phase::Introducing: the session of the connection's dialect.
 void introducing()
 {
-    if ((olderLink ? older_session::poll() : newer_session::poll()) == session_end::Result::Running)
+    if (olderLink ? older_session::poll() : newer_session::poll())
         return;
-    if (olderLink)
-        introductionEnded(older_session::endReason(), older_session::failure());
-    else
-        introductionEnded(newer_session::endReason(), newer_session::failure());
+    introductionEnded(camera_connection::endReason(), camera_connection::failure());
 }
 
 } // namespace
@@ -795,7 +791,7 @@ void start()
     lumix::formatSerial(pairing_store::record().serial, serialText, sizeof(serialText));
     failuresInARow = 0;
     quickRetryUsed = false;
-    earlyEndsInARow = 0;
+    notTakenInARow = 0;
     rateGuard = link_policy::RateGuard(); // a bad end before 'link off' does not slow the next 'link on'
     cameraSeen = false;
     searchStartMs = millis();
@@ -864,7 +860,6 @@ State state()
     case Phase::Searching:
         return State::Searching;
     case Phase::Introducing:
-    case Phase::Older:
     case Phase::GpsMode:
     case Phase::FindingCccd:
     case Phase::EnablingNotifications:
@@ -904,7 +899,7 @@ void logState()
                           serialText, olderLink ? " (older dialect)" : "", (unsigned long)((now - connectedAt) / 1000),
                           last, (unsigned long)sentCount, (unsigned long)failedCount, timingText(),
                           (unsigned)rateGuard.lateAnswers());
-    else if (phase == Phase::Older) {
+    else if (phase == Phase::Introducing && olderLink) {
         logger::transient("link: connecting to camera %s (older dialect)", serialText);
         older_session::logState();
     } else if (phase == Phase::Pausing)
@@ -929,7 +924,6 @@ void poll()
         search(now);
         break;
     case Phase::Introducing:
-    case Phase::Older:
         introducing();
         break;
     case Phase::GpsMode:

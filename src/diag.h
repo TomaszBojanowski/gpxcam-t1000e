@@ -32,7 +32,7 @@ void poll();
 
 #ifdef GPXCAM_TEST_COMMANDS
 // Test builds only (platformio.ini, env t1000e_test): zeroes the start of both copies of
-// littlefs's superblock, so that the file system no longer mounts, and restarts. The rest of the
+// littlefs's superblock, so that the file system does not mount, and restarts. The rest of the
 // area keeps its data, so it is not the empty area of a new card (storage.h): the damage a flash
 // write cut off by a hang can leave, for testing storage.h and pairing_copy.h on the card.
 void breakFileSystem();

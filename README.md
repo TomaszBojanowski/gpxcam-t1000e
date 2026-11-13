@@ -247,7 +247,7 @@ and Bluetooth address and the card's id – do not publish it.
   connection parameters the S5II works with, how the camera takes the time zone, and test vectors.
 - [The card page](https://tomaszbojanowski.github.io/gpxcam-t1000e/) – the card's state, pairing,
   the camera's clock and time zone, sound, location updates and Diagnostics, from Chrome or Edge
-  (source: `docs/index.html`).
+  (source: `docs/index.html` and the files next to it).
 - [app/README.md](app/README.md) – the desktop app: install, pairing an older camera, versions.
 
 ## Sources

@@ -19,6 +19,7 @@ enum class Kind : uint8_t {
 // 'diag snd N' (5 % sounds hardly quieter than 10 %).
 constexpr uint8_t LOUD_DUTY_PERCENT = 10;
 constexpr uint8_t QUIET_DUTY_PERCENT = 2;
+constexpr uint8_t MAX_DUTY_PERCENT = 50; // never drive the coil for more than half a period
 
 // The duty to play a sound with; 0 = silent. Off keeps the answers to a held button, quietly:
 // without them it is not clear when to let go.

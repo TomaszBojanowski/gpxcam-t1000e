@@ -596,7 +596,8 @@ Host tests: `pio test -e native_sessions` (the state machines against fakes and 
 - **Camera reports** keep the time the BLE task got them, not the time the loop read them.
 - **The log:** after one 50 ms wait for a host that does not read, the next lines do not wait until there is room
   (`bat log` could hold the loop past the watchdog); no line is longer than 125 characters (long ones are split); a
-  scan that cannot start is logged once; the link's scan lines between connection attempts are only sent.
+  scan that cannot start is logged once; the link's scan lines between connection attempts are only sent, and so
+  are the steps of an older camera's lasting connection (a pairing keeps them: `log` holds a whole older pairing).
 - **Records:** the temporary file is read back before it replaces a record (`File::close()` reports no errors); the
   battery log checks the file's size after a batch; the pairing copy's page is erased once per write, not twice.
 

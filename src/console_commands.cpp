@@ -5,8 +5,11 @@
 #include <strings.h>
 
 #include "battery_log.h"
+#include "button.h"
+#include "pairing.h"
 #include "power.h"
 #include "scan_dump.h"
+#include "sound_rules.h"
 #include "watchdog.h"
 
 namespace console_commands {
@@ -91,8 +94,11 @@ constexpr Entry ENTRIES[] = {
 #endif
 };
 
-// The numbers in the help texts ('log': main.cpp).
+// The numbers in the help texts ('log': main.cpp; 'updates': the card page's test, with the page and README).
 static_assert(power::OFF_COUNTDOWN_MS == 15000, "help of 'off'");
+static_assert(button::LONG_PRESS_MS == 3000, "help of 'pair'");
+static_assert(pairing::GPS_HOLD_MS == 10 * 60000, "help of 'pair prepare'");
+static_assert(sound_rules::MAX_DUTY_PERCENT == 50, "help of 'diag snd'");
 static_assert(battery_log::PERIOD_MS == 10 * 60000, "help of 'bat log on'");
 static_assert(watchdog::TIMEOUT_S == 30, "help of 'diag hang'");
 static_assert(scan_dump::DURATION_MS == 30000, "help of 'diag scan'");

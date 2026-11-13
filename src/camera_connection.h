@@ -1,9 +1,10 @@
 // What both introductions (newer_session, older_session) do alike with the one connection to the
 // camera: starting it, the time limit of each step, the MTU exchange, the events that may come in any
-// step, and the time packet. Each session keeps its own steps, log lines and failure texts. One
-// session at a time has the connection. Loop task only.
+// step, the time packet, and how the last session ended. Each session keeps its own steps, log lines
+// and failure texts. One session at a time has the connection. Loop task only.
 #pragma once
 
+#include <stdarg.h>
 #include <stdint.h>
 
 #include "camera_link.h"
@@ -14,20 +15,30 @@
 
 namespace camera_connection {
 
+// The name the card gives itself in both dialects: the camera lists it.
+constexpr const char *DEVICE_NAME = "T1000-E";
+
 // Starts connecting for a session, unless another session has the connection, the camera is in
 // standby (connecting would wake it), or an earlier connection is still open (closed now, so that the
-// next start can connect). nullptr when it started, otherwise why not. The session has the connection
-// until release() or cancel(); its first step, connecting, has camera_link::CONNECT_TIMEOUT_MS.
-const char *start(const camera_list::Report &camera);
+// next start can connect). False if not; failure() says why. The session has the connection until
+// release() or cancel(); its first step, connecting, has camera_link::CONNECT_TIMEOUT_MS.
+bool start(const camera_list::Report &camera);
 
-// The session no longer has the connection: it ended, or gave its lasting connection to the link.
+// The session lets go of the connection: it ended, or gave its lasting connection to the link.
 void release();
 
 // Ends the session's connection at once: stops connecting or disconnects without waiting; releases.
 void cancel();
 
-// A step of the session starts, with its time limit; NO_LIMIT: none.
-constexpr uint32_t NO_LIMIT = 0;
+// How the last session ended, set by the session: why (Failed until it says otherwise, and after a
+// cancel) and the text for the caller's log, e.g. "time: refused (GATT 0x0080)".
+session_end::Reason endReason();
+const char *failure();
+void setEndReason(session_end::Reason reason);
+void setFailure(const char *format, ...) __attribute__((format(printf, 1, 2)));
+void setFailureV(const char *format, va_list args);
+
+// A step of the session starts, with its time limit.
 void enter(uint32_t limitMs);
 bool overLimit(); // the step's time limit has passed
 uint32_t limitSeconds();

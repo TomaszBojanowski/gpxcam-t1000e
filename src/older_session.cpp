@@ -31,21 +31,18 @@ constexpr uint16_t FIRST_HANDLE = 0x0001;
 constexpr uint16_t LAST_HANDLE = 0xFFFF;
 
 // The name the camera shows and the computer registers over Wi-Fi; the same on both channels.
-constexpr const char *DEVICE_NAME = "T1000-E";
 
 enum class Step { Idle, Connecting, Mtu, Characteristics, Key, DeviceId, DeviceName, CameraName, CameraText,
                   WaitKnown, Time, TimeAgain, Done };
 
 Step step = Step::Idle; // the time limit of each step: camera_connection
 bool keepOpen = false; // true: the connection goes to the caller once the camera accepts (the link)
-session_end::Reason ending = session_end::Reason::Failed; // endReason(); Accepted once the camera took the card
 uint8_t cardUuid[lumix::UUID_LENGTH];
 uint16_t handles[camera_link::OLDER_CHARACTERISTIC_COUNT];
 uint8_t key[lumix::KEY_LENGTH];
 bool knownByLocationNotify = false;
 bool knownByTimeNotify = false;
 bool timeFromFixLogged = false; // "the time of the fix ... ago" said once per session
-char failureText[80] = "";
 
 // The data of the write in progress; the SoftDevice may read it until WriteDone.
 uint8_t txData[device_identity::FIELD_LENGTH];
@@ -54,6 +51,21 @@ static_assert(lumix::TIME_LENGTH <= sizeof(txData), "every write fits txData");
 const char *const CHARACTERISTIC_NAMES[camera_link::OLDER_CHARACTERISTIC_COUNT] = {
     "key", "identifier", "device name", "camera name", "camera text", "time", "time notify", "location",
     "location notify"};
+
+// A step of the connection: kept in the 'log' history while pairing (log.h keeps a whole older pairing),
+// only sent in a lasting connection, whose start and end the link keeps (64 lines, the events of a walk).
+__attribute__((format(printf, 1, 2))) void logStep(const char *fmt, ...)
+{
+    char text[logger::TEXT_MAX + 1]; // what a line of the log holds
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(text, sizeof(text), fmt, args);
+    va_end(args);
+    if (keepOpen)
+        logger::transient("%s", text);
+    else
+        logger::line("%s", text);
+}
 
 const char *stepName(Step s)
 {
@@ -97,8 +109,8 @@ void enter(Step next, uint32_t limitMs)
 // Ends the session for this reason, with the failure text. Disconnects; the pending event is ignored.
 void end(session_end::Reason reason, const char *format, va_list args)
 {
-    vsnprintf(failureText, sizeof(failureText), format, args);
-    ending = reason;
+    camera_connection::setFailureV(format, args);
+    camera_connection::setEndReason(reason);
     camera_link::close();
     step = Step::Idle;
     camera_connection::release();
@@ -154,7 +166,7 @@ bool makeTimePacket()
     if (!camera_connection::timePacket(TIME_FROM_FIX_MAX_MS, txData, &source))
         return false;
     if (source.fromLastFix && !timeFromFixLogged) {
-        logger::line("older: no fresh GPS time - the time of the fix %lu s ago",
+        logStep("older: no fresh GPS time - the time of the fix %lu s ago",
                      (unsigned long)(source.fixAgeMs / 1000));
         timeFromFixLogged = true;
     }
@@ -165,9 +177,9 @@ bool makeTimePacket()
 // connection goes to the caller (poll()).
 void accept()
 {
-    logger::line("older: the camera took the card");
-    ending = session_end::Reason::Accepted;
-    enter(Step::Done, camera_connection::NO_LIMIT);
+    logStep("older: the camera took the card");
+    camera_connection::setEndReason(session_end::Reason::Accepted);
+    step = Step::Done;
 }
 
 void writeTime(Step next)
@@ -183,12 +195,12 @@ void writeTime(Step next)
 // connection with the clock off ('clock off') writes none.
 void afterKnown()
 {
-    logger::line("older: the camera knows the card (01 on %s)",
+    logStep("older: the camera knows the card (01 on %s)",
                  knownByLocationNotify && knownByTimeNotify ? "both notify characteristics"
                  : knownByLocationNotify                    ? "the location notify"
                                                             : "the time notify");
     if (keepOpen && !tz_store::clockOn()) {
-        logger::line("older: clock off - no time written");
+        logStep("older: clock off - no time written");
         accept();
         return;
     }
@@ -199,7 +211,7 @@ void afterKnown()
 // this same identity and device name over the camera's Wi-Fi network while the user joins that
 // network by hand from the camera's screen. Sent in a line the app reads as it comes, and not kept in
 // the history ('log', Copy log): the app that resumes a pairing builds the identity from the card's
-// UUID in 'p' (docs/index.html). Only for pairing - a lasting connection needs no Wi-Fi step.
+// UUID in 'p' (docs/page.js olderIdentity()). Only for pairing - a lasting connection needs no Wi-Fi step.
 void logAppRegistration()
 {
     uint8_t seed[device_identity::SEED_LENGTH];
@@ -209,7 +221,7 @@ void logAppRegistration()
         logger::line("older: the identity text for the app could not be built");
         return;
     }
-    logger::transient("older: app register identity %s name %s", identity, DEVICE_NAME);
+    logger::transient("older: app register identity %s name %s", identity, camera_connection::DEVICE_NAME);
 }
 
 void waitForKnown()
@@ -219,7 +231,7 @@ void waitForKnown()
         return;
     }
     const uint32_t limit = keepOpen ? KNOWN_WAIT_CONNECT_MS : KNOWN_WAIT_PAIR_MS;
-    logger::line("older: introduced - waiting up to %lu s for the camera's 01%s", (unsigned long)(limit / 1000),
+    logStep("older: introduced - waiting up to %lu s for the camera's 01%s", (unsigned long)(limit / 1000),
                  keepOpen ? "" : " (the camera now waits for the Wi-Fi step)");
     if (!keepOpen)
         logAppRegistration();
@@ -244,7 +256,7 @@ void readCameraName()
 
 void writeDeviceName()
 {
-    if (!device_identity::nameField(DEVICE_NAME, key, txData)) {
+    if (!device_identity::nameField(camera_connection::DEVICE_NAME, key, txData)) {
         fail("device name: could not be built");
         return;
     }
@@ -265,7 +277,7 @@ void writeDeviceId()
 void logHandles()
 {
     static_assert(camera_link::OLDER_CHARACTERISTIC_COUNT == 9, "nine handles in the line");
-    logger::line("older: handles (key id name cam-name cam-text time time-ntf loc loc-ntf): "
+    logStep("older: handles (key id name cam-name cam-text time time-ntf loc loc-ntf): "
                  "%04x %04x %04x %04x %04x %04x %04x %04x %04x",
                  handles[0], handles[1], handles[2], handles[3], handles[4], handles[5], handles[6], handles[7],
                  handles[8]);
@@ -307,7 +319,7 @@ void onKey(const camera_link::Event &event)
         return;
     }
     memcpy(key, event.read.data, lumix::KEY_LENGTH);
-    logger::line("older: key read");
+    logStep("older: key read");
     writeDeviceId();
 }
 
@@ -315,7 +327,7 @@ void onKey(const camera_link::Event &event)
 bool writeAccepted(const camera_link::Event &event, camera_link::OlderCharacteristic which)
 {
     if (event.status == BLE_GATT_STATUS_SUCCESS) {
-        logger::line("older: %s written", CHARACTERISTIC_NAMES[which]);
+        logStep("older: %s written", CHARACTERISTIC_NAMES[which]);
         return true;
     }
     endWith(session_end::Reason::Refused, "%s: refused (GATT 0x%04x)", CHARACTERISTIC_NAMES[which], event.status);
@@ -327,9 +339,9 @@ bool writeAccepted(const camera_link::Event &event, camera_link::OlderCharacteri
 void onCameraRead(const camera_link::Event &event, camera_link::OlderCharacteristic which)
 {
     if (event.status == BLE_GATT_STATUS_SUCCESS)
-        logger::line("older: %s read (content not logged)", CHARACTERISTIC_NAMES[which]);
+        logStep("older: %s read (content not logged)", CHARACTERISTIC_NAMES[which]);
     else
-        logger::line("older: %s not read (GATT 0x%04x) - going on", CHARACTERISTIC_NAMES[which], event.status);
+        logStep("older: %s not read (GATT 0x%04x) - going on", CHARACTERISTIC_NAMES[which], event.status);
 }
 
 // A notification: its handle and up to 8 bytes. 01 on either notify characteristic means the
@@ -343,7 +355,7 @@ void onNotified(const camera_link::Event &event)
     char bytes[3 * camera_link::MAX_READ_LENGTH + 1] = "";
     for (uint8_t i = 0; i < event.read.length; i++)
         snprintf(bytes + 3 * i, sizeof(bytes) - 3 * i, "%02x ", event.read.data[i]);
-    logger::line("older: notification 0x%04x (%s), %u bytes: %s", event.read.handle, name, event.read.length, bytes);
+    logStep("older: notification 0x%04x (%s), %u bytes: %s", event.read.handle, name, event.read.length, bytes);
     if (event.read.length == 0)
         return;
     const uint8_t value = event.read.data[0];
@@ -352,14 +364,14 @@ void onNotified(const camera_link::Event &event)
     if (value == lumix::OLDER_KNOWN && event.read.handle == handles[camera_link::OLDER_TIME_NOTIFY])
         knownByTimeNotify = true;
     if (value == lumix::OLDER_SWITCHING_OFF && event.read.handle == handles[camera_link::OLDER_LOCATION_NOTIFY])
-        logger::line("older: the camera is switching off");
+        logStep("older: the camera is switching off");
     if (step == Step::WaitKnown && (knownByLocationNotify || knownByTimeNotify))
         afterKnown();
 }
 
 void onConnected()
 {
-    logger::line("older: connected");
+    logStep("older: connected");
     if (!camera_connection::requestMtu()) {
         fail("MTU: request refused");
         return;
@@ -369,7 +381,7 @@ void onConnected()
 
 void onMtu(const camera_link::Event &event)
 {
-    logger::line("older: MTU %u - looking for the characteristics in all handles", camera_connection::mtu(event));
+    logStep("older: MTU %u - looking for the characteristics in all handles", camera_connection::mtu(event));
     if (!camera_link::findOlderCharacteristics(FIRST_HANDLE, LAST_HANDLE))
         fail("characteristics: request refused");
     else
@@ -384,8 +396,6 @@ bool handleCommonEvent(const camera_link::Event &event)
     using camera_link::EventType;
     switch (event.type) {
     case EventType::Disconnected:
-        if (step == Step::Done)
-            return true; // already accepted; the caller cancels
         endWith(camera_connection::disconnectedReason(event.status, step == Step::Connecting),
                 "the camera disconnected (HCI 0x%02x)", event.status);
         return true;
@@ -452,6 +462,8 @@ void handleEvent(const camera_link::Event &event)
         }
         break;
     case Step::TimeAgain:
+        // newer_session lets a refusal of this write go (endTimeAgain()); here every refused write is a
+        // refusal (session_end.h), and the link stops only after three in a row (link_policy).
         if (event.type == EventType::WriteDone && writeAccepted(event, camera_link::OLDER_TIME))
             accept();
         break;
@@ -479,27 +491,22 @@ namespace older_session {
 
 bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LENGTH], bool keepConnection)
 {
-    const char *refusal = camera_connection::start(camera);
-    if (refusal != nullptr) {
-        snprintf(failureText, sizeof(failureText), "%s", refusal);
+    if (!camera_connection::start(camera))
         return false;
-    }
     step = Step::Connecting; // camera_connection::start() began its time limit
     memcpy(cardUuid, uuid, sizeof(cardUuid));
     keepOpen = keepConnection;
-    ending = session_end::Reason::Failed;
     timeFromFixLogged = false;
     knownByLocationNotify = false;
     knownByTimeNotify = false;
     memset(handles, 0, sizeof(handles));
-    failureText[0] = '\0';
     return true;
 }
 
-Result poll()
+bool poll()
 {
     if (step == Step::Idle)
-        return Result::Failed;
+        return false;
     // A connection gone without its Disconnected event (camera_link's queue was full): read before the
     // events, so that a Disconnected queued meanwhile is handled as usual. While waiting for the
     // Wi-Fi step only the 300 s limit would end the session.
@@ -507,35 +514,27 @@ Result poll()
     camera_link::Event event;
     while (step != Step::Idle && step != Step::Done && camera_link::nextEvent(&event))
         handleEvent(event);
+    // Done: the connection is the caller's. newer_session closes it and waits for its Disconnected, so that
+    // 'pair' can switch to the older dialect at once; nothing follows an older session: the link keeps the
+    // connection, and pairing closes it right after saving the pairing (pairing.cpp finish()).
     if (step == Step::Done) {
-        if (keepOpen) { // the connection is the caller's now; its events too
+        if (keepOpen) { // its events are the link's too
             step = Step::Idle;
             camera_connection::release();
         }
-        return Result::Accepted; // pairing: again at every poll until the caller cancels
+        return false; // pairing: ended (Accepted) at every poll until the caller cancels
     }
     if (step == Step::Idle)
-        return session_end::resultOf(ending);
+        return false;
     if (gone) {
-        fail("the connection ended without its event");
-        return Result::Failed;
+        fail("%s", camera_link::LOST_WITHOUT_EVENT);
+        return false;
     }
     if (camera_connection::overLimit()) {
-        handleTimeout();
-        if (step == Step::Idle)
-            return session_end::resultOf(ending);
+        handleTimeout(); // ends the session
+        return false;
     }
-    return Result::Running;
-}
-
-const char *failure()
-{
-    return failureText;
-}
-
-session_end::Reason endReason()
-{
-    return ending;
+    return true;
 }
 
 uint16_t locationHandle()
@@ -553,7 +552,6 @@ void cancel()
     if (step == Step::Idle)
         return;
     camera_connection::cancel();
-    ending = session_end::Reason::Failed;
     step = Step::Idle;
 }
 

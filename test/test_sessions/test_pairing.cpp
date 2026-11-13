@@ -52,6 +52,9 @@ void test_pairing_switches_to_the_older_dialect_and_waits_for_the_wifi_step()
     TEST_ASSERT_TRUE(fake::loopUntil(waitingForWifi, 30000));
     fake::loop(1000);
     TEST_ASSERT_TRUE(fake::logged("switching to the older dialect"));
+    // The newer session ended after its connection had: the older one starts at once.
+    TEST_ASSERT_FALSE(fake::logged("an earlier connection was still open"));
+    TEST_ASSERT_EQUAL(2, fake::askedCount("connect"));
     TEST_ASSERT_TRUE(fake::logged("older: app register identity 4D454930-0100-1000-8001-A1B2C3D4E5F6 name T1000-E"));
     TEST_ASSERT_FALSE(fake::kept("register identity")); // sent for the app, not in 'log' and Copy log
     TEST_ASSERT_TRUE(pairing::active());

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <ble_gatt.h>
 #include <ble_hci.h>
+#include <stdio.h>
 
 #include "gps.h"
 #include "log.h"
@@ -13,27 +14,38 @@ namespace {
 
 bool owned = false; // a session has the connection
 uint32_t stepStart = 0;
-uint32_t stepLimit = camera_connection::NO_LIMIT;
+uint32_t stepLimit = 0; // set by enter()
+session_end::Reason ending = session_end::Reason::Failed;
+char failureText[80] = "";
 
 } // namespace
 
 namespace camera_connection {
 
-const char *start(const camera_list::Report &camera)
+bool start(const camera_list::Report &camera)
 {
-    if (owned)
-        return "a session is running";
-    if (camera.camera.state == lumix::STATE_STANDBY)
-        return "the camera is in standby";
+    ending = session_end::Reason::Failed;
+    if (owned) {
+        setFailure("a session is running");
+        return false;
+    }
+    if (camera.camera.state == lumix::STATE_STANDBY) {
+        setFailure("the camera is in standby");
+        return false;
+    }
     if (camera_link::connected()) {
         camera_link::close();
-        return "an earlier connection was still open - closed now";
+        setFailure("an earlier connection was still open - closed now");
+        return false;
     }
-    if (!camera_link::connect(camera))
-        return "connect: refused by the SoftDevice";
+    if (!camera_link::connect(camera)) {
+        setFailure("connect: refused by the SoftDevice");
+        return false;
+    }
     owned = true;
+    failureText[0] = '\0';
     enter(camera_link::CONNECT_TIMEOUT_MS);
-    return nullptr;
+    return true;
 }
 
 void release()
@@ -45,6 +57,35 @@ void cancel()
 {
     camera_link::close();
     owned = false;
+    ending = session_end::Reason::Failed;
+}
+
+session_end::Reason endReason()
+{
+    return ending;
+}
+
+const char *failure()
+{
+    return failureText;
+}
+
+void setEndReason(session_end::Reason reason)
+{
+    ending = reason;
+}
+
+void setFailure(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    setFailureV(format, args);
+    va_end(args);
+}
+
+void setFailureV(const char *format, va_list args)
+{
+    vsnprintf(failureText, sizeof(failureText), format, args);
 }
 
 void enter(uint32_t limitMs)
@@ -55,7 +96,7 @@ void enter(uint32_t limitMs)
 
 bool overLimit()
 {
-    return stepLimit != NO_LIMIT && millis() - stepStart >= stepLimit;
+    return millis() - stepStart >= stepLimit;
 }
 
 uint32_t limitSeconds()

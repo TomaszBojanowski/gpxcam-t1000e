@@ -1,0 +1,73 @@
+# The tests of every part: the firmware on the PC and its two builds (each checked by
+# tools/uf2check.py), the card page, the app's page and its Rust side, the generated time zone
+# files and the comments. On every push to main and every pull request; app.yml runs it before the
+# installers.
+name: test
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  # github.workflow is the caller's name when app.yml runs this, so the two runs of one pull
+  # request do not cancel each other.
+  group: ${{ github.workflow }}-test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_TOOLCHAIN: "1.99.0" # as in app.yml: the version the app was tested with
+  PLATFORMIO_VERSION: "6.2.0"
+  CARGO_TERM_COLOR: never
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12" # app_frontend.py needs tomllib (3.11)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Linux packages for Tauri and serialport
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev libssl-dev libudev-dev pkg-config
+      - name: Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup default "$RUST_TOOLCHAIN"
+      - name: PlatformIO
+        run: python -m pip install "platformio==$PLATFORMIO_VERSION"
+      - name: The firmware on the PC
+        run: |
+          pio test -e native
+          pio test -e native_sessions
+      - name: The firmware builds
+        run: pio run -e t1000e -e t1000e_test
+      - name: The card page
+        run: node --test test/web/card_page.test.mjs
+      - name: The app's page, made from the card page
+        run: |
+          python -I test/tools/test_app_frontend.py
+          python tools/app_frontend.py
+      - name: The Rust side
+        working-directory: app/src-tauri
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+      - name: The time zone files
+        run: python tools/gen_tz_table.py --check
+      - name: Comments without history
+        run: python -I test/tools/test_comments.py

@@ -44,7 +44,6 @@ constexpr Note DISCONNECTED_NOTES[] = {{NOTE_FS4, 60}, {NOTE_CS4, 60}};
 constexpr Note TEST_PAUSE_NOTES[] = {{PAUSE, 700}};
 
 // Volume = PWM duty (sound_rules.h).
-constexpr uint8_t MAX_DUTY_PERCENT = 50; // never drive the coil for more than half a period
 
 // PWM3: tone() uses PWM2 (core Tone.cpp) and analogWrite() takes the first free module.
 HardwarePWM &pwm = HwPWM3;
@@ -114,7 +113,7 @@ void play(const Melody *melodies, size_t count, uint8_t duty)
         queue[i] = melodies[i];
     queuePosition = 0;
     noteIndex = 0;
-    dutyPercent = min(duty, MAX_DUTY_PERCENT);
+    dutyPercent = min(duty, sound_rules::MAX_DUTY_PERCENT);
 
     digitalWrite(BUZZER_EN_PIN, HIGH);
     pwm.addPin(PIN_BUZZER);
@@ -198,7 +197,7 @@ void playDisconnected()
 
 bool playTest(uint8_t duty)
 {
-    if (duty < 1 || duty > MAX_DUTY_PERCENT)
+    if (duty < 1 || duty > sound_rules::MAX_DUTY_PERCENT)
         return false;
     const Melody sequence[] = {melody(CLICK_NOTES),    melody(TEST_PAUSE_NOTES), melody(START_NOTES),
                                melody(TEST_PAUSE_NOTES), melody(SHUTDOWN_NOTES), melody(TEST_PAUSE_NOTES),
