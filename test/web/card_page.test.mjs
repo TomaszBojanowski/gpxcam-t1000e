@@ -1,4 +1,4 @@
-// Tests of the card page, docs/index.html, on the PC:
+// Tests of the card page, docs/index.html with page.css, card.js and page.js, on the PC:
 // node --test test/web/card_page.test.mjs
 // The page's scripts run in a separate context without a browser; the card is simulated with
 // answers in the form of the real card's console (src/main.cpp, src/tz_store.cpp), made-up values.
@@ -9,23 +9,28 @@ import vm from "node:vm";
 
 import { simulatedApp } from "./simulated_app.mjs";
 
-const PAGE = new URL("../../docs/index.html", import.meta.url);
-const html = readFileSync(PAGE, "utf8");
-// The page's scripts in its order: the zone data it loads from docs/zones.js, then its own.
-const zonesScript = readFileSync(new URL("../../docs/zones.js", import.meta.url), "utf8");
-assert.match(html, /<script src="zones\.js"><\/script>\s*<script>/);
-const scripts = [zonesScript, ...[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1])];
-const appCode = scripts[1];
-// The page's functions are those of its context; its constants and classes are added from it by name.
-const page = vm.createContext({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout,
-  console });
-Object.assign(page, vm.runInContext(
-  scripts.join("\n") +
-    "\n;({ TZ_DATA, BAUD_RATE, CARD_USB, MAX_RESULTS, LineSplitter, Card, CLOCK_ANSWERS, SOUND_ANSWERS," +
-    " UPDATES_ANSWERS, SOUND_SETTINGS, UPDATES_SETTINGS, FIXED_COMMANDS, SCAN_RUN_MS, PAIRING_STATUS_PERIOD_MS," +
-    " AppReadError, PAIR_ATTEMPTS, PAIR_FIX_WAIT_MS, PAIR_SEARCH_MS })",
-  page,
-));
+const DOCS = new URL("../../docs/", import.meta.url);
+const read = (name) => readFileSync(new URL(name, DOCS), "utf8");
+const html = read("index.html");
+const css = read("page.css");
+// The page's scripts in its order: zones.js (the card's time zone table, made by tools/gen_tz_table.py), then
+// its own, whose code the tests also read.
+const PAGE_SCRIPTS = [...html.matchAll(/<script src="([a-z_]+\.js)"><\/script>/g)].map((match) => match[1]);
+const scripts = PAGE_SCRIPTS.map((name) => [name, read(name)]);
+const appCode = scripts.filter(([name]) => name !== "zones.js").map(([, code]) => code).join("\n");
+
+// Runs the page's scripts one after another in a new context with `globals`, as a browser loads them.
+function runPage(globals) {
+  const context = vm.createContext(globals);
+  for (const [name, code] of scripts) vm.runInContext(code, context, { filename: `docs/${name}` });
+  return context;
+}
+
+// The page's functions, constants and classes by name: its functions are properties of its context, the
+// others are read in it.
+const page = new Proxy(runPage({ TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout,
+  console }), { get: (context, name) => (typeof name === "symbol" || name in context ? context[name]
+  : vm.runInContext(name, context)) });
 
 // Values made in the page's context: compared as JSON, since their prototypes are not ours.
 const json = (value) => JSON.parse(JSON.stringify(value));
@@ -208,10 +213,10 @@ function openPage(port, { serial = true, serialEvents = {}, app = null, clipboar
     serial: { requestPort: async () => port, addEventListener: (type, listener) => { serialEvents[type] = listener; } },
   } : {};
   if (clipboard) navigator.clipboard = clipboard;
-  vm.runInContext(scripts.join("\n"), vm.createContext({
+  runPage({
     TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout: pageSetTimeout,
     clearTimeout: pageClearTimeout, console, document, navigator, window: app ? app.window : { isSecureContext: true },
-  }));
+  });
   return elements;
 }
 
@@ -427,7 +432,7 @@ test("parseCardId reads the card's id from 'p', and olderIdentity makes the iden
 test("the port is opened only at 115200 baud, with DTR", async () => {
   assert.equal(page.BAUD_RATE, 115200);
   assert.deepEqual(json(page.CARD_USB), { usbVendorId: 0x2886, usbProductId: 0x8057 });
-  assert.doesNotMatch(html, /1200/);
+  for (const source of [html, css, appCode]) assert.doesNotMatch(source, /1200/);
   // Every open() with options is the port's (Card.open() itself takes none).
   const opens = [...appCode.matchAll(/\.open\(([^)]*)\)/g)].map((match) => match[1]).filter(Boolean);
   assert.deepEqual(opens, ["{ baudRate: BAUD_RATE }"]);
@@ -494,7 +499,7 @@ test("a card without tz and a card that does not answer tz get different message
 
 // The colours of a theme from the page's style: light from :root, dark from the media query.
 function themeColours(dark) {
-  const style = /<style>([\s\S]*?)<\/style>/.exec(html)[1];
+  const style = css;
   const darkStart = style.indexOf("@media (prefers-color-scheme: dark)");
   const light = Object.fromEntries([...style.slice(0, darkStart).matchAll(/(--[a-z-]+): (#[0-9a-f]{6});/g)]
     .map((match) => [match[1], match[2]]));
@@ -539,7 +544,7 @@ test("each part of the page is a card with its heading and icon; the favicon is 
 });
 
 test("motion is short, changes only colours and the toggle's knob, and stops with reduced motion", () => {
-  const style = /<style>([\s\S]*?)<\/style>/.exec(html)[1];
+  const style = css;
   const durations = [...style.matchAll(/(\d*\.?\d+)s\b/g)].map((match) => Number(match[1]));
   assert.ok(durations.length > 0);
   for (const duration of durations) assert.ok(duration <= 0.25 || duration === 1.2, `${duration} s`); // 1.2: the pulse
@@ -561,7 +566,7 @@ test("what a returning reader does not need is folded: How pairing works, and Ab
 });
 
 test("hidden parts stay hidden whatever display their own rule gives", () => {
-  assert.match(html, /^\.hidden \{ display: none !important; \}/m);
+  assert.match(css, /^\.hidden \{ display: none !important; \}/m);
 });
 
 // Ids nothing on the page refers to, and why they stay.
@@ -572,8 +577,8 @@ const IDS_FOR_OTHERS = {
 };
 
 test("the page uses each name of its script, each class of its style and each id", () => {
-  const style = /<style>([\s\S]*?)<\/style>/.exec(html)[1].replace(/\/\*[\s\S]*?\*\//g, "");
-  const markup = html.replace(/<style>[\s\S]*?<\/style>|<script>[\s\S]*?<\/script>/g, "");
+  const style = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const markup = html;
   const code = appCode.replace(/\/\*[\s\S]*?\*\/|(?<![:"'\\])\/\/[^\n]*/g, "");
   const escaped = (name) => name.replace(/[$]/g, "\\$");
   const uses = (text, name, part) => (text.match(new RegExp(`(?<!${part})${escaped(name)}(?!${part})`, "g")) || []).length;
@@ -599,15 +604,19 @@ test("the page uses each name of its script, each class of its style and each id
   assert.deepEqual(ids.filter((id) => !referred(id)).sort(), Object.keys(IDS_FOR_OTHERS).sort());
 });
 
-test("the page fetches nothing but its zone data, next to it: content security policy", () => {
+test("the page fetches nothing but its own files next to it, and has nothing inline: content security policy", () => {
   const policy = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(html);
   assert.ok(policy);
   assert.match(policy[1], /^default-src 'none';/);
-  assert.match(policy[1], /script-src 'self' 'unsafe-inline';/); // docs/zones.js and the page's own script
-  assert.doesNotMatch(policy[1], /connect-src|https?:/);
+  assert.match(policy[1], /script-src 'self';/);
+  assert.match(policy[1], /style-src 'self';/);
+  assert.doesNotMatch(policy[1], /unsafe|connect-src|https?:/);
   assert.match(policy[1], /img-src data:/); // the favicon is a data: image
-  assert.deepEqual([...html.matchAll(/<script[^>]+src="([^"]*)"/g)].map((match) => match[1]), ["zones.js"]);
-  assert.doesNotMatch(html, /<link[^>]+href="(?!data:)/);
+  assert.deepEqual([...html.matchAll(/<script\b[^>]*>/g)].map((match) => match[0]), PAGE_SCRIPTS.map((name) =>
+    `<script src="${name}">`));
+  assert.deepEqual(PAGE_SCRIPTS, ["zones.js", "card.js", "page.js"]);
+  assert.deepEqual([...html.matchAll(/<link[^>]+href="(?!data:)([^"]*)"/g)].map((match) => match[1]), ["page.css"]);
+  assert.doesNotMatch(html, /<style| style=| on[a-z]+=/); // the policy would block them
 });
 
 test("a refused command is not written; no answer ends after the time limit", async () => {
@@ -1310,7 +1319,7 @@ test("the pairing screens are made of real buttons, labelled checkboxes and one 
   }
   assert.match(pairingHtml, /<progress id="pair-countdown-bar" [^>]*aria-label="Time left to find the camera"/);
   assert.equal(pairingHtml.match(/role="status"/g).length, 1);
-  assert.match(html, /\.pairing button \{ min-height: 44px; \}/);
+  assert.match(css, /\.pairing button \{ min-height: 44px; \}/);
   // One element for each step and stage the functions give.
   for (const step of page.pairingSteps("wifi", true)) {
     assert.match(pairingHtml, new RegExp(`id="pair-step-${step.name}"`));
@@ -1328,8 +1337,8 @@ test("the pairing screens are made of real buttons, labelled checkboxes and one 
   assert.match(help, /Older cameras \(LUMIX Sync generation\) need one more step/);
   assert.doesNotMatch(help, /Start Bluetooth pairing|T1000&#8209;E|the page says/);
   // Paired: the panel's mark and words in the middle.
-  assert.match(html, /\.done-panel \{[^}]*text-align: center;/);
-  assert.match(html, /\.done-panel \.row \{ justify-content: center; \}/);
+  assert.match(css, /\.done-panel \{[^}]*text-align: center;/);
+  assert.match(css, /\.done-panel \.row \{ justify-content: center; \}/);
 });
 
 test("the camera section's screen follows the card's pairing phase and how the last pairing ended", () => {

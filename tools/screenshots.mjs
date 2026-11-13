@@ -81,11 +81,13 @@ function installCard(simulatedApp, state) {
 function serve() {
   const html = readFileSync(PAGE);
   const server = createServer((request, response) => {
+    const file = /^\/[a-z_]+\.(js|css)$/.exec(request.url);
     if (request.url === "/") {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(html);
-    } else if (/^\/[a-z_]+\.js$/.test(request.url) && existsSync(new URL(`.${request.url}`, PAGE))) {
-      // the scripts the page loads next to it (docs/zones.js)
-      response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" })
+    } else if (file && existsSync(new URL(`.${request.url}`, PAGE))) {
+      // the scripts and the style the page loads next to it
+      const type = file[1] === "css" ? "text/css" : "text/javascript";
+      response.writeHead(200, { "Content-Type": `${type}; charset=utf-8` })
         .end(readFileSync(new URL(`.${request.url}`, PAGE)));
     } else {
       response.writeHead(404).end();

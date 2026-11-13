@@ -1,4 +1,4 @@
-//! The commands the app lets through to the card: the same as the page (docs/index.html
+//! The commands the app lets through to the card: the same as the page (docs/card.js
 //! allowedCommand(), test/commands.json). The page checks them first; this is the second check,
 //! so that nothing in the window can send the card anything else ('dfu', 'off', 'link off').
 

@@ -211,7 +211,7 @@ void afterKnown()
 // this same identity and device name over the camera's Wi-Fi network while the user joins that
 // network by hand from the camera's screen. Sent in a line the app reads as it comes, and not kept in
 // the history ('log', Copy log): the app that resumes a pairing builds the identity from the card's
-// UUID in 'p' (docs/index.html). Only for pairing - a lasting connection needs no Wi-Fi step.
+// UUID in 'p' (docs/page.js olderIdentity()). Only for pairing - a lasting connection needs no Wi-Fi step.
 void logAppRegistration()
 {
     uint8_t seed[device_identity::SEED_LENGTH];

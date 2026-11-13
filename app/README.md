@@ -134,10 +134,10 @@ The protocol is in [docs/PROTOCOL.md](../docs/PROTOCOL.md).
 
 ## How it is made
 
-- `../docs/index.html` is the page. `tools/app_frontend.py` copies it, with the script it loads
-  (`../docs/zones.js`), to `dist/` and makes two changes: its content security policy lets the page
-  talk to the app over Tauri's IPC, and "About this app" shows the version from
-  `src-tauri/Cargo.toml`.
+- `../docs/index.html` is the page. `tools/app_frontend.py` copies it, with the files it loads next
+  to it (`page.css`, `zones.js`, `card.js`, `page.js`), to `dist/` and makes two changes: its content
+  security policy lets the page talk to the app over Tauri's IPC, and "About this app" shows the
+  version from `src-tauri/Cargo.toml`.
 - `src-tauri/` is the Rust side. It finds the card, opens its port at 115200 baud with DTR, passes
   the card's lines to the page and sends the allowed commands.
 - The page finds the app through `window.__TAURI__`, and the page's Card class works over it as

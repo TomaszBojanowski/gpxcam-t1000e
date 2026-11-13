@@ -14,7 +14,7 @@ use crate::commands;
 use crate::lines::LineAssembler;
 
 /// The only baud rate the app knows. Any rate works over USB, but 1200 would reset the card into
-/// its bootloader (docs/index.html BAUD_RATE).
+/// its bootloader (docs/card.js BAUD_RATE).
 pub const BAUD_RATE: u32 = 115_200;
 
 /// Seeed, T1000-E running gpxcam (boards/t1000-e.json).
@@ -25,7 +25,7 @@ pub const USB_PRODUCT_ID: u16 = 0x8057;
 /// close(). A command is under 50 bytes, and the card reads its console at once.
 const PORT_TIMEOUT: Duration = Duration::from_millis(100);
 
-/// What the page gets over its channel (docs/index.html AppPort): the card's lines, then once
+/// What the page gets over its channel (docs/card.js AppPort): the card's lines, then once
 /// Closed, with PortClosed or PortFailed when the port ended by itself (the card was unplugged),
 /// without one after close().
 #[derive(Clone, Debug, PartialEq, Serialize)]

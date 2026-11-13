@@ -12,7 +12,7 @@ SOURCES = {
     "src": ("*.cpp", "*.h"),
     "app/src-tauri/src": ("*.rs",),
     "test": ("*.cpp", "*.h", "*.mjs", "*.py"),
-    "docs": ("index.html",),
+    "docs": ("index.html", "page.css", "card.js", "page.js"),
 }
 
 # Words of a change rather than of the code as it is.
