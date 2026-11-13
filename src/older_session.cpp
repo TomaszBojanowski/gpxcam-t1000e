@@ -31,21 +31,18 @@ constexpr uint16_t FIRST_HANDLE = 0x0001;
 constexpr uint16_t LAST_HANDLE = 0xFFFF;
 
 // The name the camera shows and the computer registers over Wi-Fi; the same on both channels.
-constexpr const char *DEVICE_NAME = "T1000-E";
 
 enum class Step { Idle, Connecting, Mtu, Characteristics, Key, DeviceId, DeviceName, CameraName, CameraText,
                   WaitKnown, Time, TimeAgain, Done };
 
 Step step = Step::Idle; // the time limit of each step: camera_connection
 bool keepOpen = false; // true: the connection goes to the caller once the camera accepts (the link)
-session_end::Reason ending = session_end::Reason::Failed; // endReason(); Accepted once the camera took the card
 uint8_t cardUuid[lumix::UUID_LENGTH];
 uint16_t handles[camera_link::OLDER_CHARACTERISTIC_COUNT];
 uint8_t key[lumix::KEY_LENGTH];
 bool knownByLocationNotify = false;
 bool knownByTimeNotify = false;
 bool timeFromFixLogged = false; // "the time of the fix ... ago" said once per session
-char failureText[80] = "";
 
 // The data of the write in progress; the SoftDevice may read it until WriteDone.
 uint8_t txData[device_identity::FIELD_LENGTH];
@@ -112,8 +109,8 @@ void enter(Step next, uint32_t limitMs)
 // Ends the session for this reason, with the failure text. Disconnects; the pending event is ignored.
 void end(session_end::Reason reason, const char *format, va_list args)
 {
-    vsnprintf(failureText, sizeof(failureText), format, args);
-    ending = reason;
+    camera_connection::setFailureV(format, args);
+    camera_connection::setEndReason(reason);
     camera_link::close();
     step = Step::Idle;
     camera_connection::release();
@@ -181,8 +178,8 @@ bool makeTimePacket()
 void accept()
 {
     logStep("older: the camera took the card");
-    ending = session_end::Reason::Accepted;
-    enter(Step::Done, camera_connection::NO_LIMIT);
+    camera_connection::setEndReason(session_end::Reason::Accepted);
+    step = Step::Done;
 }
 
 void writeTime(Step next)
@@ -224,7 +221,7 @@ void logAppRegistration()
         logger::line("older: the identity text for the app could not be built");
         return;
     }
-    logger::transient("older: app register identity %s name %s", identity, DEVICE_NAME);
+    logger::transient("older: app register identity %s name %s", identity, camera_connection::DEVICE_NAME);
 }
 
 void waitForKnown()
@@ -259,7 +256,7 @@ void readCameraName()
 
 void writeDeviceName()
 {
-    if (!device_identity::nameField(DEVICE_NAME, key, txData)) {
+    if (!device_identity::nameField(camera_connection::DEVICE_NAME, key, txData)) {
         fail("device name: could not be built");
         return;
     }
@@ -399,8 +396,6 @@ bool handleCommonEvent(const camera_link::Event &event)
     using camera_link::EventType;
     switch (event.type) {
     case EventType::Disconnected:
-        if (step == Step::Done)
-            return true; // already accepted; the caller cancels
         endWith(camera_connection::disconnectedReason(event.status, step == Step::Connecting),
                 "the camera disconnected (HCI 0x%02x)", event.status);
         return true;
@@ -494,27 +489,22 @@ namespace older_session {
 
 bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LENGTH], bool keepConnection)
 {
-    const char *refusal = camera_connection::start(camera);
-    if (refusal != nullptr) {
-        snprintf(failureText, sizeof(failureText), "%s", refusal);
+    if (!camera_connection::start(camera))
         return false;
-    }
     step = Step::Connecting; // camera_connection::start() began its time limit
     memcpy(cardUuid, uuid, sizeof(cardUuid));
     keepOpen = keepConnection;
-    ending = session_end::Reason::Failed;
     timeFromFixLogged = false;
     knownByLocationNotify = false;
     knownByTimeNotify = false;
     memset(handles, 0, sizeof(handles));
-    failureText[0] = '\0';
     return true;
 }
 
-Result poll()
+bool poll()
 {
     if (step == Step::Idle)
-        return Result::Failed;
+        return false;
     // A connection gone without its Disconnected event (camera_link's queue was full): read before the
     // events, so that a Disconnected queued meanwhile is handled as usual. While waiting for the
     // Wi-Fi step only the 300 s limit would end the session.
@@ -527,30 +517,19 @@ Result poll()
             step = Step::Idle;
             camera_connection::release();
         }
-        return Result::Accepted; // pairing: again at every poll until the caller cancels
+        return false; // pairing: ended (Accepted) at every poll until the caller cancels
     }
     if (step == Step::Idle)
-        return session_end::resultOf(ending);
+        return false;
     if (gone) {
         fail("the connection ended without its event");
-        return Result::Failed;
+        return false;
     }
     if (camera_connection::overLimit()) {
-        handleTimeout();
-        if (step == Step::Idle)
-            return session_end::resultOf(ending);
+        handleTimeout(); // ends the session
+        return false;
     }
-    return Result::Running;
-}
-
-const char *failure()
-{
-    return failureText;
-}
-
-session_end::Reason endReason()
-{
-    return ending;
+    return true;
 }
 
 uint16_t locationHandle()
@@ -568,7 +547,6 @@ void cancel()
     if (step == Step::Idle)
         return;
     camera_connection::cancel();
-    ending = session_end::Reason::Failed;
     step = Step::Idle;
 }
 

@@ -15,7 +15,6 @@
 
 using fake::Request;
 using session_end::Reason;
-using session_end::Result;
 
 namespace {
 
@@ -51,19 +50,17 @@ struct Dialect {
     const char *name;
     fake::Dialect camera;
     bool (*start)(const camera_list::Report &camera, const uint8_t *cardUuid, bool keepOpen);
-    Result (*poll)();
-    Reason (*endReason)();
-    const char *(*failure)();
+    bool (*poll)();
     void (*cancel)();
     const Step *steps;
     size_t stepCount;
 };
 
 const Dialect DIALECTS[] = {
-    {"newer", fake::Dialect::Newer, newer_session::start, newer_session::poll, newer_session::endReason,
-     newer_session::failure, newer_session::cancel, NEWER_STEPS, sizeof(NEWER_STEPS) / sizeof(NEWER_STEPS[0])},
-    {"older", fake::Dialect::Older, older_session::start, older_session::poll, older_session::endReason,
-     older_session::failure, older_session::cancel, OLDER_STEPS, sizeof(OLDER_STEPS) / sizeof(OLDER_STEPS[0])},
+    {"newer", fake::Dialect::Newer, newer_session::start, newer_session::poll, newer_session::cancel, NEWER_STEPS,
+     sizeof(NEWER_STEPS) / sizeof(NEWER_STEPS[0])},
+    {"older", fake::Dialect::Older, older_session::start, older_session::poll, older_session::cancel, OLDER_STEPS,
+     sizeof(OLDER_STEPS) / sizeof(OLDER_STEPS[0])},
 };
 
 const Dialect &other(const Dialect &dialect)
@@ -79,9 +76,11 @@ bool start(const Dialect &dialect, uint8_t state = lumix::STATE_ON, bool keepOpe
     return dialect.start(fake::cameraIn(state), fake::record.uuid, keepOpen);
 }
 
-Result run(const Dialect &dialect)
+// Polls the session until it ends. Why it ended.
+Reason run(const Dialect &dialect)
 {
-    return fake::runSession(dialect.poll);
+    TEST_ASSERT_TRUE(fake::runSession(dialect.poll));
+    return camera_connection::endReason();
 }
 
 // Another session can start: the last one no longer has the connection, and one it closed has ended.
@@ -100,7 +99,7 @@ void test_no_session_starts_on_a_camera_in_standby()
     for (const Dialect &dialect : DIALECTS) {
         fake::reset();
         TEST_ASSERT_FALSE_MESSAGE(start(dialect, lumix::STATE_STANDBY), dialect.name);
-        TEST_ASSERT_EQUAL_STRING("the camera is in standby", dialect.failure());
+        TEST_ASSERT_EQUAL_STRING("the camera is in standby", camera_connection::failure());
         TEST_ASSERT_EQUAL_MESSAGE(0, fake::askedCount("connect"), dialect.name);
         assertNextSessionStarts(dialect, dialect.name);
     }
@@ -113,7 +112,7 @@ void test_a_session_closes_an_earlier_connection_instead_of_starting()
         TEST_ASSERT_TRUE(camera_link::connect(fake::cameraIn(lumix::STATE_ON)));
         TEST_ASSERT_TRUE(fake::linkUp());
         TEST_ASSERT_FALSE_MESSAGE(start(dialect), dialect.name);
-        TEST_ASSERT_EQUAL_STRING("an earlier connection was still open - closed now", dialect.failure());
+        TEST_ASSERT_EQUAL_STRING("an earlier connection was still open - closed now", camera_connection::failure());
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), dialect.name);
         fake::advance(fake::CLOSE_MS);
         TEST_ASSERT_TRUE_MESSAGE(start(dialect), dialect.name); // the next start works
@@ -130,7 +129,7 @@ void test_one_session_at_a_time()
         fake::pollFor(100, [&] { dialect.poll(); });
         const Dialect &next = other(dialect);
         TEST_ASSERT_FALSE_MESSAGE(start(next), dialect.name);
-        TEST_ASSERT_EQUAL_STRING("a session is running", next.failure());
+        TEST_ASSERT_EQUAL_STRING("a session is running", camera_connection::failure());
         TEST_ASSERT_EQUAL_MESSAGE(1, fake::askedCount("connect"), dialect.name);
         TEST_ASSERT_TRUE_MESSAGE(fake::linkUp(), dialect.name); // the running session keeps its connection
         dialect.cancel();
@@ -150,7 +149,7 @@ void test_a_session_started_before_a_closed_connection_ended_is_refused()
         dialect.cancel();
         const Dialect &next = other(dialect);
         TEST_ASSERT_FALSE_MESSAGE(start(next), dialect.name);
-        TEST_ASSERT_EQUAL_STRING("an earlier connection was still open - closed now", next.failure());
+        TEST_ASSERT_EQUAL_STRING("an earlier connection was still open - closed now", camera_connection::failure());
         assertNextSessionStarts(dialect, dialect.name);
     }
 }
@@ -182,9 +181,8 @@ void test_a_disconnect_in_every_step_ends_the_session_early()
             fake::camera.disconnectAt = {step.request, step.handle};
             fake::camera.disconnectReason = BLE_HCI_CONNECTION_TIMEOUT;
             TEST_ASSERT_TRUE_MESSAGE(start(dialect), step.name);
-            TEST_ASSERT_EQUAL_MESSAGE(Result::Failed, run(dialect), step.name);
-            TEST_ASSERT_EQUAL_MESSAGE(Reason::EndedEarly, dialect.endReason(), step.name);
-            TEST_ASSERT_NOT_NULL_MESSAGE(strstr(dialect.failure(), "the camera disconnected (HCI 0x08)"), step.name);
+            TEST_ASSERT_EQUAL_MESSAGE(Reason::EndedEarly, run(dialect), step.name);
+            TEST_ASSERT_NOT_NULL_MESSAGE(strstr(camera_connection::failure(), "the camera disconnected (HCI 0x08)"), step.name);
             TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), step.name);
             assertNextSessionStarts(dialect, step.name);
         }
@@ -199,9 +197,8 @@ void test_a_gatt_timeout_ends_the_session()
         TEST_ASSERT_TRUE_MESSAGE(start(dialect), dialect.name);
         fake::pollFor(100, [&] { dialect.poll(); });
         fake::gattTimeout();
-        TEST_ASSERT_EQUAL_MESSAGE(Result::Failed, run(dialect), dialect.name);
-        TEST_ASSERT_EQUAL_MESSAGE(Reason::Failed, dialect.endReason(), dialect.name);
-        TEST_ASSERT_NOT_NULL_MESSAGE(strstr(dialect.failure(), "no ATT answer for 30 s"), dialect.name);
+        TEST_ASSERT_EQUAL_MESSAGE(Reason::Failed, run(dialect), dialect.name);
+        TEST_ASSERT_NOT_NULL_MESSAGE(strstr(camera_connection::failure(), "no ATT answer for 30 s"), dialect.name);
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), dialect.name);
         assertNextSessionStarts(dialect, dialect.name);
     }
@@ -214,7 +211,7 @@ void test_a_request_for_encryption_is_logged_and_the_session_goes_on()
         fake::reset();
         TEST_ASSERT_TRUE_MESSAGE(start(dialect), dialect.name);
         fake::askForEncryption();
-        TEST_ASSERT_EQUAL_MESSAGE(Result::Accepted, run(dialect), dialect.name);
+        TEST_ASSERT_EQUAL_MESSAGE(Reason::Accepted, run(dialect), dialect.name);
         TEST_ASSERT_EQUAL_MESSAGE(1, fake::loggedCount(camera_link::SECURITY_REQUEST_LINE), dialect.name);
     }
 }
@@ -226,11 +223,11 @@ void test_a_lasting_connection_is_given_to_the_link()
     for (const Dialect &dialect : DIALECTS) {
         fake::reset();
         TEST_ASSERT_TRUE_MESSAGE(start(dialect), dialect.name);
-        TEST_ASSERT_EQUAL_MESSAGE(Result::Accepted, run(dialect), dialect.name);
+        TEST_ASSERT_EQUAL_MESSAGE(Reason::Accepted, run(dialect), dialect.name);
         TEST_ASSERT_TRUE_MESSAGE(fake::linkUp(), dialect.name);
         const Dialect &next = other(dialect);
         TEST_ASSERT_FALSE_MESSAGE(start(next), dialect.name);
-        TEST_ASSERT_EQUAL_STRING("an earlier connection was still open - closed now", next.failure());
+        TEST_ASSERT_EQUAL_STRING("an earlier connection was still open - closed now", camera_connection::failure());
         assertNextSessionStarts(dialect, dialect.name);
     }
 }
@@ -242,10 +239,10 @@ void test_a_pairing_session_has_the_connection_until_it_ends()
     for (const Dialect &dialect : DIALECTS) {
         fake::reset();
         TEST_ASSERT_TRUE_MESSAGE(start(dialect, lumix::STATE_PAIRING, false), dialect.name);
-        TEST_ASSERT_EQUAL_MESSAGE(Result::Accepted, run(dialect), dialect.name);
+        TEST_ASSERT_EQUAL_MESSAGE(Reason::Accepted, run(dialect), dialect.name);
         if (dialect.camera == fake::Dialect::Older) {
             TEST_ASSERT_FALSE(start(other(dialect)));
-            TEST_ASSERT_EQUAL_STRING("a session is running", other(dialect).failure());
+            TEST_ASSERT_EQUAL_STRING("a session is running", camera_connection::failure());
             dialect.cancel();
         }
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), dialect.name);

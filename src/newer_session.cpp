@@ -1,7 +1,6 @@
 #include "newer_session.h"
 
 #include <ble_gatt.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -16,6 +15,7 @@
 namespace {
 
 using camera_link::NewerCharacteristic;
+using camera_connection::setFailure;
 
 // The other time limits are camera_link's (CONNECT_TIMEOUT_MS, MTU_TIMEOUT_MS, REQUEST_TIMEOUT_MS).
 constexpr uint32_t DISCONNECT_MS = 5000;
@@ -25,7 +25,6 @@ constexpr uint16_t ATT_WRITE_HEADER = 3;
 constexpr uint16_t MTU_NEEDED = lumix::APP_NAME_LENGTH + ATT_WRITE_HEADER;
 
 // Names shown by the camera.
-constexpr const char *DEVICE_NAME = "T1000-E";
 constexpr const char *APP_NAME = "gpxcam T1000-E " FW_VERSION;
 
 enum class Step { Idle, Connecting, Mtu, Service, Characteristics, Key, DeviceId, AppName, DeviceName, Time,
@@ -34,8 +33,6 @@ enum class Step { Idle, Connecting, Mtu, Service, Characteristics, Key, DeviceId
 Step step = Step::Idle; // the time limit of each step: camera_connection
 bool keepOpen = false;
 bool timeWritten = true; // set at the start: false only with the clock off in a lasting connection
-session_end::Reason ending = session_end::Reason::Failed; // endReason(); Accepted once the camera took the card
-char failureText[80] = "";
 
 uint8_t cardUuid[lumix::UUID_LENGTH];
 newer_session::Discovered info = {}; // MTU, service end, handles and properties
@@ -91,15 +88,6 @@ void enter(Step next, uint32_t limitMs)
     camera_connection::enter(limitMs);
 }
 
-void setFailure(const char *format, ...) __attribute__((format(printf, 1, 2)));
-void setFailure(const char *format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    vsnprintf(failureText, sizeof(failureText), format, args);
-    va_end(args);
-}
-
 // Closes the connection (also after success) and waits for the Disconnected event.
 void closeLink()
 {
@@ -123,8 +111,8 @@ void keepHandles()
 void fail(session_end::Reason reason = session_end::Reason::Failed)
 {
     if (handle_cache::forgetAfterFailure(step != Step::Connecting, false))
-        newer_session::forgetHandles(failureText);
-    ending = reason;
+        newer_session::forgetHandles(camera_connection::failure());
+    camera_connection::setEndReason(reason);
     closeLink();
 }
 
@@ -165,7 +153,7 @@ void writeAppName()
 
 void writeDeviceName()
 {
-    const size_t length = lumix::deviceNamePlain(DEVICE_NAME, txData);
+    const size_t length = lumix::deviceNamePlain(camera_connection::DEVICE_NAME, txData);
     lumix::applyKey(txData, length, key);
     startWrite(camera_link::DEVICE_NAME, length, Step::DeviceName);
 }
@@ -196,7 +184,7 @@ void writeTime()
 void introduceWithoutTime()
 {
     logger::transient("camera: clock off - no time written");
-    ending = session_end::Reason::Accepted;
+    camera_connection::setEndReason(session_end::Reason::Accepted);
     if (!usingKept)
         keepHandles();
     step = Step::Done; // the link goes on with the open connection
@@ -302,7 +290,7 @@ void onWritten(const camera_link::Event &event, void (*next)())
 // writes it twice.
 void onTimeAccepted()
 {
-    ending = session_end::Reason::Accepted;
+    camera_connection::setEndReason(session_end::Reason::Accepted);
     if (!usingKept)
         keepHandles();
     if (keepOpen)
@@ -396,10 +384,10 @@ bool handleCommonEvent(const camera_link::Event &event)
             setFailure("%s: the camera disconnected (HCI 0x%02x)", stepName(step), event.status);
             const session_end::Reason reason =
                 camera_connection::disconnectedReason(event.status, step == Step::Connecting);
-            if (ending != session_end::Reason::Accepted &&
+            if (camera_connection::endReason() != session_end::Reason::Accepted &&
                 handle_cache::forgetAfterFailure(true, reason == session_end::Reason::NotEstablished))
-                newer_session::forgetHandles(failureText);
-            ending = reason; // the link is gone, also after an accepted time
+                newer_session::forgetHandles(camera_connection::failure());
+            camera_connection::setEndReason(reason); // the link is gone, also after an accepted time
         }
         step = Step::Done;
         return true;
@@ -490,11 +478,8 @@ namespace newer_session {
 
 bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LENGTH], bool keepConnection)
 {
-    const char *refusal = camera_connection::start(camera);
-    if (refusal != nullptr) {
-        setFailure("%s", refusal);
+    if (!camera_connection::start(camera))
         return false;
-    }
     step = Step::Connecting; // camera_connection::start() began its time limit
     memcpy(cardUuid, uuid, sizeof(cardUuid));
     memcpy(sessionSerial, camera.camera.serial, sizeof(sessionSerial));
@@ -506,35 +491,23 @@ bool start(const camera_list::Report &camera, const uint8_t uuid[lumix::UUID_LEN
     info.mtu = BLE_GATT_ATT_MTU_DEFAULT;
     keepOpen = keepConnection;
     timeWritten = !keepConnection || tz_store::clockOn();
-    ending = session_end::Reason::Failed;
-    failureText[0] = '\0';
     return true;
 }
 
-Result poll()
+bool poll()
 {
     if (step == Step::Idle)
-        return Result::Failed;
+        return false;
     camera_link::Event event;
     while (step != Step::Done && camera_link::nextEvent(&event))
         handleEvent(event);
     if (step != Step::Done && camera_connection::overLimit())
         handleTimeout();
     if (step != Step::Done)
-        return Result::Running;
+        return true;
     step = Step::Idle;
     camera_connection::release();
-    return session_end::resultOf(ending);
-}
-
-const char *failure()
-{
-    return failureText;
-}
-
-session_end::Reason endReason()
-{
-    return ending;
+    return false;
 }
 
 bool writesTime()
@@ -558,7 +531,6 @@ void cancel()
     if (step == Step::Idle)
         return;
     camera_connection::cancel();
-    ending = session_end::Reason::Failed;
     step = Step::Idle;
 }
 

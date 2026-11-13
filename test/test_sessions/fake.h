@@ -44,20 +44,19 @@ template <class Poll> void pollFor(uint32_t ms, Poll poll)
     }
 }
 
-// Polls a session (newer_session::poll, older_session::poll) on the test clock until it is not
-// Running, at most 60 s; *tookMs: how long it ran.
-template <class Poll> auto runSession(Poll poll, uint32_t *tookMs = nullptr) -> decltype(poll())
+// Polls a session (newer_session::poll, older_session::poll) on the test clock until it ends, at most
+// 60 s; *tookMs: how long it ran. False if it still runs.
+template <class Poll> bool runSession(Poll poll, uint32_t *tookMs = nullptr)
 {
-    using Result = decltype(poll());
     const uint32_t start = now();
-    Result result = Result::Running;
-    while (result == Result::Running && now() - start < 60000) {
+    bool running = true;
+    while (running && now() - start < 60000) {
         advance(LOOP_STEP_MS);
-        result = poll();
+        running = poll();
     }
     if (tookMs != nullptr)
         *tookMs = now() - start;
-    return result;
+    return !running;
 }
 
 // ---- Log (logger::line and logger::transient)

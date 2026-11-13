@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "bluetooth.h"
+#include "camera_connection.h"
 #include "camera_link.h"
 #include "newer_session.h"
 #include "gps.h"
@@ -653,11 +654,11 @@ void search(uint32_t now)
             if (older_session::start(camera->last, record.uuid, true))
                 enter(Phase::Older);
             else
-                connectionFailed(older_session::failure());
+                connectionFailed(camera_connection::failure());
         } else if (newer_session::start(camera->last, record.uuid, true)) {
             enter(Phase::Introducing);
         } else {
-            connectionFailed(newer_session::failure());
+            connectionFailed(camera_connection::failure());
         }
         return;
     }
@@ -756,12 +757,9 @@ void introductionEnded(session_end::Reason reason, const char *failure)
 // Phase::Introducing and Phase::Older: the session of the connection's dialect.
 void introducing()
 {
-    if ((olderLink ? older_session::poll() : newer_session::poll()) == session_end::Result::Running)
+    if (olderLink ? older_session::poll() : newer_session::poll())
         return;
-    if (olderLink)
-        introductionEnded(older_session::endReason(), older_session::failure());
-    else
-        introductionEnded(newer_session::endReason(), newer_session::failure());
+    introductionEnded(camera_connection::endReason(), camera_connection::failure());
 }
 
 } // namespace

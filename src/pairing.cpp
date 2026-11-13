@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "bluetooth.h"
+#include "camera_connection.h"
 #include "camera_list.h"
 #include "newer_session.h"
 #include "gps.h"
@@ -187,7 +188,7 @@ void introduce(const camera_list::Entry &camera)
     const bool ok = olderMode ? older_session::start(camera.last, pairing_store::record().uuid, false)
                               : newer_session::start(camera.last, pairing_store::record().uuid, false);
     if (!ok) {
-        attemptFailed(olderMode ? older_session::failure() : newer_session::failure());
+        attemptFailed(camera_connection::failure());
         return;
     }
     enter(olderMode ? Phase::WaitingForWifi : Phase::Introducing);
@@ -259,7 +260,7 @@ void switchToOlder()
     olderMode = true;
     autoDialect = false;
     if (!older_session::start(lastCamera, pairing_store::record().uuid, false)) {
-        attemptFailed(older_session::failure());
+        attemptFailed(camera_connection::failure());
         return;
     }
     enter(Phase::WaitingForWifi);
@@ -269,10 +270,10 @@ void switchToOlder()
 // refusal: a failed attempt with its pause.
 void introducing()
 {
-    if ((olderMode ? older_session::poll() : newer_session::poll()) == session_end::Result::Running)
+    if (olderMode ? older_session::poll() : newer_session::poll())
         return;
-    const char *failure = olderMode ? older_session::failure() : newer_session::failure();
-    const session_end::Reason reason = olderMode ? older_session::endReason() : newer_session::endReason();
+    const char *failure = camera_connection::failure();
+    const session_end::Reason reason = camera_connection::endReason();
     switch (reason) {
     case session_end::Reason::Accepted:
         succeed();
