@@ -140,6 +140,9 @@ camera_list::Report cameraIn(uint8_t state);
 extern uint32_t requestMs;
 // Milliseconds after which an event can be read (0: at once): a camera that answers in a later loop step.
 extern uint32_t answerMs;
+// After close() the connection lasts until its Disconnected, at the next connection event: 48.75 ms apart
+// with the card's parameters (camera_link.cpp), so this long (or answerMs, if longer).
+constexpr uint32_t CLOSE_MS = 50;
 
 // The test camera's value handles.
 constexpr uint16_t SERVICE_START = 0x0010;

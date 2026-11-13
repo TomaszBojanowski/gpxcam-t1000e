@@ -101,7 +101,8 @@ void test_session_ends_when_a_step_gets_no_answer()
         TEST_ASSERT_TRUE(startSession(false));
         uint32_t took = 0;
         TEST_ASSERT_EQUAL_MESSAGE(Result::Failed, run(&took), step.name);
-        TEST_ASSERT_UINT32_WITHIN_MESSAGE(2 * fake::LOOP_STEP_MS, step.limitMs, took, step.name);
+        // The step's limit, then the session waits for the end of the connection it closes.
+        TEST_ASSERT_UINT32_WITHIN_MESSAGE(2 * fake::LOOP_STEP_MS, step.limitMs + fake::CLOSE_MS, took, step.name);
         char expected[64];
         snprintf(expected, sizeof(expected), "%s: no answer in %lu s", step.name, (unsigned long)(step.limitMs / 1000));
         TEST_ASSERT_EQUAL_STRING(expected, newer_session::failure());

@@ -84,10 +84,11 @@ Result run(const Dialect &dialect)
     return fake::runSession(dialect.poll);
 }
 
-// Another session can start: the last one no longer has the connection.
+// Another session can start: the last one no longer has the connection, and one it closed has ended.
 void assertNextSessionStarts(const Dialect &dialect, const char *what)
 {
     const Dialect &next = other(dialect);
+    fake::advance(fake::CLOSE_MS);
     TEST_ASSERT_TRUE_MESSAGE(start(next), what);
     next.cancel();
 }
@@ -114,6 +115,7 @@ void test_a_session_closes_an_earlier_connection_instead_of_starting()
         TEST_ASSERT_FALSE_MESSAGE(start(dialect), dialect.name);
         TEST_ASSERT_EQUAL_STRING("an earlier connection was still open - closed now", dialect.failure());
         TEST_ASSERT_FALSE_MESSAGE(fake::linkUp(), dialect.name);
+        fake::advance(fake::CLOSE_MS);
         TEST_ASSERT_TRUE_MESSAGE(start(dialect), dialect.name); // the next start works
         dialect.cancel();
     }
@@ -132,6 +134,23 @@ void test_one_session_at_a_time()
         TEST_ASSERT_EQUAL_MESSAGE(1, fake::askedCount("connect"), dialect.name);
         TEST_ASSERT_TRUE_MESSAGE(fake::linkUp(), dialect.name); // the running session keeps its connection
         dialect.cancel();
+        assertNextSessionStarts(dialect, dialect.name);
+    }
+}
+
+// The card's connection ends at its Disconnected, a connection event after close(): until then another
+// session is refused. A session that must hand over to another (pairing's newer to older) waits for it.
+void test_a_session_started_before_a_closed_connection_ended_is_refused()
+{
+    for (const Dialect &dialect : DIALECTS) {
+        fake::reset();
+        fake::camera.silent = {Request::Mtu, 0};
+        TEST_ASSERT_TRUE_MESSAGE(start(dialect), dialect.name);
+        fake::pollFor(50, [&] { dialect.poll(); });
+        dialect.cancel();
+        const Dialect &next = other(dialect);
+        TEST_ASSERT_FALSE_MESSAGE(start(next), dialect.name);
+        TEST_ASSERT_EQUAL_STRING("an earlier connection was still open - closed now", next.failure());
         assertNextSessionStarts(dialect, dialect.name);
     }
 }
@@ -273,6 +292,7 @@ void runCameraConnectionTests()
     RUN_TEST(test_no_session_starts_on_a_camera_in_standby);
     RUN_TEST(test_a_session_closes_an_earlier_connection_instead_of_starting);
     RUN_TEST(test_one_session_at_a_time);
+    RUN_TEST(test_a_session_started_before_a_closed_connection_ended_is_refused);
     RUN_TEST(test_cancel_in_every_step_closes_the_connection_and_lets_the_next_session_start);
     RUN_TEST(test_a_disconnect_in_every_step_ends_the_session_early);
     RUN_TEST(test_a_gatt_timeout_ends_the_session);
