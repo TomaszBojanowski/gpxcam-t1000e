@@ -22,8 +22,8 @@ struct OpenCard(Mutex<card::Slot>);
 #[derive(Default)]
 struct OlderPairing(older_wifi::Steps);
 
-/// What went wrong, as the word the page explains (docs/index.html openProblemText(),
-/// olderOutcomeText(), readErrorText()): why a command failed, or why the card's port closed.
+/// What went wrong, as the word the page explains (test/app_words.json): why a command failed, or
+/// why the card's port closed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Problem {
@@ -171,7 +171,9 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn problems_reach_the_page_as_words() {
+    fn the_page_gets_the_words_of_test_app_words_json() {
+        use older_wifi::{Outcome, Progress};
+        let words: serde_json::Value = serde_json::from_str(include_str!("../../../test/app_words.json")).unwrap();
         let problems = [
             Problem::Permission,
             Problem::Busy,
@@ -184,21 +186,17 @@ mod tests {
             Problem::PortFailed,
             Problem::Failed,
         ];
-        assert_eq!(
-            json!(problems),
-            json!([
-                "permission",
-                "busy",
-                "not-found",
-                "not-open",
-                "refused",
-                "bad-identity",
-                "bad-name",
-                "port-closed",
-                "port-failed",
-                "failed"
-            ])
-        );
+        assert_eq!(json!(problems), words["problems"]);
+        let outcomes = [
+            Outcome::Accepted,
+            Outcome::NotConfirmed,
+            Outcome::NotOnNetwork,
+            Outcome::Failed,
+            Outcome::Cancelled,
+        ];
+        assert_eq!(json!(outcomes), words["outcomes"]);
+        let progress = [Progress::OnNetwork, Progress::Registering].map(|stage| json!(stage)["kind"].clone());
+        assert_eq!(json!(progress), words["progress"]);
     }
 
     #[test]

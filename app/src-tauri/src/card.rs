@@ -2,8 +2,8 @@
 //! DTR on), passing its lines to the page from a thread, and sending it the allowed commands.
 
 use std::io::{self, Read, Write};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -35,7 +35,7 @@ pub enum Event {
     Closed { error: Option<Problem> },
 }
 
-/// A port as the app uses it: the card's (SystemPort, opened by SystemPorts) or a stand-in in the tests.
+/// A port as the app uses it: the card's (opened by SystemPorts) or a stand-in in the tests.
 pub trait CardPort: Read + Write + Send {
     fn set_dtr(&mut self, on: bool) -> io::Result<()>;
     /// Another handle to the same port, for the reading thread.
@@ -59,34 +59,16 @@ impl Opener for SystemPorts {
             .timeout(PORT_TIMEOUT)
             .open()
             .map_err(open_error)?;
-        Ok(Box::new(SystemPort(port)))
+        Ok(Box::new(port))
     }
 }
 
-struct SystemPort(Box<dyn serialport::SerialPort>);
-
-impl Read for SystemPort {
-    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buffer)
-    }
-}
-
-impl Write for SystemPort {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.0.write(bytes)
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()
-    }
-}
-
-impl CardPort for SystemPort {
+impl CardPort for Box<dyn serialport::SerialPort> {
     fn set_dtr(&mut self, on: bool) -> io::Result<()> {
-        self.0.write_data_terminal_ready(on).map_err(io::Error::from)
+        self.write_data_terminal_ready(on).map_err(io::Error::from)
     }
     fn try_clone_port(&self) -> io::Result<Box<dyn CardPort>> {
-        let clone = self.0.try_clone().map_err(io::Error::from)?;
-        Ok(Box::new(SystemPort(clone)))
+        Ok(Box::new(self.try_clone().map_err(io::Error::from)?))
     }
 }
 
@@ -131,7 +113,7 @@ pub fn list() -> Vec<String> {
 
 /// An open card: the port for writing here, a thread reading it.
 pub struct Connection {
-    writer: Mutex<Box<dyn CardPort>>,
+    writer: Box<dyn CardPort>,
     stop: Arc<AtomicBool>,
     ended: Arc<AtomicBool>, // the reading has ended: set before the page gets Closed
     reader: Option<JoinHandle<()>>,
@@ -157,7 +139,7 @@ impl Connection {
             events(Event::Closed { error });
         });
         Ok(Connection {
-            writer: Mutex::new(port),
+            writer: port,
             stop,
             ended,
             reader: Some(reader),
@@ -170,13 +152,13 @@ impl Connection {
     }
 
     /// Sends a command of test/commands.json with its newline; anything else never reaches the card.
-    pub fn send(&self, command: &str) -> Result<(), Problem> {
+    pub fn send(&mut self, command: &str) -> Result<(), Problem> {
         if !commands::allowed(command) {
             return Err(Problem::Refused);
         }
-        let mut port = self.writer.lock().map_err(|_| Problem::Failed)?;
-        port.write_all(format!("{command}\n").as_bytes())
-            .and_then(|()| port.flush())
+        self.writer
+            .write_all(format!("{command}\n").as_bytes())
+            .and_then(|()| self.writer.flush())
             .map_err(|_| Problem::Failed)
     }
 
@@ -245,8 +227,8 @@ impl Slot {
         Ok(())
     }
 
-    pub fn send(&self, command: &str) -> Result<(), Problem> {
-        self.0.as_ref().ok_or(Problem::NotOpen)?.send(command)
+    pub fn send(&mut self, command: &str) -> Result<(), Problem> {
+        self.0.as_mut().ok_or(Problem::NotOpen)?.send(command)
     }
 
     pub fn close(&mut self) {
@@ -260,6 +242,7 @@ impl Slot {
 mod tests {
     use super::*;
     use std::collections::VecDeque;
+    use std::sync::Mutex;
     use std::time::Instant;
 
     /// A port that gives the queued reads, then times out, and records what it gets.
@@ -440,7 +423,7 @@ mod tests {
             opened: Arc::default(),
         };
         let (_events, sink) = collector();
-        let connection = Connection::open(&opener, "/dev/ttyACM0", sink).unwrap();
+        let mut connection = Connection::open(&opener, "/dev/ttyACM0", sink).unwrap();
         assert_eq!(connection.send("status"), Ok(()));
         assert_eq!(connection.send("tz Europe/Warsaw"), Ok(()));
         for refused in ["dfu", "off", "link off", "status\ndfu", "tz europe/warsaw", ""] {

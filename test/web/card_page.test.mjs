@@ -4,7 +4,7 @@
 // answers in the form of the real card's console (src/main.cpp, src/tz_store.cpp), made-up values.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import vm from "node:vm";
 
 import { simulatedApp } from "./simulated_app.mjs";
@@ -23,7 +23,7 @@ Object.assign(page, vm.runInContext(
   scripts.join("\n") +
     "\n;({ TZ_DATA, BAUD_RATE, CARD_USB, MAX_RESULTS, LineSplitter, Card, CLOCK_ANSWERS, SOUND_ANSWERS," +
     " UPDATES_ANSWERS, SOUND_SETTINGS, UPDATES_SETTINGS, FIXED_COMMANDS, SCAN_RUN_MS, PAIRING_STATUS_PERIOD_MS," +
-    " AppReadError, PAIR_ATTEMPTS, PAIR_FIX_WAIT_MS, PAIR_SEARCH_MS, WIFI_WAIT_TEXT })",
+    " AppReadError, PAIR_ATTEMPTS, PAIR_FIX_WAIT_MS, PAIR_SEARCH_MS })",
   page,
 ));
 
@@ -169,6 +169,26 @@ class FakeElement {
   append(...children) { this.children.push(...children); }
 }
 
+// The timers of the pages a test opened, cleared after it: a test that fails half-way does not leave its
+// page refreshing the card's state, which would keep the test run from ending.
+const pageTimers = new Set();
+function pageSetTimeout(run, ms, ...args) {
+  const timer = setTimeout(() => {
+    pageTimers.delete(timer);
+    run(...args);
+  }, ms);
+  pageTimers.add(timer);
+  return timer;
+}
+function pageClearTimeout(timer) {
+  pageTimers.delete(timer);
+  clearTimeout(timer);
+}
+afterEach(() => {
+  for (const timer of pageTimers) clearTimeout(timer);
+  pageTimers.clear();
+});
+
 // Starts the page with every element that has an id, with its classes from the HTML, and a
 // browser whose port chooser gives the simulated card (serial: false - a browser without Web Serial).
 // serialEvents collects the listeners the page adds to navigator.serial. app: the desktop app
@@ -189,8 +209,8 @@ function openPage(port, { serial = true, serialEvents = {}, app = null, clipboar
   } : {};
   if (clipboard) navigator.clipboard = clipboard;
   vm.runInContext(scripts.join("\n"), vm.createContext({
-    TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout, clearTimeout, console, document, navigator,
-    window: app ? app.window : { isSecureContext: true },
+    TextEncoder, TextDecoder, ReadableStream, WritableStream, setTimeout: pageSetTimeout,
+    clearTimeout: pageClearTimeout, console, document, navigator, window: app ? app.window : { isSecureContext: true },
   }));
   return elements;
 }
@@ -339,6 +359,7 @@ test("offsets come from the browser's own data", () => {
 
 // The same vectors as the desktop app's Rust side (cargo test).
 const COMMANDS = JSON.parse(readFileSync(new URL("../commands.json", import.meta.url), "utf8"));
+const APP_WORDS = JSON.parse(readFileSync(new URL("../app_words.json", import.meta.url), "utf8"));
 
 test("only the commands of test/commands.json can be sent, and About names each fixed one", () => {
   assert.deepEqual([...page.FIXED_COMMANDS].sort(), [...COMMANDS.fixed].sort());
@@ -366,11 +387,20 @@ test("the older-camera wizard reads the card's line and explains the Wi-Fi step'
   for (const bad of ["not-confirmed", "not-on-network", "bad-identity", "bad-name", "failed", "anything"]) {
     assert.equal(page.olderOutcomeText(bad)[1], "bad");
   }
-  const general = page.olderOutcomeText("anything")[0]; // a word the page does not know
-  assert.equal(page.olderOutcomeText("failed")[0], general);
   for (const word of ["bad-identity", "bad-name"]) {
     assert.match(page.olderOutcomeText(word)[0], /^The app cannot register the identity this card gave\./, word);
   }
+});
+
+test("the page has its own text for the app's words of test/app_words.json it can get", () => {
+  // The words whose text is not that of a word the page does not know.
+  const own = (explain, words) => words.filter((word) =>
+    JSON.stringify(explain(word)) !== JSON.stringify(explain("anything")));
+  assert.deepEqual(own(page.openProblemText, APP_WORDS.problems), ["permission", "not-found"]);
+  assert.deepEqual(own((word) => page.readErrorText(new page.AppReadError(word)), APP_WORDS.problems),
+    ["port-closed", "port-failed"]);
+  assert.deepEqual(own(page.olderOutcomeText, [...APP_WORDS.outcomes, ...APP_WORDS.problems]),
+    ["accepted", "not-confirmed", "not-on-network", "cancelled", "bad-identity", "bad-name"]);
 });
 
 test("pairing as with an older camera is offered to gpxcam 1.5.0 and later", () => {
@@ -1960,6 +1990,22 @@ test("in the app: an identity the app refuses is explained, and the card keeps w
   assert.equal(app.calls.includes("send pair off"), false);
   assert.equal(ui["wifi-retry"].hidden, false);
   await ui.disconnect.fire("click");
+});
+
+test("in the app: the Wi-Fi step shows each stage of test/app_words.json the app reports", async () => {
+  const shown = [];
+  for (const stage of APP_WORDS.progress) {
+    const answers = { v: VERSION_1_4, status: WAITING_WIFI, p: CARD_ID_ANSWER, "pair off": PAIR_OFF_ANSWER };
+    const app = simulatedApp(["/dev/ttyACM0"], answers);
+    Object.assign(app, { registerOutcome: "wait", registerStages: [stage] });
+    const ui = openPage(null, { app });
+    await ui.connect.fire("click"); // the card waits for the Wi-Fi step: the app goes on with it
+    await until(() => app.registered.length === 1 && ui["pair-status"].className === "busy");
+    shown.push(ui["pair-status"].textContent);
+    await ui.disconnect.fire("click");
+  }
+  assert.deepEqual(shown, ["On the camera's network – registering the card…",
+    "Registering – allow the connection on the camera if it asks…"]);
 });
 
 test("in the app: after a failed Wi-Fi step, Cancel cancels without a red message", async () => {
